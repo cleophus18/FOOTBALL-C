@@ -1,0 +1,29 @@
+[
+  {
+    "id": "milo-ace",
+    "name": "Milo Ace",
+    "specialty": "Elite transfers",
+    "rating": 84,
+    "fee": 350000,
+    "reputation": 88,
+    "knownFor": "Big-club negotiations and record-breaking deals"
+  },
+  {
+    "id": "tariq-merd",
+    "name": "Tariq Merd",
+    "specialty": "Contracts and renewals",
+    "rating": 78,
+    "fee": 220000,
+    "reputation": 72,
+    "knownFor": "Securing long-term contracts and bonus-heavy renewals"
+  },
+  {
+    "id": "nora-ross",
+    "name": "Nora Ross",
+    "specialty": "Loans and development",
+    "rating": 73,
+    "fee": 170000,
+    "reputation": 66,
+    "knownFor": "Player growth plans and loan pathways"
+  }
+]

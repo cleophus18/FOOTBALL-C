@@ -1,0 +1,5 @@
+[
+  { "id": "rating-70", "title": "Earn a match rating of 7.0", "type": "rating", "target": 7.0 },
+  { "id": "passing-80", "title": "Complete at least 80% of your passes", "type": "passes", "target": 0.8 },
+  { "id": "goal-contribution", "title": "Score or assist", "type": "goalContribution" }
+]

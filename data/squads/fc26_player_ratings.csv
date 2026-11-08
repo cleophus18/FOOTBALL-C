@@ -1,0 +1,503 @@
+﻿Player_Name,Club,League,Nationality,Position,Overall_Rating,Potential,Pace,Shooting,Passing,Dribbling,Defending,Physicality,Weak_Foot,Skill_Moves,Data_Status
+Kylian Mbappé,Real Madrid,,,ST,91,94,97,90,80,92,37,76,4,5,Real player; FC-style estimate; verify against official database
+Erling Haaland,Manchester City,,,ST,91,93,88,91,70,80,45,88,3,3,Real player; FC-style estimate; verify against official database
+Mohamed Salah,Liverpool,,,RW,91,91,89,87,85,90,45,75,3,4,Real player; FC-style estimate; verify against official database
+Jude Bellingham,Real Madrid,,,CAM,90,94,80,87,85,90,78,83,4,4,Real player; FC-style estimate; verify against official database
+Vinícius Júnior,Real Madrid,,,LW,90,93,95,84,81,93,29,68,4,5,Real player; FC-style estimate; verify against official database
+Rodri,Manchester City,,,CDM,90,91,66,80,90,84,87,85,4,3,Real player; FC-style estimate; verify against official database
+Virgil van Dijk,Liverpool,,,CB,89,89,76,60,72,72,90,86,3,2,Real player; FC-style estimate; verify against official database
+Kevin De Bruyne,Manchester City,,,CM,89,89,67,88,94,87,65,78,5,4,Real player; FC-style estimate; verify against official database
+Harry Kane,Bayern München,,,ST,90,90,65,92,84,83,49,83,5,3,Real player; FC-style estimate; verify against official database
+Ousmane Dembélé,Paris Saint-Germain,,,RW,90,91,94,82,84,93,39,66,5,5,Real player; FC-style estimate; verify against official database
+Lamine Yamal,FC Barcelona,,,RW,89,95,90,80,82,91,25,55,3,5,Real player; FC-style estimate; verify against official database
+Aitana Bonmatí,FC Barcelona,,,CM,91,92,80,79,91,91,75,72,4,4,Real player; FC-style estimate; verify against official database
+Alexia Putellas,FC Barcelona,,,CM,91,91,78,89,90,91,72,75,4,5,Real player; FC-style estimate; verify against official database
+Thibaut Courtois,Real Madrid,,,GK,90,90,85,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Alisson,Liverpool,,,GK,89,90,86,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Jan Oblak,Atlético Madrid,,,GK,88,89,84,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Gianluigi Donnarumma,Paris Saint-Germain,,,GK,89,91,85,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Pedri,FC Barcelona,,,CM,90,93,79,72,88,90,66,68,4,4,Real player; FC-style estimate; verify against official database
+Federico Valverde,Real Madrid,,,CM,89,91,88,82,86,87,80,82,3,3,Real player; FC-style estimate; verify against official database
+Raphinha,FC Barcelona,,,RW,89,89,91,86,82,88,52,78,4,4,Real player; FC-style estimate; verify against official database
+Bukayo Saka,Arsenal,,,RW,88,90,85,82,83,89,52,70,3,4,Real player; FC-style estimate; verify against official database
+Declan Rice,Arsenal,,,CDM,87,89,72,72,82,81,84,84,3,3,Real player; FC-style estimate; verify against official database
+William Saliba,Arsenal,,,CB,87,90,82,40,65,68,87,83,3,2,Real player; FC-style estimate; verify against official database
+Martin Ødegaard,Arsenal,,,CAM,89,91,72,82,90,89,62,68,3,5,Real player; FC-style estimate; verify against official database
+Bruno Fernandes,Manchester United,,,CAM,87,87,70,85,89,84,66,76,3,4,Real player; FC-style estimate; verify against official database
+Cole Palmer,Chelsea,,,CAM,88,92,78,86,86,88,48,68,3,4,Real player; FC-style estimate; verify against official database
+Enzo Fernández,Chelsea,,,CM,84,89,69,75,86,84,72,74,3,4,Real player; FC-style estimate; verify against official database
+Moisés Caicedo,Chelsea,,,CDM,86,89,78,62,79,80,83,80,3,3,Real player; FC-style estimate; verify against official database
+Alessandro Bastoni,Inter,,,CB,88,90,72,45,75,72,88,83,3,2,Real player; FC-style estimate; verify against official database
+Lautaro Martínez,Inter,,,ST,88,90,82,88,75,87,50,84,4,4,Real player; FC-style estimate; verify against official database
+Nicolò Barella,Inter,,,CM,87,89,79,75,83,86,78,75,4,3,Real player; FC-style estimate; verify against official database
+Rafael Leão,AC Milan,,,LW,86,90,94,82,75,90,28,75,4,5,Real player; FC-style estimate; verify against official database
+Mike Maignan,AC Milan,,,GK,87,89,86,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Paulo Dybala,Roma,,,CF,86,86,80,84,86,90,42,62,3,5,Real player; FC-style estimate; verify against official database
+Khvicha Kvaratskhelia,Paris Saint-Germain,,,LW,86,90,88,80,79,90,46,70,4,5,Real player; FC-style estimate; verify against official database
+Achraf Hakimi,Paris Saint-Germain,,,RB,89,90,94,76,82,86,80,78,4,4,Real player; FC-style estimate; verify against official database
+Marquinhos,Paris Saint-Germain,,,CB,87,88,79,55,72,75,89,78,3,3,Real player; FC-style estimate; verify against official database
+Vitinha,Paris Saint-Germain,,,CM,90,92,75,72,89,90,76,68,4,4,Real player; FC-style estimate; verify against official database
+Jamal Musiala,Bayern München,,,CAM,87,93,83,78,80,92,38,62,4,5,Real player; FC-style estimate; verify against official database
+Michael Olise,Bayern München,,,RW,86,90,78,82,85,89,48,68,4,5,Real player; FC-style estimate; verify against official database
+Joshua Kimmich,Bayern München,,,CDM,88,88,68,72,89,84,82,76,4,3,Real player; FC-style estimate; verify against official database
+Manuel Neuer,Bayern München,,,GK,86,86,78,0,0,0,0,0,4,1,Real player; FC-style estimate; verify against official database
+Florian Wirtz,Bayer Leverkusen,,,CAM,88,92,78,82,87,91,50,68,4,4,Real player; FC-style estimate; verify against official database
+Antoine Griezmann,Atlético Madrid,,,CF,88,88,78,86,86,88,60,72,4,4,Real player; FC-style estimate; verify against official database
+Julián Álvarez,Atlético Madrid,,,ST,86,91,82,84,78,86,55,75,4,4,Real player; FC-style estimate; verify against official database
+Robert Lewandowski,FC Barcelona,,,ST,88,88,75,91,79,86,44,84,4,4,Real player; FC-style estimate; verify against official database
+Frenkie de Jong,FC Barcelona,,,CM,87,89,79,69,87,88,54,72,3,4,Real player; FC-style estimate; verify against official database
+Son Heung-min,Tottenham Hotspur,,,LW,87,87,88,88,80,86,42,68,5,4,Real player; FC-style estimate; verify against official database
+James Maddison,Tottenham Hotspur,,,CAM,85,86,70,82,87,85,52,65,4,4,Real player; FC-style estimate; verify against official database
+Alexander Isak,Newcastle United,,,ST,86,89,86,86,74,87,39,75,4,5,Real player; FC-style estimate; verify against official database
+Bruno Guimarães,Newcastle United,,,CM,85,88,70,73,84,84,78,80,4,4,Real player; FC-style estimate; verify against official database
+Phil Foden,Manchester City,,,CAM,88,91,80,84,85,90,55,60,4,4,Real player; FC-style estimate; verify against official database
+Bernardo Silva,Manchester City,,,CM,88,88,70,78,86,92,68,68,4,4,Real player; FC-style estimate; verify against official database
+Ederson,Manchester City,,,GK,88,89,86,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Gabriel Martinelli,Arsenal,,,LW,84,88,90,79,75,86,35,68,4,4,Real player; FC-style estimate; verify against official database
+Kai Havertz,Arsenal,,,ST,83,86,78,82,78,82,55,78,4,4,Real player; FC-style estimate; verify against official database
+Micky van de Ven,Tottenham Hotspur,,,CB,82,87,92,45,63,69,82,83,3,2,Real player; FC-style estimate; verify against official database
+Alisson Becker,Liverpool,,,GK,89,90,86,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Alexis Mac Allister,Liverpool,,,CM,86,88,70,78,87,85,74,72,4,4,Real player; FC-style estimate; verify against official database
+Dominik Szoboszlai,Liverpool,,,CM,84,87,80,78,82,83,65,75,4,4,Real player; FC-style estimate; verify against official database
+Ollie Watkins,Aston Villa,,,ST,85,87,88,84,73,82,45,80,3,3,Real player; FC-style estimate; verify against official database
+Youri Tielemans,Aston Villa,,,CM,83,84,58,76,86,80,65,70,3,3,Real player; FC-style estimate; verify against official database
+Serhou Guirassy,Borussia Dortmund,,,ST,84,85,78,86,67,76,35,84,3,3,Real player; FC-style estimate; verify against official database
+Nico Schlotterbeck,Borussia Dortmund,,,CB,85,88,78,48,68,70,85,83,3,2,Real player; FC-style estimate; verify against official database
+Gregor Kobel,Borussia Dortmund,,,GK,88,90,84,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Deniz Undav,VfB Stuttgart,,,ST,82,83,66,84,72,78,35,77,3,3,Real player; FC-style estimate; verify against official database
+Loïs Openda,RB Leipzig,,,ST,84,87,93,82,69,84,30,75,3,4,Real player; FC-style estimate; verify against official database
+Xavi Simons,RB Leipzig,,,CAM,84,89,83,78,82,89,45,65,4,4,Real player; FC-style estimate; verify against official database
+Benjamin Šeško,RB Leipzig,,,ST,82,88,85,82,65,78,32,83,3,3,Real player; FC-style estimate; verify against official database
+Victor Osimhen,Galatasaray,,,ST,87,90,90,86,68,83,35,83,3,4,Real player; FC-style estimate; verify against official database
+Mauro Icardi,Galatasaray,,,ST,83,83,65,86,66,78,35,76,3,3,Real player; FC-style estimate; verify against official database
+Edin Džeko,Fenerbahçe,,,ST,82,82,55,85,72,75,42,78,3,3,Real player; FC-style estimate; verify against official database
+Sergio Ramos,Monterrey,,,CB,81,81,65,68,72,70,84,78,3,3,Real player; FC-style estimate; verify against official database
+Lionel Messi,Inter Miami,,,RW,88,88,70,85,90,92,35,65,4,4,Real player; FC-style estimate; verify against official database
+Luis Suárez,Inter Miami,,,ST,82,82,65,86,72,78,42,75,3,3,Real player; FC-style estimate; verify against official database
+Cristiano Ronaldo,Al Nassr,,,ST,86,86,75,91,76,85,35,75,4,5,Real player; FC-style estimate; verify against official database
+Rúben Neves,Al Hilal,,,CDM,84,85,62,75,86,81,76,74,4,3,Real player; FC-style estimate; verify against official database
+Salem Al-Dawsari,Al Hilal,,,LW,80,80,84,78,75,82,35,65,4,4,Real player; FC-style estimate; verify against official database
+Sadio Mané,Al Nassr,,,LW,83,83,88,82,76,84,42,75,4,4,Real player; FC-style estimate; verify against official database
+Sergej Milinković-Savić,Al Hilal,,,CM,84,85,68,82,80,82,72,86,4,3,Real player; FC-style estimate; verify against official database
+Yassine Bounou,Al Hilal,,,GK,84,85,75,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+André-Pierre Gignac,Tigres UANL,,,ST,80,80,60,84,73,78,40,76,3,3,Real player; FC-style estimate; verify against official database
+Hirving Lozano,San Diego FC,,,RW,80,82,91,76,72,84,30,68,4,4,Real player; FC-style estimate; verify against official database
+Denis Bouanga,Los Angeles FC,,,LW,82,83,88,82,75,84,38,72,4,4,Real player; FC-style estimate; verify against official database
+Cucho Hernández,Columbus Crew,,,ST,81,84,82,82,74,82,40,72,4,4,Real player; FC-style estimate; verify against official database
+Hany Mukhtar,Nashville SC,,,CAM,81,82,78,80,79,83,42,68,4,4,Real player; FC-style estimate; verify against official database
+Wendie Renard,Lyon,,,CB,88,88,50,60,72,68,90,88,3,2,Real player; FC-style estimate; verify against official database
+Sam Kerr,Chelsea Women,,,ST,90,91,85,90,76,88,44,84,4,4,Real player; FC-style estimate; verify against official database
+Lauren James,Chelsea Women,,,RW,86,90,82,82,83,91,45,72,4,5,Real player; FC-style estimate; verify against official database
+Mary Earps,Paris Saint-Germain Women,,,GK,86,87,70,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Sophia Smith,Portland Thorns,,,ST,89,92,91,87,79,89,42,75,4,4,Real player; FC-style estimate; verify against official database
+Alex Morgan,San Diego Wave,,,ST,85,85,80,87,77,85,42,70,4,4,Real player; FC-style estimate; verify against official database
+Marta,Orlando Pride,,,CAM,84,84,72,80,85,89,45,60,5,5,Real player; FC-style estimate; verify against official database
+Caroline Graham Hansen,FC Barcelona Women,,,RW,90,91,90,85,88,91,40,68,4,5,Real player; FC-style estimate; verify against official database
+Khadija Shaw,Manchester City Women,,,ST,89,91,82,89,74,82,43,88,3,3,Real player; FC-style estimate; verify against official database
+Alyssa Naeher,Chicago Red Stars,,,GK,84,84,65,0,0,0,0,0,3,1,Real player; FC-style estimate; verify against official database
+Rafael Popović 001,Aston Villa,,,CM,64,79,76,58,68,74,48,58,2,5,Fictional sample player; generated FC-style attributes
+Leon Petrović 002,Atlético Madrid,,,LW,74,74,65,75,61,70,46,60,3,2,Fictional sample player; generated FC-style attributes
+Ibrahim Alvarez 003,Bayer Leverkusen,,,LB,62,74,68,63,63,74,79,85,4,2,Fictional sample player; generated FC-style attributes
+Jamal Fernandes 004,Bayern München,,,LM,76,77,55,46,78,64,52,82,2,4,Fictional sample player; generated FC-style attributes
+Jérémy Kim 005,Borussia Dortmund,,,RB,77,83,75,45,75,69,68,68,2,3,Fictional sample player; generated FC-style attributes
+Luca Dubois 006,Brighton & Hove Albion,,,CAM,64,65,74,69,82,68,78,59,2,1,Fictional sample player; generated FC-style attributes
+Adrian Jensen 007,Chelsea,,,ST,62,68,77,72,70,57,23,74,4,5,Fictional sample player; generated FC-style attributes
+Oscar Schmidt 008,FC Barcelona,,,CDM,60,74,82,65,58,68,47,76,2,1,Fictional sample player; generated FC-style attributes
+Adam Hernández 009,Inter,,,RW,69,80,63,76,55,60,28,65,5,3,Fictional sample player; generated FC-style attributes
+Santiago Mendes 010,Juventus,,,CB,74,75,85,63,60,70,56,85,3,5,Fictional sample player; generated FC-style attributes
+António Costa 011,Liverpool,,,RM,58,63,71,52,74,81,75,52,2,1,Fictional sample player; generated FC-style attributes
+Ethan Andersson 012,Manchester City,,,GK,71,72,0,0,0,0,0,0,4,4,Fictional sample player; generated FC-style attributes
+Yusuf Ivanov 013,Manchester United,,,CM,63,63,57,63,60,58,49,52,5,5,Fictional sample player; generated FC-style attributes
+Samuel Vargas 014,Newcastle United,,,LW,58,58,85,85,56,86,40,73,2,1,Fictional sample player; generated FC-style attributes
+Tomás Garcia 015,Paris Saint-Germain,,,LB,64,76,83,40,57,55,59,81,5,5,Fictional sample player; generated FC-style attributes
+André Diallo 016,Real Madrid,,,LM,68,69,77,50,71,75,49,59,2,2,Fictional sample player; generated FC-style attributes
+Enzo Khan 017,Roma,,,RB,70,83,70,45,50,54,63,65,5,2,Fictional sample player; generated FC-style attributes
+Gabriel Larsen 018,AC Milan,,,CAM,73,73,62,45,71,77,51,56,3,2,Fictional sample player; generated FC-style attributes
+Nico Moreau 019,Tottenham Hotspur,,,ST,61,66,64,72,71,63,22,82,3,5,Fictional sample player; generated FC-style attributes
+João Pereira 020,West Ham United,,,CDM,59,65,56,69,70,72,52,76,4,2,Fictional sample player; generated FC-style attributes
+Kai Romero 021,RB Leipzig,,,RW,65,71,61,72,48,74,36,74,5,5,Fictional sample player; generated FC-style attributes
+Rayan Martin 022,Napoli,,,CB,73,82,75,41,72,72,80,63,5,1,Fictional sample player; generated FC-style attributes
+Mateo Berg 023,Real Sociedad,,,RM,66,75,67,48,79,56,64,61,3,2,Fictional sample player; generated FC-style attributes
+Marco Novak 024,Benfica,,,GK,76,84,0,0,0,0,0,0,5,5,Fictional sample player; generated FC-style attributes
+Milan Bianchi 025,Porto,,,CM,58,61,74,65,79,61,74,68,2,5,Fictional sample player; generated FC-style attributes
+Victor Rossi 026,Ajax,,,LW,61,73,86,55,75,58,24,56,2,3,Fictional sample player; generated FC-style attributes
+Elias Traoré 027,PSV,,,LB,61,67,85,50,63,78,79,75,5,3,Fictional sample player; generated FC-style attributes
+Moussa Mensah 028,Sporting CP,,,LM,77,88,63,51,75,80,76,54,5,2,Fictional sample player; generated FC-style attributes
+Noah Bakker 029,Galatasaray,,,RB,66,77,64,31,57,72,72,62,3,4,Fictional sample player; generated FC-style attributes
+Theo Kovač 030,Fenerbahçe,,,CAM,59,66,73,74,58,69,75,69,5,4,Fictional sample player; generated FC-style attributes
+David Sousa 031,Al Hilal,,,ST,73,79,66,60,50,72,24,62,2,1,Fictional sample player; generated FC-style attributes
+Benjamin Torres 032,Al Nassr,,,CDM,66,77,79,60,73,69,52,61,5,4,Fictional sample player; generated FC-style attributes
+Dario Santos 033,Inter Miami,,,RW,71,83,76,61,56,68,26,56,4,4,Fictional sample player; generated FC-style attributes
+Matías Nakamura 034,Los Angeles FC,,,CB,78,87,59,53,64,64,84,56,3,5,Fictional sample player; generated FC-style attributes
+Daniel Laurent 035,Columbus Crew,,,RM,78,89,82,68,75,70,77,73,2,3,Fictional sample player; generated FC-style attributes
+Amir Conti 036,Lyon Women,,,GK,71,71,0,0,0,0,0,0,2,3,Fictional sample player; generated FC-style attributes
+Luis Müller 037,Chelsea Women,,,CM,63,64,78,67,66,62,53,82,4,4,Fictional sample player; generated FC-style attributes
+Hugo González 038,FC Barcelona Women,,,LW,75,90,62,79,52,55,34,81,5,2,Fictional sample player; generated FC-style attributes
+Filip Okafor 039,Orlando Pride,,,LB,62,71,61,49,60,56,56,77,5,5,Fictional sample player; generated FC-style attributes
+Alex Costa 040,Arsenal,,,LM,67,75,70,70,73,61,48,78,3,2,Fictional sample player; generated FC-style attributes
+Rafael Andersson 041,Aston Villa,,,RB,62,73,64,48,77,66,55,83,5,5,Fictional sample player; generated FC-style attributes
+Leon Ivanov 042,Atlético Madrid,,,CAM,61,76,60,68,66,80,66,74,4,3,Fictional sample player; generated FC-style attributes
+Ibrahim Vargas 043,Bayer Leverkusen,,,ST,71,79,70,68,72,86,38,67,5,3,Fictional sample player; generated FC-style attributes
+Jamal Garcia 044,Bayern München,,,CDM,73,85,70,67,77,64,48,72,4,2,Fictional sample player; generated FC-style attributes
+Jérémy Diallo 045,Borussia Dortmund,,,RW,65,76,79,61,63,67,24,53,3,2,Fictional sample player; generated FC-style attributes
+Luca Khan 046,Brighton & Hove Albion,,,CB,73,81,76,28,78,70,77,70,3,5,Fictional sample player; generated FC-style attributes
+Adrian Larsen 047,Chelsea,,,RM,67,73,68,55,81,72,47,74,2,5,Fictional sample player; generated FC-style attributes
+Oscar Moreau 048,FC Barcelona,,,GK,59,69,0,0,0,0,0,0,4,2,Fictional sample player; generated FC-style attributes
+Adam Pereira 049,Inter,,,CM,69,71,67,71,74,64,48,55,4,3,Fictional sample player; generated FC-style attributes
+Santiago Romero 050,Juventus,,,LW,76,76,85,57,62,87,20,65,4,1,Fictional sample player; generated FC-style attributes
+António Martin 051,Liverpool,,,LB,66,80,84,48,57,62,64,85,4,3,Fictional sample player; generated FC-style attributes
+Ethan Berg 052,Manchester City,,,LM,66,66,75,55,64,81,62,81,4,1,Fictional sample player; generated FC-style attributes
+Yusuf Novak 053,Manchester United,,,RB,60,72,78,28,50,70,56,77,3,4,Fictional sample player; generated FC-style attributes
+Samuel Bianchi 054,Newcastle United,,,CAM,59,66,73,71,57,68,59,82,5,3,Fictional sample player; generated FC-style attributes
+Tomás Rossi 055,Paris Saint-Germain,,,ST,73,73,63,80,74,73,30,53,2,1,Fictional sample player; generated FC-style attributes
+André Traoré 056,Real Madrid,,,CDM,67,76,84,54,73,76,54,71,2,2,Fictional sample player; generated FC-style attributes
+Enzo Mensah 057,Roma,,,RW,76,83,65,85,49,88,39,76,3,5,Fictional sample player; generated FC-style attributes
+Gabriel Bakker 058,AC Milan,,,CB,64,67,73,36,50,69,71,83,2,4,Fictional sample player; generated FC-style attributes
+Nico Kovač 059,Tottenham Hotspur,,,RM,76,84,55,48,78,68,67,61,4,1,Fictional sample player; generated FC-style attributes
+João Sousa 060,West Ham United,,,GK,70,79,0,0,0,0,0,0,3,4,Fictional sample player; generated FC-style attributes
+Kai Torres 061,RB Leipzig,,,CM,77,90,66,45,66,56,65,80,5,3,Fictional sample player; generated FC-style attributes
+Rayan Santos 062,Napoli,,,LW,62,69,66,79,51,71,50,71,2,2,Fictional sample player; generated FC-style attributes
+Mateo Nakamura 063,Real Sociedad,,,LB,62,73,58,63,69,67,71,57,5,5,Fictional sample player; generated FC-style attributes
+Marco Laurent 064,Benfica,,,LM,78,87,71,53,59,75,54,67,2,2,Fictional sample player; generated FC-style attributes
+Milan Conti 065,Porto,,,RB,68,73,80,37,58,75,61,83,4,2,Fictional sample player; generated FC-style attributes
+Victor Müller 066,Ajax,,,CAM,70,78,70,77,71,66,49,75,2,1,Fictional sample player; generated FC-style attributes
+Elias González 067,PSV,,,ST,58,59,72,64,64,67,54,81,4,1,Fictional sample player; generated FC-style attributes
+Moussa Okafor 068,Sporting CP,,,CDM,72,81,64,59,65,56,47,61,3,4,Fictional sample player; generated FC-style attributes
+Noah Silva 069,Galatasaray,,,RW,69,84,60,85,66,76,44,65,2,4,Fictional sample player; generated FC-style attributes
+Theo Popović 070,Fenerbahçe,,,CB,67,74,79,39,57,58,68,78,2,5,Fictional sample player; generated FC-style attributes
+David Petrović 071,Al Hilal,,,RM,58,65,80,53,70,77,68,80,4,1,Fictional sample player; generated FC-style attributes
+Lionel Messi,FC Barcelona,,,RW,94,94,80,93,94,95,40,68,4,4,Real player; FC-style estimate; added to requested Barcelona squad
+Cristiano Ronaldo,Manchester United,,,ST,94,94,84,95,80,90,38,86,4,5,Real player; FC-style estimate; moved to Manchester United
+Benjamin Alvarez 072,Al Nassr,,,GK,66,69,0,0,0,0,0,0,3,1,Fictional sample player; generated FC-style attributes
+Dario Fernandes 073,Inter Miami,,,CM,64,77,78,48,66,67,73,53,5,4,Fictional sample player; generated FC-style attributes
+Matías Kim 074,Los Angeles FC,,,LW,74,88,70,79,63,68,36,66,3,2,Fictional sample player; generated FC-style attributes
+Daniel Dubois 075,Columbus Crew,,,LB,72,77,63,62,68,71,76,78,5,5,Fictional sample player; generated FC-style attributes
+Amir Jensen 076,Lyon Women,,,LM,59,74,61,59,58,58,53,64,5,5,Fictional sample player; generated FC-style attributes
+Luis Schmidt 077,Chelsea Women,,,RB,73,86,77,57,75,77,82,83,3,5,Fictional sample player; generated FC-style attributes
+Hugo Hernández 078,FC Barcelona Women,,,CAM,74,88,82,54,66,56,55,60,2,5,Fictional sample player; generated FC-style attributes
+Filip Mendes 079,Orlando Pride,,,ST,76,87,82,69,53,80,46,56,3,4,Fictional sample player; generated FC-style attributes
+Alex Martin 080,Arsenal,,,CDM,68,77,83,63,74,81,62,52,2,4,Fictional sample player; generated FC-style attributes
+Rafael Berg 081,Aston Villa,,,RW,75,81,74,62,54,83,22,75,3,5,Fictional sample player; generated FC-style attributes
+Leon Novak 082,Atlético Madrid,,,CB,67,81,63,62,55,50,77,67,5,4,Fictional sample player; generated FC-style attributes
+Ibrahim Bianchi 083,Bayer Leverkusen,,,RM,69,79,75,51,57,71,69,59,2,4,Fictional sample player; generated FC-style attributes
+Jamal Rossi 084,Bayern München,,,GK,77,89,0,0,0,0,0,0,3,3,Fictional sample player; generated FC-style attributes
+Jérémy Traoré 085,Borussia Dortmund,,,CM,62,75,66,61,55,80,49,75,4,3,Fictional sample player; generated FC-style attributes
+Luca Mensah 086,Brighton & Hove Albion,,,LW,66,68,74,78,58,84,45,68,5,5,Fictional sample player; generated FC-style attributes
+Adrian Bakker 087,Chelsea,,,LB,70,80,77,38,67,62,64,69,4,4,Fictional sample player; generated FC-style attributes
+Oscar Kovač 088,FC Barcelona,,,LM,71,85,61,70,66,81,78,55,2,5,Fictional sample player; generated FC-style attributes
+Adam Sousa 089,Inter,,,RB,70,81,80,53,58,68,79,64,4,1,Fictional sample player; generated FC-style attributes
+Santiago Torres 090,Juventus,,,CAM,70,76,60,70,81,70,59,63,4,5,Fictional sample player; generated FC-style attributes
+António Santos 091,Liverpool,,,ST,65,74,72,82,49,77,31,60,5,4,Fictional sample player; generated FC-style attributes
+Ethan Nakamura 092,Manchester City,,,CDM,77,91,55,74,84,63,65,50,3,1,Fictional sample player; generated FC-style attributes
+Yusuf Laurent 093,Manchester United,,,RW,58,60,79,71,60,58,49,79,2,4,Fictional sample player; generated FC-style attributes
+Samuel Conti 094,Newcastle United,,,CB,64,78,81,30,71,73,79,60,4,5,Fictional sample player; generated FC-style attributes
+Tomás Müller 095,Paris Saint-Germain,,,RM,70,73,82,57,78,77,68,54,5,5,Fictional sample player; generated FC-style attributes
+André González 096,Real Madrid,,,GK,66,67,0,0,0,0,0,0,5,4,Fictional sample player; generated FC-style attributes
+Enzo Okafor 097,Roma,,,CM,76,86,59,47,80,81,53,66,2,2,Fictional sample player; generated FC-style attributes
+Gabriel Silva 098,AC Milan,,,LW,69,69,87,74,68,57,55,54,2,2,Fictional sample player; generated FC-style attributes
+Nico Popović 099,Tottenham Hotspur,,,LB,75,81,80,37,74,67,84,71,2,2,Fictional sample player; generated FC-style attributes
+João Petrović 100,West Ham United,,,LM,64,76,70,46,71,76,46,68,2,2,Fictional sample player; generated FC-style attributes
+Kai Alvarez 101,RB Leipzig,,,RB,58,62,64,40,52,56,84,78,4,2,Fictional sample player; generated FC-style attributes
+Rayan Fernandes 102,Napoli,,,CAM,58,62,60,65,82,66,76,60,4,5,Fictional sample player; generated FC-style attributes
+Mateo Kim 103,Real Sociedad,,,ST,78,79,71,78,65,74,38,52,3,2,Fictional sample player; generated FC-style attributes
+Marco Dubois 104,Benfica,,,CDM,67,75,79,69,70,82,59,57,5,3,Fictional sample player; generated FC-style attributes
+Milan Jensen 105,Porto,,,RW,78,85,74,71,62,63,44,78,3,4,Fictional sample player; generated FC-style attributes
+Victor Schmidt 106,Ajax,,,CB,65,77,57,59,61,52,55,72,4,5,Fictional sample player; generated FC-style attributes
+Elias Hernández 107,PSV,,,RM,76,91,84,55,82,71,56,53,3,5,Fictional sample player; generated FC-style attributes
+Moussa Mendes 108,Sporting CP,,,GK,58,64,0,0,0,0,0,0,5,3,Fictional sample player; generated FC-style attributes
+Noah Costa 109,Galatasaray,,,CM,58,67,55,54,67,73,73,73,2,2,Fictional sample player; generated FC-style attributes
+Theo Andersson 110,Fenerbahçe,,,LW,70,80,60,70,66,85,27,77,3,5,Fictional sample player; generated FC-style attributes
+David Ivanov 111,Al Hilal,,,LB,66,79,66,55,77,51,60,68,3,4,Fictional sample player; generated FC-style attributes
+Benjamin Vargas 112,Al Nassr,,,LM,64,75,84,74,71,73,70,80,5,2,Fictional sample player; generated FC-style attributes
+Dario Garcia 113,Inter Miami,,,RB,78,85,83,55,69,65,78,73,3,5,Fictional sample player; generated FC-style attributes
+Matías Diallo 114,Los Angeles FC,,,CAM,66,74,57,60,71,70,45,59,4,4,Fictional sample player; generated FC-style attributes
+Daniel Khan 115,Columbus Crew,,,ST,78,93,85,72,62,78,31,61,5,1,Fictional sample player; generated FC-style attributes
+Amir Larsen 116,Lyon Women,,,CDM,63,67,60,65,57,60,70,55,5,3,Fictional sample player; generated FC-style attributes
+Luis Moreau 117,Chelsea Women,,,RW,69,73,89,79,56,79,27,52,5,5,Fictional sample player; generated FC-style attributes
+Hugo Pereira 118,FC Barcelona Women,,,CB,63,75,63,60,52,65,64,70,5,4,Fictional sample player; generated FC-style attributes
+Filip Romero 119,Orlando Pride,,,RM,69,75,84,63,79,74,58,82,4,5,Fictional sample player; generated FC-style attributes
+Alex Santos 120,Arsenal,,,GK,67,68,0,0,0,0,0,0,3,4,Fictional sample player; generated FC-style attributes
+Rafael Nakamura 121,Aston Villa,,,CM,64,76,77,47,73,60,78,55,4,1,Fictional sample player; generated FC-style attributes
+Leon Laurent 122,Atlético Madrid,,,LW,69,80,89,65,73,88,22,65,3,4,Fictional sample player; generated FC-style attributes
+Ibrahim Conti 123,Bayer Leverkusen,,,LB,77,88,64,54,55,55,71,59,4,5,Fictional sample player; generated FC-style attributes
+Jamal Müller 124,Bayern München,,,LM,78,80,68,76,59,61,61,76,5,3,Fictional sample player; generated FC-style attributes
+Jérémy González 125,Borussia Dortmund,,,RB,67,67,84,37,51,72,81,65,5,2,Fictional sample player; generated FC-style attributes
+Luca Okafor 126,Brighton & Hove Albion,,,CAM,62,75,60,50,69,63,62,75,4,1,Fictional sample player; generated FC-style attributes
+Adrian Silva 127,Chelsea,,,ST,65,66,71,81,73,69,42,55,3,3,Fictional sample player; generated FC-style attributes
+Oscar Popović 128,FC Barcelona,,,CDM,62,64,74,45,81,73,73,50,5,3,Fictional sample player; generated FC-style attributes
+Adam Petrović 129,Inter,,,RW,77,92,77,63,59,84,36,77,2,1,Fictional sample player; generated FC-style attributes
+Santiago Alvarez 130,Juventus,,,CB,76,89,61,50,75,59,58,74,2,5,Fictional sample player; generated FC-style attributes
+António Fernandes 131,Liverpool,,,RM,71,79,64,71,76,77,71,77,3,5,Fictional sample player; generated FC-style attributes
+Ethan Kim 132,Manchester City,,,GK,62,68,0,0,0,0,0,0,4,1,Fictional sample player; generated FC-style attributes
+Yusuf Dubois 133,Manchester United,,,CM,65,72,84,46,72,80,64,66,2,5,Fictional sample player; generated FC-style attributes
+Samuel Jensen 134,Newcastle United,,,LW,76,77,80,73,56,70,22,75,2,5,Fictional sample player; generated FC-style attributes
+Tomás Schmidt 135,Paris Saint-Germain,,,LB,63,71,71,26,61,68,73,56,5,4,Fictional sample player; generated FC-style attributes
+André Hernández 136,Real Madrid,,,LM,78,88,81,55,55,78,45,64,5,3,Fictional sample player; generated FC-style attributes
+Enzo Mendes 137,Roma,,,RB,77,82,66,28,67,57,67,66,2,2,Fictional sample player; generated FC-style attributes
+Gabriel Costa 138,AC Milan,,,CAM,64,68,79,72,74,76,77,77,2,2,Fictional sample player; generated FC-style attributes
+Nico Andersson 139,Tottenham Hotspur,,,ST,63,64,61,79,69,87,42,76,2,1,Fictional sample player; generated FC-style attributes
+João Ivanov 140,West Ham United,,,CDM,63,72,57,48,59,63,49,74,5,5,Fictional sample player; generated FC-style attributes
+Kai Vargas 141,RB Leipzig,,,RW,75,89,84,82,56,75,31,66,2,3,Fictional sample player; generated FC-style attributes
+Rayan Garcia 142,Napoli,,,CB,64,75,56,45,58,57,56,65,2,1,Fictional sample player; generated FC-style attributes
+Mateo Diallo 143,Real Sociedad,,,RM,77,85,83,47,61,75,73,58,4,5,Fictional sample player; generated FC-style attributes
+Marco Khan 144,Benfica,,,GK,66,67,0,0,0,0,0,0,5,5,Fictional sample player; generated FC-style attributes
+Milan Larsen 145,Porto,,,CM,71,83,67,59,76,59,57,73,5,3,Fictional sample player; generated FC-style attributes
+Victor Moreau 146,Ajax,,,LW,77,81,75,71,64,66,52,58,5,2,Fictional sample player; generated FC-style attributes
+Elias Pereira 147,PSV,,,LB,69,73,83,39,57,72,56,71,3,5,Fictional sample player; generated FC-style attributes
+Moussa Romero 148,Sporting CP,,,LM,64,71,74,73,83,55,72,53,5,2,Fictional sample player; generated FC-style attributes
+Noah Martin 149,Galatasaray,,,RB,76,79,71,63,49,53,83,67,3,5,Fictional sample player; generated FC-style attributes
+Theo Berg 150,Fenerbahçe,,,CAM,58,73,61,66,72,66,69,67,4,3,Fictional sample player; generated FC-style attributes
+David Novak 151,Al Hilal,,,ST,69,77,64,64,54,70,38,65,2,5,Fictional sample player; generated FC-style attributes
+Benjamin Bianchi 152,Al Nassr,,,CDM,61,73,56,60,59,69,53,56,3,4,Fictional sample player; generated FC-style attributes
+Dario Rossi 153,Inter Miami,,,RW,74,79,77,58,74,68,38,55,5,5,Fictional sample player; generated FC-style attributes
+Matías Traoré 154,Los Angeles FC,,,CB,62,71,71,28,78,62,63,84,3,1,Fictional sample player; generated FC-style attributes
+Daniel Mensah 155,Columbus Crew,,,RM,63,72,72,77,61,70,72,58,5,3,Fictional sample player; generated FC-style attributes
+Amir Bakker 156,Lyon Women,,,GK,77,80,0,0,0,0,0,0,2,1,Fictional sample player; generated FC-style attributes
+Luis Kovač 157,Chelsea Women,,,CM,75,78,72,58,84,62,73,60,2,3,Fictional sample player; generated FC-style attributes
+Hugo Sousa 158,FC Barcelona Women,,,LW,74,82,78,66,70,85,31,55,5,5,Fictional sample player; generated FC-style attributes
+Filip Torres 159,Orlando Pride,,,LB,58,73,75,40,61,73,68,73,4,2,Fictional sample player; generated FC-style attributes
+Alex Fernandes 160,Arsenal,,,LM,78,88,72,55,81,64,60,54,5,2,Fictional sample player; generated FC-style attributes
+Rafael Kim 161,Aston Villa,,,RB,69,82,79,42,70,74,73,61,5,5,Fictional sample player; generated FC-style attributes
+Leon Dubois 162,Atlético Madrid,,,CAM,71,80,60,77,72,76,53,59,5,3,Fictional sample player; generated FC-style attributes
+Ibrahim Jensen 163,Bayer Leverkusen,,,ST,75,90,75,57,51,69,53,71,3,4,Fictional sample player; generated FC-style attributes
+Jamal Schmidt 164,Bayern München,,,CDM,65,67,65,61,70,67,51,59,3,2,Fictional sample player; generated FC-style attributes
+Jérémy Hernández 165,Borussia Dortmund,,,RW,75,76,81,60,62,77,31,55,3,3,Fictional sample player; generated FC-style attributes
+Luca Mendes 166,Brighton & Hove Albion,,,CB,69,84,73,45,58,75,59,73,5,2,Fictional sample player; generated FC-style attributes
+Adrian Costa 167,Chelsea,,,RM,71,84,63,71,78,64,60,50,4,1,Fictional sample player; generated FC-style attributes
+Oscar Andersson 168,FC Barcelona,,,GK,72,78,0,0,0,0,0,0,2,3,Fictional sample player; generated FC-style attributes
+Adam Ivanov 169,Inter,,,CM,64,67,62,52,73,65,49,65,5,5,Fictional sample player; generated FC-style attributes
+Santiago Vargas 170,Juventus,,,LW,72,83,82,62,55,72,32,70,3,4,Fictional sample player; generated FC-style attributes
+António Garcia 171,Liverpool,,,LB,65,78,57,28,78,50,66,71,4,5,Fictional sample player; generated FC-style attributes
+Ethan Diallo 172,Manchester City,,,LM,64,79,60,49,69,79,60,68,4,3,Fictional sample player; generated FC-style attributes
+Yusuf Khan 173,Manchester United,,,RB,70,80,67,48,52,53,72,68,3,2,Fictional sample player; generated FC-style attributes
+Samuel Larsen 174,Newcastle United,,,CAM,74,85,61,56,83,58,67,70,5,3,Fictional sample player; generated FC-style attributes
+Tomás Moreau 175,Paris Saint-Germain,,,ST,62,67,75,63,71,72,53,75,4,4,Fictional sample player; generated FC-style attributes
+André Pereira 176,Real Madrid,,,CDM,68,70,72,77,71,71,72,54,5,2,Fictional sample player; generated FC-style attributes
+Enzo Romero 177,Roma,,,RW,65,75,65,61,72,63,49,53,4,1,Fictional sample player; generated FC-style attributes
+Gabriel Martin 178,AC Milan,,,CB,65,75,72,63,62,64,61,72,5,3,Fictional sample player; generated FC-style attributes
+Nico Berg 179,Tottenham Hotspur,,,RM,74,82,57,61,77,78,52,74,3,3,Fictional sample player; generated FC-style attributes
+João Novak 180,West Ham United,,,GK,73,87,0,0,0,0,0,0,4,2,Fictional sample player; generated FC-style attributes
+Kai Bianchi 181,RB Leipzig,,,CM,69,78,81,70,78,71,59,57,2,4,Fictional sample player; generated FC-style attributes
+Rayan Rossi 182,Napoli,,,LW,71,74,70,70,76,69,46,56,4,4,Fictional sample player; generated FC-style attributes
+Mateo Traoré 183,Real Sociedad,,,LB,77,79,55,28,69,59,68,76,5,5,Fictional sample player; generated FC-style attributes
+Marco Mensah 184,Benfica,,,LM,67,72,81,70,61,76,73,74,5,1,Fictional sample player; generated FC-style attributes
+Milan Bakker 185,Porto,,,RB,60,68,58,52,52,49,64,85,4,3,Fictional sample player; generated FC-style attributes
+Victor Kovač 186,Ajax,,,CAM,69,80,61,59,81,74,59,52,3,5,Fictional sample player; generated FC-style attributes
+Elias Sousa 187,PSV,,,ST,64,71,87,66,56,75,41,80,2,5,Fictional sample player; generated FC-style attributes
+Moussa Torres 188,Sporting CP,,,CDM,74,86,55,76,71,55,50,59,3,5,Fictional sample player; generated FC-style attributes
+Noah Santos 189,Galatasaray,,,RW,74,79,64,70,75,80,36,77,3,3,Fictional sample player; generated FC-style attributes
+Theo Nakamura 190,Fenerbahçe,,,CB,67,73,72,28,64,75,70,77,2,5,Fictional sample player; generated FC-style attributes
+David Laurent 191,Al Hilal,,,RM,66,67,82,72,63,78,71,59,4,5,Fictional sample player; generated FC-style attributes
+Benjamin Conti 192,Al Nassr,,,GK,60,64,0,0,0,0,0,0,3,1,Fictional sample player; generated FC-style attributes
+Dario Müller 193,Inter Miami,,,CM,76,91,68,64,69,58,60,52,2,1,Fictional sample player; generated FC-style attributes
+Matías González 194,Los Angeles FC,,,LW,75,78,70,78,51,71,40,49,5,5,Fictional sample player; generated FC-style attributes
+Daniel Okafor 195,Columbus Crew,,,LB,60,68,61,52,56,52,72,85,5,3,Fictional sample player; generated FC-style attributes
+Amir Silva 196,Lyon Women,,,LM,72,84,70,45,80,67,51,57,4,4,Fictional sample player; generated FC-style attributes
+Luis Popović 197,Chelsea Women,,,RB,75,76,85,33,58,73,70,83,2,5,Fictional sample player; generated FC-style attributes
+Hugo Petrović 198,FC Barcelona Women,,,CAM,76,83,67,46,68,68,77,82,5,3,Fictional sample player; generated FC-style attributes
+Filip Alvarez 199,Orlando Pride,,,ST,63,64,68,77,49,76,23,57,4,4,Fictional sample player; generated FC-style attributes
+Alex Garcia 200,Arsenal,,,CDM,65,74,81,49,77,75,62,67,5,3,Fictional sample player; generated FC-style attributes
+Rafael Diallo 201,Aston Villa,,,RW,60,71,68,60,58,70,20,81,5,3,Fictional sample player; generated FC-style attributes
+Leon Khan 202,Atlético Madrid,,,CB,76,77,80,58,63,73,74,75,5,2,Fictional sample player; generated FC-style attributes
+Ibrahim Larsen 203,Bayer Leverkusen,,,RM,67,80,56,59,65,73,53,70,5,2,Fictional sample player; generated FC-style attributes
+Jamal Moreau 204,Bayern München,,,GK,69,71,0,0,0,0,0,0,3,2,Fictional sample player; generated FC-style attributes
+Jérémy Pereira 205,Borussia Dortmund,,,CM,68,82,65,46,66,77,60,74,3,3,Fictional sample player; generated FC-style attributes
+Luca Romero 206,Brighton & Hove Albion,,,LW,76,76,86,75,49,73,31,63,5,4,Fictional sample player; generated FC-style attributes
+Adrian Martin 207,Chelsea,,,LB,73,85,60,50,65,78,83,68,2,5,Fictional sample player; generated FC-style attributes
+Oscar Berg 208,FC Barcelona,,,LM,58,64,68,59,60,78,56,74,3,5,Fictional sample player; generated FC-style attributes
+Adam Novak 209,Inter,,,RB,74,82,72,55,52,50,62,62,5,1,Fictional sample player; generated FC-style attributes
+Santiago Bianchi 210,Juventus,,,CAM,77,80,67,51,77,56,73,69,3,3,Fictional sample player; generated FC-style attributes
+António Rossi 211,Liverpool,,,ST,68,68,67,84,49,57,21,82,2,5,Fictional sample player; generated FC-style attributes
+Ethan Traoré 212,Manchester City,,,CDM,58,69,63,78,73,57,52,63,2,3,Fictional sample player; generated FC-style attributes
+Yusuf Mensah 213,Manchester United,,,RW,63,73,80,68,71,67,24,80,2,2,Fictional sample player; generated FC-style attributes
+Samuel Bakker 214,Newcastle United,,,CB,76,79,80,30,66,62,58,67,4,1,Fictional sample player; generated FC-style attributes
+Tomás Kovač 215,Paris Saint-Germain,,,RM,77,77,75,48,72,82,48,61,3,1,Fictional sample player; generated FC-style attributes
+André Sousa 216,Real Madrid,,,GK,74,81,0,0,0,0,0,0,5,1,Fictional sample player; generated FC-style attributes
+Enzo Torres 217,Roma,,,CM,64,66,73,63,62,71,48,51,2,1,Fictional sample player; generated FC-style attributes
+Gabriel Santos 218,AC Milan,,,LW,76,86,84,84,67,88,52,55,2,2,Fictional sample player; generated FC-style attributes
+Nico Nakamura 219,Tottenham Hotspur,,,LB,62,62,55,44,74,58,83,62,2,3,Fictional sample player; generated FC-style attributes
+João Laurent 220,West Ham United,,,LM,75,82,74,76,61,65,50,61,4,2,Fictional sample player; generated FC-style attributes
+Kai Conti 221,RB Leipzig,,,RB,70,74,71,65,50,70,73,68,2,1,Fictional sample player; generated FC-style attributes
+Rayan Müller 222,Napoli,,,CAM,73,87,81,69,57,62,67,56,5,2,Fictional sample player; generated FC-style attributes
+Mateo González 223,Real Sociedad,,,ST,69,83,63,61,78,72,31,74,4,5,Fictional sample player; generated FC-style attributes
+Marco Okafor 224,Benfica,,,CDM,72,76,56,57,76,73,77,77,5,2,Fictional sample player; generated FC-style attributes
+Milan Silva 225,Porto,,,RW,66,74,60,83,68,83,41,56,4,1,Fictional sample player; generated FC-style attributes
+Victor Popović 226,Ajax,,,CB,72,74,71,40,63,70,76,57,3,1,Fictional sample player; generated FC-style attributes
+Elias Petrović 227,PSV,,,RM,58,61,81,64,57,80,65,57,2,3,Fictional sample player; generated FC-style attributes
+Moussa Alvarez 228,Sporting CP,,,GK,64,76,0,0,0,0,0,0,3,3,Fictional sample player; generated FC-style attributes
+Noah Fernandes 229,Galatasaray,,,CM,73,75,76,65,75,67,46,54,2,2,Fictional sample player; generated FC-style attributes
+Theo Kim 230,Fenerbahçe,,,LW,73,84,70,65,70,69,36,70,3,5,Fictional sample player; generated FC-style attributes
+David Dubois 231,Al Hilal,,,LB,65,76,70,33,74,69,83,55,5,2,Fictional sample player; generated FC-style attributes
+Benjamin Jensen 232,Al Nassr,,,LM,69,71,58,59,63,62,68,79,5,1,Fictional sample player; generated FC-style attributes
+Dario Schmidt 233,Inter Miami,,,RB,62,74,84,48,56,75,78,58,5,5,Fictional sample player; generated FC-style attributes
+Matías Hernández 234,Los Angeles FC,,,CAM,65,76,69,47,58,81,48,57,5,4,Fictional sample player; generated FC-style attributes
+Daniel Mendes 235,Columbus Crew,,,ST,77,79,65,80,62,72,50,72,4,5,Fictional sample player; generated FC-style attributes
+Amir Costa 236,Lyon Women,,,CDM,65,65,62,62,60,81,71,62,4,5,Fictional sample player; generated FC-style attributes
+Luis Andersson 237,Chelsea Women,,,RW,68,70,79,85,64,73,31,49,4,4,Fictional sample player; generated FC-style attributes
+Hugo Ivanov 238,FC Barcelona Women,,,CB,60,68,74,55,69,49,58,66,4,2,Fictional sample player; generated FC-style attributes
+Filip Vargas 239,Orlando Pride,,,RM,71,76,67,59,64,69,70,53,4,4,Fictional sample player; generated FC-style attributes
+Alex Rossi 240,Arsenal,,,GK,70,84,0,0,0,0,0,0,3,1,Fictional sample player; generated FC-style attributes
+Rafael Traoré 241,Aston Villa,,,CM,63,70,83,45,61,62,45,61,5,4,Fictional sample player; generated FC-style attributes
+Leon Mensah 242,Atlético Madrid,,,LW,63,64,64,85,54,83,41,72,4,4,Fictional sample player; generated FC-style attributes
+Ibrahim Bakker 243,Bayer Leverkusen,,,LB,61,61,68,34,70,61,59,56,2,5,Fictional sample player; generated FC-style attributes
+Jamal Kovač 244,Bayern München,,,LM,64,69,65,53,57,66,74,63,3,2,Fictional sample player; generated FC-style attributes
+Jérémy Sousa 245,Borussia Dortmund,,,RB,75,75,86,59,54,61,71,58,5,4,Fictional sample player; generated FC-style attributes
+Luca Torres 246,Brighton & Hove Albion,,,CAM,64,67,64,61,72,72,74,77,5,3,Fictional sample player; generated FC-style attributes
+Adrian Santos 247,Chelsea,,,ST,70,77,73,76,50,63,26,51,5,5,Fictional sample player; generated FC-style attributes
+Oscar Nakamura 248,FC Barcelona,,,CDM,73,88,56,72,81,65,59,79,2,5,Fictional sample player; generated FC-style attributes
+Adam Laurent 249,Inter,,,RW,62,70,75,75,69,75,35,80,3,1,Fictional sample player; generated FC-style attributes
+Santiago Conti 250,Juventus,,,CB,70,78,66,58,49,56,74,68,3,4,Fictional sample player; generated FC-style attributes
+António Müller 251,Liverpool,,,RM,63,71,71,56,69,73,71,58,3,4,Fictional sample player; generated FC-style attributes
+Ethan González 252,Manchester City,,,GK,60,73,0,0,0,0,0,0,2,5,Fictional sample player; generated FC-style attributes
+Yusuf Okafor 253,Manchester United,,,CM,76,83,72,47,76,75,75,78,2,1,Fictional sample player; generated FC-style attributes
+Samuel Silva 254,Newcastle United,,,LW,77,80,68,78,68,86,42,80,2,5,Fictional sample player; generated FC-style attributes
+Tomás Popović 255,Paris Saint-Germain,,,LB,71,84,55,52,77,49,58,77,4,1,Fictional sample player; generated FC-style attributes
+André Petrović 256,Real Madrid,,,LM,64,66,63,45,57,57,45,59,2,3,Fictional sample player; generated FC-style attributes
+Enzo Alvarez 257,Roma,,,RB,62,66,65,27,53,53,65,65,3,3,Fictional sample player; generated FC-style attributes
+Gabriel Fernandes 258,AC Milan,,,CAM,72,74,58,65,82,58,47,75,4,5,Fictional sample player; generated FC-style attributes
+Nico Kim 259,Tottenham Hotspur,,,ST,73,85,80,69,74,87,21,80,4,4,Fictional sample player; generated FC-style attributes
+João Dubois 260,West Ham United,,,CDM,77,90,81,74,81,64,45,73,4,4,Fictional sample player; generated FC-style attributes
+Kai Jensen 261,RB Leipzig,,,RW,58,63,66,65,74,66,35,63,2,5,Fictional sample player; generated FC-style attributes
+Rayan Schmidt 262,Napoli,,,CB,76,80,65,48,71,52,76,68,4,4,Fictional sample player; generated FC-style attributes
+Mateo Hernández 263,Real Sociedad,,,RM,58,58,57,52,84,80,56,73,2,4,Fictional sample player; generated FC-style attributes
+Marco Mendes 264,Benfica,,,GK,60,66,0,0,0,0,0,0,5,3,Fictional sample player; generated FC-style attributes
+Milan Costa 265,Porto,,,CM,76,83,77,76,79,79,53,51,2,4,Fictional sample player; generated FC-style attributes
+Victor Andersson 266,Ajax,,,LW,75,86,88,85,52,55,47,69,4,3,Fictional sample player; generated FC-style attributes
+Elias Ivanov 267,PSV,,,LB,76,85,73,64,71,63,74,61,5,3,Fictional sample player; generated FC-style attributes
+Moussa Vargas 268,Sporting CP,,,LM,66,74,81,58,75,69,51,75,2,3,Fictional sample player; generated FC-style attributes
+Noah Garcia 269,Galatasaray,,,RB,62,71,68,48,50,48,58,81,5,5,Fictional sample player; generated FC-style attributes
+Theo Diallo 270,Fenerbahçe,,,CAM,70,70,69,55,57,76,68,82,3,2,Fictional sample player; generated FC-style attributes
+David Khan 271,Al Hilal,,,ST,61,71,74,79,68,83,37,72,2,3,Fictional sample player; generated FC-style attributes
+Benjamin Larsen 272,Al Nassr,,,CDM,64,67,83,61,80,69,60,79,5,4,Fictional sample player; generated FC-style attributes
+Dario Moreau 273,Inter Miami,,,RW,70,70,79,65,48,72,28,56,4,2,Fictional sample player; generated FC-style attributes
+Matías Pereira 274,Los Angeles FC,,,CB,64,70,72,36,60,77,68,56,2,1,Fictional sample player; generated FC-style attributes
+Daniel Romero 275,Columbus Crew,,,RM,58,66,73,48,74,73,46,72,5,5,Fictional sample player; generated FC-style attributes
+Amir Martin 276,Lyon Women,,,GK,64,67,0,0,0,0,0,0,3,5,Fictional sample player; generated FC-style attributes
+Luis Berg 277,Chelsea Women,,,CM,67,67,65,64,55,79,67,59,3,1,Fictional sample player; generated FC-style attributes
+Hugo Novak 278,FC Barcelona Women,,,LW,78,84,78,67,51,60,28,60,3,1,Fictional sample player; generated FC-style attributes
+Filip Bianchi 279,Orlando Pride,,,LB,77,88,55,25,70,71,72,63,5,5,Fictional sample player; generated FC-style attributes
+Alex Müller 280,Arsenal,,,LM,65,70,63,71,76,59,56,69,4,2,Fictional sample player; generated FC-style attributes
+Rafael González 281,Aston Villa,,,RB,61,72,73,61,56,64,82,61,2,2,Fictional sample player; generated FC-style attributes
+Leon Okafor 282,Atlético Madrid,,,CAM,70,71,84,58,74,72,54,64,2,4,Fictional sample player; generated FC-style attributes
+Ibrahim Silva 283,Bayer Leverkusen,,,ST,71,76,64,76,51,60,35,82,2,4,Fictional sample player; generated FC-style attributes
+Jamal Popović 284,Bayern München,,,CDM,65,76,66,50,57,80,54,71,5,4,Fictional sample player; generated FC-style attributes
+Jérémy Petrović 285,Borussia Dortmund,,,RW,61,73,89,73,64,82,44,65,4,3,Fictional sample player; generated FC-style attributes
+Luca Alvarez 286,Brighton & Hove Albion,,,CB,75,83,60,39,66,71,61,65,4,2,Fictional sample player; generated FC-style attributes
+Adrian Fernandes 287,Chelsea,,,RM,64,73,68,68,62,79,54,81,2,2,Fictional sample player; generated FC-style attributes
+Oscar Kim 288,FC Barcelona,,,GK,75,78,0,0,0,0,0,0,5,1,Fictional sample player; generated FC-style attributes
+Adam Dubois 289,Inter,,,CM,73,85,59,60,72,82,54,79,5,2,Fictional sample player; generated FC-style attributes
+Santiago Jensen 290,Juventus,,,LW,68,83,86,73,77,82,52,61,4,1,Fictional sample player; generated FC-style attributes
+António Schmidt 291,Liverpool,,,LB,71,82,71,44,52,76,80,81,2,1,Fictional sample player; generated FC-style attributes
+Ethan Hernández 292,Manchester City,,,LM,73,83,82,71,57,80,61,56,4,2,Fictional sample player; generated FC-style attributes
+Yusuf Mendes 293,Manchester United,,,RB,66,81,80,29,62,62,79,63,5,5,Fictional sample player; generated FC-style attributes
+Samuel Costa 294,Newcastle United,,,CAM,74,84,57,73,80,67,61,59,4,5,Fictional sample player; generated FC-style attributes
+Tomás Andersson 295,Paris Saint-Germain,,,ST,76,80,68,56,59,63,22,61,3,5,Fictional sample player; generated FC-style attributes
+André Ivanov 296,Real Madrid,,,CDM,78,78,82,52,83,75,68,57,2,3,Fictional sample player; generated FC-style attributes
+Enzo Vargas 297,Roma,,,RW,62,77,75,79,50,56,37,49,3,3,Fictional sample player; generated FC-style attributes
+Gabriel Garcia 298,AC Milan,,,CB,68,69,84,43,75,59,58,83,5,4,Fictional sample player; generated FC-style attributes
+Nico Diallo 299,Tottenham Hotspur,,,RM,62,70,78,61,66,81,63,73,2,1,Fictional sample player; generated FC-style attributes
+João Khan 300,West Ham United,,,GK,66,75,0,0,0,0,0,0,4,2,Fictional sample player; generated FC-style attributes
+Kai Larsen 301,RB Leipzig,,,CM,58,62,73,47,69,63,65,67,5,2,Fictional sample player; generated FC-style attributes
+Rayan Moreau 302,Napoli,,,LW,67,80,82,71,66,77,41,73,4,4,Fictional sample player; generated FC-style attributes
+Mateo Pereira 303,Real Sociedad,,,LB,75,81,84,25,50,64,55,83,4,2,Fictional sample player; generated FC-style attributes
+Marco Romero 304,Benfica,,,LM,77,84,60,71,74,82,78,73,4,3,Fictional sample player; generated FC-style attributes
+Milan Martin 305,Porto,,,RB,65,78,76,45,68,63,63,76,5,1,Fictional sample player; generated FC-style attributes
+Victor Berg 306,Ajax,,,CAM,69,74,65,61,75,59,61,82,3,5,Fictional sample player; generated FC-style attributes
+Elias Novak 307,PSV,,,ST,78,78,68,63,57,61,46,62,4,2,Fictional sample player; generated FC-style attributes
+Moussa Bianchi 308,Sporting CP,,,CDM,60,61,77,45,79,63,75,56,5,3,Fictional sample player; generated FC-style attributes
+Noah Rossi 309,Galatasaray,,,RW,73,78,66,58,74,57,44,80,2,1,Fictional sample player; generated FC-style attributes
+Theo Traoré 310,Fenerbahçe,,,CB,72,76,75,26,78,56,60,78,4,5,Fictional sample player; generated FC-style attributes
+David Mensah 311,Al Hilal,,,RM,68,69,70,72,83,58,55,76,5,3,Fictional sample player; generated FC-style attributes
+Benjamin Bakker 312,Al Nassr,,,GK,76,88,0,0,0,0,0,0,3,1,Fictional sample player; generated FC-style attributes
+Dario Kovač 313,Inter Miami,,,CM,66,77,72,69,63,66,57,58,3,5,Fictional sample player; generated FC-style attributes
+Matías Sousa 314,Los Angeles FC,,,LW,58,69,75,57,68,71,25,75,4,4,Fictional sample player; generated FC-style attributes
+Daniel Torres 315,Columbus Crew,,,LB,64,76,74,30,73,49,67,72,2,2,Fictional sample player; generated FC-style attributes
+Amir Santos 316,Lyon Women,,,LM,58,70,57,66,67,75,66,55,4,2,Fictional sample player; generated FC-style attributes
+Luis Nakamura 317,Chelsea Women,,,RB,66,75,64,64,50,78,83,72,2,2,Fictional sample player; generated FC-style attributes
+Hugo Laurent 318,FC Barcelona Women,,,CAM,68,75,57,48,64,82,65,77,5,3,Fictional sample player; generated FC-style attributes
+Filip Conti 319,Orlando Pride,,,ST,64,72,72,70,49,73,39,74,2,5,Fictional sample player; generated FC-style attributes
+Alex Schmidt 320,Arsenal,,,CDM,65,71,66,75,81,70,52,78,3,1,Fictional sample player; generated FC-style attributes
+Rafael Hernández 321,Aston Villa,,,RW,78,83,76,79,63,71,47,69,2,2,Fictional sample player; generated FC-style attributes
+Leon Mendes 322,Atlético Madrid,,,CB,73,77,64,53,53,77,63,76,3,4,Fictional sample player; generated FC-style attributes
+Ibrahim Costa 323,Bayer Leverkusen,,,RM,67,78,64,56,81,72,51,79,2,1,Fictional sample player; generated FC-style attributes
+Jamal Andersson 324,Bayern München,,,GK,72,72,0,0,0,0,0,0,4,4,Fictional sample player; generated FC-style attributes
+Jérémy Ivanov 325,Borussia Dortmund,,,CM,76,90,55,64,67,82,68,53,3,4,Fictional sample player; generated FC-style attributes
+Luca Vargas 326,Brighton & Hove Albion,,,LW,70,72,80,79,61,74,22,49,2,4,Fictional sample player; generated FC-style attributes
+Adrian Garcia 327,Chelsea,,,LB,75,84,83,53,57,61,59,84,2,1,Fictional sample player; generated FC-style attributes
+Oscar Diallo 328,FC Barcelona,,,LM,62,66,56,61,66,57,78,60,2,5,Fictional sample player; generated FC-style attributes
+Adam Khan 329,Inter,,,RB,73,80,82,46,58,48,83,60,3,1,Fictional sample player; generated FC-style attributes
+Santiago Larsen 330,Juventus,,,CAM,70,79,79,55,61,66,56,67,2,1,Fictional sample player; generated FC-style attributes
+António Moreau 331,Liverpool,,,ST,69,72,73,63,52,82,31,59,2,4,Fictional sample player; generated FC-style attributes
+Ethan Pereira 332,Manchester City,,,CDM,59,70,74,75,68,60,48,74,2,3,Fictional sample player; generated FC-style attributes
+Yusuf Romero 333,Manchester United,,,RW,71,74,75,72,75,71,34,77,3,1,Fictional sample player; generated FC-style attributes
+Samuel Martin 334,Newcastle United,,,CB,63,63,85,27,75,59,65,63,4,5,Fictional sample player; generated FC-style attributes
+Tomás Berg 335,Paris Saint-Germain,,,RM,66,68,63,52,80,57,51,61,2,1,Fictional sample player; generated FC-style attributes
+André Novak 336,Real Madrid,,,GK,78,79,0,0,0,0,0,0,3,3,Fictional sample player; generated FC-style attributes
+Enzo Bianchi 337,Roma,,,CM,75,90,60,53,75,67,68,70,4,2,Fictional sample player; generated FC-style attributes
+Gabriel Rossi 338,AC Milan,,,LW,70,83,84,79,76,87,28,79,3,2,Fictional sample player; generated FC-style attributes
+Nico Traoré 339,Tottenham Hotspur,,,LB,68,79,68,30,58,62,57,79,4,1,Fictional sample player; generated FC-style attributes
+João Mensah 340,West Ham United,,,LM,69,75,68,59,56,66,75,73,5,4,Fictional sample player; generated FC-style attributes
+Kai Bakker 341,RB Leipzig,,,RB,69,79,81,52,77,64,67,57,5,5,Fictional sample player; generated FC-style attributes
+Rayan Kovač 342,Napoli,,,CAM,68,78,84,45,76,63,60,59,4,2,Fictional sample player; generated FC-style attributes
+Mateo Sousa 343,Real Sociedad,,,ST,68,78,86,77,77,86,45,58,5,2,Fictional sample player; generated FC-style attributes
+Marco Torres 344,Benfica,,,CDM,78,81,67,64,68,71,65,80,2,3,Fictional sample player; generated FC-style attributes
+Milan Santos 345,Porto,,,RW,68,74,84,64,66,73,46,48,3,2,Fictional sample player; generated FC-style attributes
+Victor Nakamura 346,Ajax,,,CB,62,69,76,28,53,53,74,80,3,5,Fictional sample player; generated FC-style attributes
+Elias Laurent 347,PSV,,,RM,77,80,69,64,63,58,67,55,5,5,Fictional sample player; generated FC-style attributes
+Moussa Conti 348,Sporting CP,,,GK,65,67,0,0,0,0,0,0,4,2,Fictional sample player; generated FC-style attributes
+Noah Müller 349,Galatasaray,,,CM,70,76,77,70,66,77,63,68,4,5,Fictional sample player; generated FC-style attributes
+Theo González 350,Fenerbahçe,,,LW,65,79,78,85,69,81,42,51,3,5,Fictional sample player; generated FC-style attributes
+David Okafor 351,Al Hilal,,,LB,68,79,59,61,54,58,67,74,2,2,Fictional sample player; generated FC-style attributes
+Benjamin Silva 352,Al Nassr,,,LM,62,73,70,64,71,74,54,60,2,1,Fictional sample player; generated FC-style attributes
+Dario Popović 353,Inter Miami,,,RB,63,77,55,25,71,67,74,69,3,1,Fictional sample player; generated FC-style attributes
+Matías Petrović 354,Los Angeles FC,,,CAM,68,69,56,68,60,63,71,60,3,1,Fictional sample player; generated FC-style attributes
+Daniel Alvarez 355,Columbus Crew,,,ST,72,80,87,58,58,60,24,81,3,2,Fictional sample player; generated FC-style attributes
+Amir Fernandes 356,Lyon Women,,,CDM,75,78,56,69,84,55,59,63,4,5,Fictional sample player; generated FC-style attributes
+Luis Kim 357,Chelsea Women,,,RW,77,90,89,71,68,76,39,75,4,1,Fictional sample player; generated FC-style attributes
+Hugo Dubois 358,FC Barcelona Women,,,CB,64,76,81,56,48,51,74,83,3,4,Fictional sample player; generated FC-style attributes
+Filip Jensen 359,Orlando Pride,,,RM,61,75,56,55,56,71,53,55,4,3,Fictional sample player; generated FC-style attributes
+Alex Moreau 360,Arsenal,,,GK,73,81,0,0,0,0,0,0,5,4,Fictional sample player; generated FC-style attributes
+Rafael Pereira 361,Aston Villa,,,CM,64,71,73,59,76,61,71,79,5,1,Fictional sample player; generated FC-style attributes
+Leon Romero 362,Atlético Madrid,,,LW,60,67,66,80,74,68,22,59,4,5,Fictional sample player; generated FC-style attributes
+Ibrahim Martin 363,Bayer Leverkusen,,,LB,60,73,83,59,59,73,58,72,2,5,Fictional sample player; generated FC-style attributes
+Jamal Berg 364,Bayern München,,,LM,64,75,66,55,75,67,64,68,3,2,Fictional sample player; generated FC-style attributes
+Jérémy Novak 365,Borussia Dortmund,,,RB,71,86,61,26,68,73,60,55,5,2,Fictional sample player; generated FC-style attributes
+Luca Bianchi 366,Brighton & Hove Albion,,,CAM,60,68,62,67,79,74,62,80,3,3,Fictional sample player; generated FC-style attributes
+Adrian Rossi 367,Chelsea,,,ST,77,83,62,83,56,56,43,64,3,5,Fictional sample player; generated FC-style attributes
+Oscar Traoré 368,FC Barcelona,,,CDM,73,80,62,62,67,59,72,59,5,4,Fictional sample player; generated FC-style attributes
+Adam Mensah 369,Inter,,,RW,71,79,75,74,73,58,34,62,5,4,Fictional sample player; generated FC-style attributes
+Santiago Bakker 370,Juventus,,,CB,67,79,59,49,71,55,61,85,4,3,Fictional sample player; generated FC-style attributes
+António Kovač 371,Liverpool,,,RM,70,74,66,64,60,71,53,64,5,2,Fictional sample player; generated FC-style attributes
+Ethan Sousa 372,Manchester City,,,GK,72,83,0,0,0,0,0,0,2,3,Fictional sample player; generated FC-style attributes
+Yusuf Torres 373,Manchester United,,,CM,74,75,62,50,75,65,46,65,4,5,Fictional sample player; generated FC-style attributes
+Samuel Santos 374,Newcastle United,,,LW,70,71,78,63,67,83,54,64,3,5,Fictional sample player; generated FC-style attributes
+Tomás Nakamura 375,Paris Saint-Germain,,,LB,75,79,61,43,55,68,83,83,2,1,Fictional sample player; generated FC-style attributes
+André Laurent 376,Real Madrid,,,LM,76,89,78,62,84,79,48,69,4,3,Fictional sample player; generated FC-style attributes
+Enzo Conti 377,Roma,,,RB,77,86,69,52,62,74,79,56,4,3,Fictional sample player; generated FC-style attributes
+Gabriel Müller 378,AC Milan,,,CAM,68,82,73,69,63,66,64,74,4,5,Fictional sample player; generated FC-style attributes
+Nico González 379,Tottenham Hotspur,,,ST,60,74,87,67,57,72,32,63,3,3,Fictional sample player; generated FC-style attributes
+João Okafor 380,West Ham United,,,CDM,66,76,73,60,79,78,53,72,4,4,Fictional sample player; generated FC-style attributes
+Kai Silva 381,RB Leipzig,,,RW,72,73,70,80,50,88,50,64,5,1,Fictional sample player; generated FC-style attributes
+Rayan Popović 382,Napoli,,,CB,59,67,76,44,65,75,79,65,4,5,Fictional sample player; generated FC-style attributes
+Mateo Petrović 383,Real Sociedad,,,RM,58,66,65,68,62,55,70,57,5,3,Fictional sample player; generated FC-style attributes
+Marco Alvarez 384,Benfica,,,GK,63,77,0,0,0,0,0,0,4,5,Fictional sample player; generated FC-style attributes
+Milan Fernandes 385,Porto,,,CM,66,81,76,73,61,56,78,68,4,3,Fictional sample player; generated FC-style attributes
+Victor Kim 386,Ajax,,,LW,71,81,66,57,59,59,27,76,5,5,Fictional sample player; generated FC-style attributes
+Elias Dubois 387,PSV,,,LB,77,82,64,56,63,71,58,73,3,2,Fictional sample player; generated FC-style attributes
+Moussa Jensen 388,Sporting CP,,,LM,78,88,77,76,79,81,50,76,3,1,Fictional sample player; generated FC-style attributes
+Noah Schmidt 389,Galatasaray,,,RB,67,72,58,32,57,54,84,74,2,4,Fictional sample player; generated FC-style attributes
+Theo Hernández 390,Fenerbahçe,,,CAM,70,74,74,60,82,55,49,52,5,5,Fictional sample player; generated FC-style attributes
+David Mendes 391,Al Hilal,,,ST,78,79,68,77,68,55,43,68,5,4,Fictional sample player; generated FC-style attributes
+Benjamin Costa 392,Al Nassr,,,CDM,74,79,55,67,58,81,72,59,4,4,Fictional sample player; generated FC-style attributes
+Dario Andersson 393,Inter Miami,,,RW,60,63,84,72,62,66,36,62,3,4,Fictional sample player; generated FC-style attributes
+Matías Ivanov 394,Los Angeles FC,,,CB,63,78,72,64,52,72,81,73,3,5,Fictional sample player; generated FC-style attributes
+Daniel Vargas 395,Columbus Crew,,,RM,66,66,84,65,65,80,47,59,5,1,Fictional sample player; generated FC-style attributes
+Amir Garcia 396,Lyon Women,,,GK,66,71,0,0,0,0,0,0,4,5,Fictional sample player; generated FC-style attributes
+Luis Diallo 397,Chelsea Women,,,CM,71,82,62,75,70,73,47,51,3,2,Fictional sample player; generated FC-style attributes
+Hugo Khan 398,FC Barcelona Women,,,LW,70,77,68,78,49,79,48,50,4,2,Fictional sample player; generated FC-style attributes
+Filip Larsen 399,Orlando Pride,,,LB,76,78,84,64,78,70,55,61,4,4,Fictional sample player; generated FC-style attributes
+Alex Kovač 400,Arsenal,,,LM,70,71,67,70,76,57,52,78,4,1,Fictional sample player; generated FC-style attributes
+Rafael Sousa 401,Aston Villa,,,RB,71,76,84,50,72,62,67,69,5,1,Fictional sample player; generated FC-style attributes
+Leon Torres 402,Atlético Madrid,,,CAM,73,86,78,50,73,66,59,66,5,5,Fictional sample player; generated FC-style attributes
+Ibrahim Santos 403,Bayer Leverkusen,,,ST,77,88,84,78,77,55,54,80,3,5,Fictional sample player; generated FC-style attributes
+Jamal Nakamura 404,Bayern München,,,CDM,61,76,60,55,62,69,57,53,5,2,Fictional sample player; generated FC-style attributes

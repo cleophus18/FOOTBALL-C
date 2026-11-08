@@ -1,0 +1,83 @@
+{
+  "$comment": "Editable player-creation archetypes. Each position has its own set of archetypes; the dropdown filters to the selected position's archetypes. Focus is the primary attribute group that gets a small boost at creation.",
+  "ST": {
+    "Poacher": { "focus": "shooting", "description": "Lives for the final touch. Quick in the box and lethal in one touch." },
+    "Target Man": { "focus": "physical", "description": "Holds up the ball and brings others into play." },
+    "Advanced Forward": { "focus": "dribbling", "description": "Runs in behind and chases down through balls." },
+    "Complete Forward": { "focus": "shooting", "description": "Scores from range and inside the box, links play and finishes." },
+    "Penalty Box Striker": { "focus": "physical", "description": "A classic number nine who lives for crosses and set pieces." },
+    "Complete": { "focus": "physical", "description": "Does a bit of everything: holds the ball, runs the channels, and finishes." }
+  },
+  "AM": {
+    "Playmaker": { "focus": "passing", "description": "Creates chances and controls tempo." },
+    "Shadow Striker": { "focus": "shooting", "description": "Arrives late in the box to finish chances." },
+    "Inside Forward": { "focus": "dribbling", "description": "Cuts inside from the wing to shoot and create." },
+    "Advanced Playmaker": { "focus": "passing", "description": "Dictates from the half-space, picks out teammates in open grass." },
+    "Raumdeuter": { "focus": "pace", "description": "Makes late runs into the box from midfield and arrives to finish." },
+    "Complete": { "focus": "passing", "description": "Creates, dribbles, and finishes — a bit of everything in the final third." }
+  },
+  "CM": {
+    "Playmaker": { "focus": "passing", "description": "Dictates tempo and finds the final pass." },
+    "Box-to-Box": { "focus": "physical", "description": "Scores, defends, and covers every blade of grass." },
+    "Ball-Winning Midfielder": { "focus": "defending", "description": "Wins the ball and protects the back line." },
+    "Advanced Playmaker": { "focus": "passing", "description": "Controls the tempo from central midfield and finds the final pass." },
+    "Ball-Winning Midfielder (Physical)": { "focus": "physical", "description": "A combative engine who wins the ball and drives the team forward." },
+    "Complete": { "focus": "passing", "description": "Dictates tempo, defends, and supports the attack — a complete midfielder." }
+  },
+  "DM": {
+    "Ball-Winning Midfielder": { "focus": "defending", "description": "Wins the ball and protects the back line." },
+    "Deep-Lying Playmaker": { "focus": "passing", "description": "Controls the game from just in front of the defence." },
+    "Anchor Man": { "focus": "physical", "description": "Breaks up play and holds the line alone." },
+    "Defensive Midfielder": { "focus": "defending", "description": "A screening specialist who breaks up attacks and recycles possession." },
+    "Regista": { "focus": "passing", "description": "A deep-lying playmaker who starts every attack with a long, precise pass." },
+    "Complete": { "focus": "passing", "description": "Breaks up play and starts attacks — a complete defensive midfielder." }
+  },
+  "LW": {
+    "Winger": { "focus": "pace", "description": "Attacks the space and takes on defenders." },
+    "Inverted Winger": { "focus": "dribbling", "description": "Cuts inside onto his strong foot to shoot." },
+    "Inside Forward": { "focus": "dribbling", "description": "Drives at the defence and finishes from tight angles." },
+    "Complete Wing-Back": { "focus": "pace", "description": "Tracks back to defend and flies forward to create and finish." },
+    "Poacher (Wide)": { "focus": "shooting", "description": "Drifts inside from the wing to arrive and finish in the box." },
+    "Complete": { "focus": "pace", "description": "Defends, tracks back, and flies forward to create and finish." }
+  },
+  "RW": {
+    "Winger": { "focus": "pace", "description": "Attacks the space and takes on defenders." },
+    "Inverted Winger": { "focus": "dribbling", "description": "Cuts inside onto his strong foot to shoot." },
+    "Inside Forward": { "focus": "dribbling", "description": "Drives at the defence and finishes from tight angles." },
+    "Complete Wing-Back": { "focus": "pace", "description": "Tracks back to defend and flies forward to create and finish." },
+    "Poacher (Wide)": { "focus": "shooting", "description": "Drifts inside from the wing to arrive and finish in the box." },
+    "Complete": { "focus": "pace", "description": "Defends, tracks back, and flies forward to create and finish." }
+  },
+  "CB": {
+    "Centre-Back": { "focus": "defending", "description": "Commands the defensive line and wins every header." },
+    "Ball-Playing Defender": { "focus": "passing", "description": "Starts attacks from the back with long and short distribution." },
+    "Stopper": { "focus": "physical", "description": "A no-nonsense defender who marks the main threat out of the game." },
+    "Sweeper-Back": { "focus": "defending", "description": "Covers behind the line and sweeps up loose balls behind the defence." },
+    "Ball-Playing Defender (Physical)": { "focus": "physical", "description": "A strong centre-back who starts attacks and dominates every challenge." },
+    "Complete": { "focus": "defending", "description": "Commands the line, starts attacks, and wins every challenge — a complete centre-back." }
+  },
+  "GK": {
+    "Sweeper Keeper": { "focus": "physical", "description": "A proactive keeper comfortable in possession and sweeping." },
+    "Shot Stopper": { "focus": "diving", "description": "A traditional keeper who saves everything inside the box." },
+    "Distribution Keeper": { "focus": "handling", "description": "A keeper who distributes with both hands and feet." },
+    "Commanding Keeper": { "focus": "handling", "description": "A vocal keeper who claims crosses and organises the defence." },
+    "Reflex Keeper": { "focus": "diving", "description": "A shot-stopper with lightning reflexes for one-on-one situations." },
+    "Complete": { "focus": "handling", "description": "Saves, distributes, and organises the defence — a complete goalkeeper." }
+  },
+  "LB": {
+    "Wing-Back": { "focus": "pace", "description": "Attacks down the flank and delivers into the box." },
+    "Full-Back": { "focus": "defending", "description": "Solid defensively and covers the ground to help out wide." },
+    "Ball-Playing Full-Back": { "focus": "passing", "description": "Starts attacks from deep and carries the ball into midfield." },
+    "Complete Wing-Back": { "focus": "pace", "description": "Tracks back to defend and flies forward to create and finish." },
+    "Inverted Full-Back": { "focus": "passing", "description": "Cuts inside to link midfield and build play from the half-space." },
+    "Complete": { "focus": "pace", "description": "Defends, tracks back, and flies forward to create and finish." }
+  },
+  "RB": {
+    "Wing-Back": { "focus": "pace", "description": "Attacks down the flank and delivers into the box." },
+    "Full-Back": { "focus": "defending", "description": "Solid defensively and covers the ground to help out wide." },
+    "Ball-Playing Full-Back": { "focus": "passing", "description": "Starts attacks from deep and carries the ball into midfield." },
+    "Complete Wing-Back": { "focus": "pace", "description": "Tracks back to defend and flies forward to create and finish." },
+    "Inverted Full-Back": { "focus": "passing", "description": "Cuts inside to link midfield and build play from the half-space." },
+    "Complete": { "focus": "pace", "description": "Defends, tracks back, and flies forward to create and finish." }
+  }
+}

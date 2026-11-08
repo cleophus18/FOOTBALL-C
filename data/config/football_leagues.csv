@@ -1,0 +1,31 @@
+League,Country,Confederation,Season,Teams,Matches_Per_Team,Champion,Champ_Pts,Champ_W,Champ_D,Champ_L,Champ_GF,Champ_GA,Runner_Up,Runner_Up_Pts,Top_Scorer,Top_Scorer_Goals,Total_Goals,Goals_Per_Match,Avg_Attendance,Notes
+Premier League,England,UEFA,2025-26,20,38,Arsenal,85,26,7,5,,,Manchester City,78,Erling Haaland,27,1045,2.75,41634,"Arsenal's first title since 2003-04; champion GF/GA not retrieved (goal difference +44); another source puts average attendance at 41,658"
+La Liga,Spain,UEFA,2025-26,20,38,Barcelona,94,31,1,6,95,36,Real Madrid,86,Kylian Mbappé,25,1024,2.69,30944,"Barcelona's 29th title"
+Bundesliga,Germany,UEFA,2025-26,18,34,Bayern Munich,89,28,5,1,122,36,Borussia Dortmund,73,Harry Kane,36,,,42311,"Bayern's 122 goals broke the Bundesliga single-season record; league-wide goal total not retrieved"
+Serie A,Italy,UEFA,2025-26,20,38,Inter Milan,87,27,6,5,89,35,Napoli,76,Lautaro Martínez,17,922,2.43,,"Inter's 21st title; attendance not retrieved"
+Ligue 1,France,UEFA,2025-26,18,34,Paris Saint-Germain,76,24,4,6,73,29,Lens,70,Esteban Lepaul,21,863,2.82,27405,"PSG's 14th Ligue 1 title"
+Eredivisie,Netherlands,UEFA,2025-26,18,34,PSV Eindhoven,84,27,3,4,101,45,Feyenoord,65,Ayase Ueda,25,972,3.18,,"PSV's 27th title; attendance not retrieved"
+Primeira Liga,Portugal,UEFA,2025-26,18,34,Porto,88,28,4,2,66,18,Sporting CP,82,Luis Suárez,28,821,2.68,11979,"Porto's 31st title"
+Scottish Premiership,Scotland,UEFA,2025-26,12,38,Celtic,82,26,4,8,73,41,,,,,,,,"Fifth straight title and 56th Scottish league title; league splits into top and bottom six after 33 matches; runner-up and top scorer not retrieved"
+Belgian Pro League,Belgium,UEFA,2025-26,16,30,Club Brugge,57,28,4,8,91,45,Union SG,53,Nicolò Tresoldi,19,,,11175,"Title decided in play-offs: points are play-off table points (regular-season points halved and rounded up) and the record combines 30 regular-season plus 10 play-off matches; attendance is regular-season average"
+Süper Lig,Turkey,UEFA,2025-26,18,34,Galatasaray,77,24,5,5,77,30,Fenerbahçe,74,Paul Onuachu / Eldor Shomurodov,22,812,2.65,,"Galatasaray's 26th title; top scorer title shared; total goals summed from the final table"
+EFL Championship,England,UEFA,2025-26,24,46,,,,,,"Configured second-division simulation baseline; missing entrants are generated from configured club identities"
+Segunda División,Spain,UEFA,2025-26,22,42,,,,,,"Configured second-division simulation baseline; missing entrants are generated from configured club identities"
+2. Bundesliga,Germany,UEFA,2025-26,18,34,,,,,,"Configured second-division simulation baseline; missing entrants are generated from configured club identities"
+Serie B,Italy,UEFA,2025-26,20,38,,,,,,"Configured second-division simulation baseline; missing entrants are generated from configured club identities"
+Ligue 2,France,UEFA,2025-26,18,34,,,,,,"Configured second-division simulation baseline; missing entrants are generated from configured club identities"
+EFL Championship,England,UEFA,2025-26,24,46,,,,,,
+Segunda División,Spain,UEFA,2025-26,22,42,,,,,,
+2. Bundesliga,Germany,UEFA,2025-26,18,34,,,,,,
+Serie B,Italy,UEFA,2025-26,20,38,,,,,,
+Ligue 2,France,UEFA,2025-26,18,34,,,,,,
+EFL Championship,England,UEFA,2025-26,24,46,,,,,,
+Segunda División,Spain,UEFA,2025-26,22,42,,,,,,
+2. Bundesliga,Germany,UEFA,2025-26,18,34,,,,,,
+Serie B,Italy,UEFA,2025-26,20,38,,,,,,
+Ligue 2,France,UEFA,2025-26,18,34,,,,,,
+Saudi Pro League,Saudi Arabia,AFC,2025-26,18,34,Al-Nassr,86,28,2,4,91,28,Al-Hilal,84,Julián Quiñones,33,921,3.01,,"Al-Nassr's 11th title; total goals summed from the final table"
+Betway Premiership,South Africa,CAF,2025-26,16,30,Orlando Pirates,69,,,,,,Mamelodi Sundowns,68,,,,,,"Pirates' first league title in 14 years; ended Sundowns' run of eight straight titles; record and goal stats not retrieved"
+Brasileirão Série A,Brazil,CONMEBOL,2025,20,38,Flamengo,79,23,10,5,78,27,Palmeiras,,Kaio Jorge,21,,,,"Calendar-year season (Mar-Dec 2025); 2026 season is currently in progress"
+Major League Soccer,United States/Canada,CONCACAF,2025,30,34,Inter Miami CF,,,,,,,Vancouver Whitecaps FC,,,,,,21754,"Inter Miami won the MLS Cup (first title) and Vancouver were runners-up; best regular-season record (Supporters' Shield) went to Philadelphia Union; another source puts attendance at 21,988; 2026 season is in progress"
+Liga MX,Mexico,CONCACAF,Clausura 2026,18,17,Cruz Azul,33,,,,,,Pumas UNAM,36,,,,,,"Playoff-decided half-season: Cruz Azul beat Pumas 2-1 on aggregate in the final; points shown are regular-season points (Pumas topped the table); Toluca won Apertura 2025"

@@ -1,0 +1,110 @@
+{
+  "$comment": "Generated squad parameters plus a curated set of real players. Player names are factual; ratings are gameplay estimates, not official ratings. Real-player examples reflect publicly known 2024/25 club affiliations and are not verified 2026/27 rosters.",
+  "realPlayersByClub": {
+    "arsenal": [
+      { "id": "bukayo-saka", "first": "Bukayo", "last": "Saka", "nationality": "ENG", "dob": { "year": 2001, "month": 9, "day": 5 }, "position": "RW", "overall": 88, "potential": 92 },
+      { "id": "declan-rice", "first": "Declan", "last": "Rice", "nationality": "ENG", "dob": { "year": 1999, "month": 1, "day": 14 }, "position": "CM", "overall": 87, "potential": 90 }
+    ],
+    "astonvilla": [
+      { "id": "ollie-watkins", "first": "Ollie", "last": "Watkins", "nationality": "ENG", "dob": { "year": 1995, "month": 12, "day": 30 }, "position": "ST", "overall": 85, "potential": 86 },
+      { "id": "emiliano-martinez", "first": "Emiliano", "last": "Martinez", "nationality": "ARG", "dob": { "year": 1992, "month": 9, "day": 2 }, "position": "GK", "overall": 86, "potential": 86 }
+    ],
+    "bournemouth": [
+      { "id": "antoine-semenyo", "first": "Antoine", "last": "Semenyo", "nationality": "GHA", "dob": { "year": 2000, "month": 1, "day": 7 }, "position": "LW", "overall": 81, "potential": 85 },
+      { "id": "justin-kluivert", "first": "Justin", "last": "Kluivert", "nationality": "NED", "dob": { "year": 1999, "month": 5, "day": 5 }, "position": "AM", "overall": 79, "potential": 82 }
+    ],
+    "brentford": [
+      { "id": "bryan-mbeumo", "first": "Bryan", "last": "Mbeumo", "nationality": "CMR", "dob": { "year": 1999, "month": 8, "day": 7 }, "position": "RW", "overall": 83, "potential": 85 },
+      { "id": "yoane-wissa", "first": "Yoane", "last": "Wissa", "nationality": "COD", "dob": { "year": 1996, "month": 9, "day": 3 }, "position": "ST", "overall": 81, "potential": 82 }
+    ],
+    "brighton": [
+      { "id": "kaoru-mitoma", "first": "Kaoru", "last": "Mitoma", "nationality": "JPN", "dob": { "year": 1997, "month": 5, "day": 20 }, "position": "LW", "overall": 81, "potential": 83 },
+      { "id": "joao-pedro", "first": "Joao", "last": "Pedro", "nationality": "BRA", "dob": { "year": 2001, "month": 9, "day": 26 }, "position": "ST", "overall": 82, "potential": 86 }
+    ],
+    "chelsea": [
+      { "id": "cole-palmer", "first": "Cole", "last": "Palmer", "nationality": "ENG", "dob": { "year": 2002, "month": 5, "day": 6 }, "position": "AM", "overall": 87, "potential": 93 },
+      { "id": "enzo-fernandez", "first": "Enzo", "last": "Fernandez", "nationality": "ARG", "dob": { "year": 2001, "month": 1, "day": 17 }, "position": "CM", "overall": 84, "potential": 88 }
+    ],
+    "coventry": [
+      { "id": "haji-wright", "first": "Haji", "last": "Wright", "nationality": "USA", "dob": { "year": 1998, "month": 5, "day": 27 }, "position": "ST", "overall": 75, "potential": 78 },
+      { "id": "ben-sheaf", "first": "Ben", "last": "Sheaf", "nationality": "ENG", "dob": { "year": 1998, "month": 2, "day": 6 }, "position": "DM", "overall": 72, "potential": 75 }
+    ],
+    "crystalpalace": [
+      { "id": "eberechi-eze", "first": "Eberechi", "last": "Eze", "nationality": "ENG", "dob": { "year": 1998, "month": 6, "day": 29 }, "position": "AM", "overall": 83, "potential": 86 },
+      { "id": "jean-philippe-mateta", "first": "Jean-Philippe", "last": "Mateta", "nationality": "FRA", "dob": { "year": 1997, "month": 6, "day": 28 }, "position": "ST", "overall": 80, "potential": 81 }
+    ],
+    "everton": [
+      { "id": "jordan-pickford", "first": "Jordan", "last": "Pickford", "nationality": "ENG", "dob": { "year": 1994, "month": 3, "day": 7 }, "position": "GK", "overall": 84, "potential": 84 },
+      { "id": "jarad-branthwaite", "first": "Jarrad", "last": "Branthwaite", "nationality": "ENG", "dob": { "year": 2002, "month": 6, "day": 27 }, "position": "CB", "overall": 80, "potential": 86 }
+    ],
+    "fulham": [
+      { "id": "alex-iwobi", "first": "Alex", "last": "Iwobi", "nationality": "NGA", "dob": { "year": 1996, "month": 5, "day": 3 }, "position": "LW", "overall": 79, "potential": 80 },
+      { "id": "antonee-robinson", "first": "Antonee", "last": "Robinson", "nationality": "USA", "dob": { "year": 1997, "month": 8, "day": 8 }, "position": "LB", "overall": 79, "potential": 81 }
+    ],
+    "hull": [
+      { "id": "regan-slater", "first": "Regan", "last": "Slater", "nationality": "ENG", "dob": { "year": 1999, "month": 9, "day": 12 }, "position": "CM", "overall": 70, "potential": 74 },
+      { "id": "charlie-hughes", "first": "Charlie", "last": "Hughes", "nationality": "ENG", "dob": { "year": 2003, "month": 10, "day": 16 }, "position": "CB", "overall": 72, "potential": 79 }
+    ],
+    "ipswich": [
+      { "id": "leif-davis", "first": "Leif", "last": "Davis", "nationality": "ENG", "dob": { "year": 1999, "month": 12, "day": 22 }, "position": "LB", "overall": 74, "potential": 77 },
+      { "id": "sam-morsy", "first": "Sam", "last": "Morsy", "nationality": "EGY", "dob": { "year": 1991, "month": 9, "day": 10 }, "position": "DM", "overall": 72, "potential": 72 }
+    ],
+    "leeds": [
+      { "id": "ethan-ampadu", "first": "Ethan", "last": "Ampadu", "nationality": "WAL", "dob": { "year": 2000, "month": 9, "day": 14 }, "position": "DM", "overall": 77, "potential": 82 },
+      { "id": "wilfried-gnonto", "first": "Wilfried", "last": "Gnonto", "nationality": "ITA", "dob": { "year": 2003, "month": 11, "day": 5 }, "position": "LW", "overall": 76, "potential": 84 }
+    ],
+    "liverpool": [
+      { "id": "mohamed-salah", "first": "Mohamed", "last": "Salah", "nationality": "EGY", "dob": { "year": 1992, "month": 6, "day": 15 }, "position": "RW", "overall": 90, "potential": 90 },
+      { "id": "alexis-mac-allister", "first": "Alexis", "last": "Mac Allister", "nationality": "ARG", "dob": { "year": 1998, "month": 12, "day": 24 }, "position": "CM", "overall": 86, "potential": 87 }
+    ],
+    "manchestercity": [
+      { "id": "erling-haaland", "first": "Erling", "last": "Haaland", "nationality": "NOR", "dob": { "year": 2000, "month": 7, "day": 21 }, "position": "ST", "overall": 91, "potential": 94 },
+      { "id": "phil-foden", "first": "Phil", "last": "Foden", "nationality": "ENG", "dob": { "year": 2000, "month": 5, "day": 28 }, "position": "LW", "overall": 88, "potential": 91 }
+    ],
+    "manchesterunited": [
+      { "id": "cristiano-ronaldo", "first": "Cristiano", "last": "Ronaldo", "nationality": "POR", "dob": { "year": 1985, "month": 2, "day": 5 }, "position": "ST", "overall": 94, "potential": 94, "shirtNumber": 7 },
+      { "id": "bruno-fernandes", "first": "Bruno", "last": "Fernandes", "nationality": "POR", "dob": { "year": 1994, "month": 9, "day": 8 }, "position": "AM", "overall": 87, "potential": 87 },
+      { "id": "kobbie-mainoo", "first": "Kobbie", "last": "Mainoo", "nationality": "ENG", "dob": { "year": 2005, "month": 4, "day": 19 }, "position": "CM", "overall": 78, "potential": 87 }
+    ],
+    "newcastle": [
+      { "id": "alexander-isak", "first": "Alexander", "last": "Isak", "nationality": "SWE", "dob": { "year": 1999, "month": 9, "day": 21 }, "position": "ST", "overall": 87, "potential": 90 },
+      { "id": "anthony-gordon", "first": "Anthony", "last": "Gordon", "nationality": "ENG", "dob": { "year": 2001, "month": 2, "day": 24 }, "position": "LW", "overall": 84, "potential": 88 }
+    ],
+    "nottinghamforest": [
+      { "id": "morgan-gibbs-white", "first": "Morgan", "last": "Gibbs-White", "nationality": "ENG", "dob": { "year": 2000, "month": 1, "day": 27 }, "position": "AM", "overall": 82, "potential": 85 },
+      { "id": "murillo", "first": "Murillo", "last": "Santiago", "nationality": "BRA", "dob": { "year": 2002, "month": 7, "day": 4 }, "position": "CB", "overall": 81, "potential": 88 }
+    ],
+    "sunderland": [
+      { "id": "jack-clarke", "first": "Jack", "last": "Clarke", "nationality": "ENG", "dob": { "year": 2000, "month": 11, "day": 23 }, "position": "LW", "overall": 75, "potential": 80 },
+      { "id": "jobe-bellingham", "first": "Jobe", "last": "Bellingham", "nationality": "ENG", "dob": { "year": 2005, "month": 9, "day": 23 }, "position": "CM", "overall": 74, "potential": 85 }
+    ],
+    "tottenham": [
+      { "id": "son-heung-min", "first": "Son", "last": "Heung-min", "nationality": "KOR", "dob": { "year": 1992, "month": 7, "day": 8 }, "position": "LW", "overall": 87, "potential": 87 },
+      { "id": "james-maddison", "first": "James", "last": "Maddison", "nationality": "ENG", "dob": { "year": 1996, "month": 11, "day": 23 }, "position": "AM", "overall": 84, "potential": 85 }
+    ]
+  },
+  "firstNames": [
+    "Aaron", "Adam", "Alex", "Amir", "Ben", "Callum", "Charlie", "Daniel",
+    "Elliot", "Ethan", "Felix", "Finlay", "Gabriel", "Harry", "Idris", "Isaac",
+    "Jack", "Jacob", "Jamie", "Jayden", "Joe", "Kai", "Liam", "Lucas",
+    "Malik", "Marcus", "Mason", "Max", "Milo", "Nathan", "Noah", "Oliver",
+    "Oscar", "Rafael", "Reuben", "Ryan", "Sam", "Theo", "Thomas", "Toby",
+    "Tyler", "Victor", "William", "Yusuf", "Zach"
+  ],
+  "lastNames": [
+    "Abbott", "Adams", "Baker", "Bennett", "Brooks", "Campbell", "Carter",
+    "Clarke", "Collins", "Cook", "Cooper", "Davies", "Edwards", "Ellis",
+    "Foster", "Gibson", "Graham", "Green", "Hall", "Harris", "Hughes",
+    "Jackson", "James", "Johnson", "Jones", "Kelly", "Khan", "Lewis",
+    "Marshall", "Martin", "Miller", "Mitchell", "Moore", "Morgan", "Morris",
+    "Murphy", "Parker", "Patel", "Phillips", "Reed", "Roberts", "Robinson",
+    "Scott", "Shaw", "Smith", "Taylor", "Thomas", "Turner", "Walker",
+    "Ward", "White", "Wilson", "Wright", "Young"
+  ],
+  "positions": ["GK", "GK", "CB", "CB", "CB", "CB", "LB", "RB", "DM", "DM", "CM", "CM", "CM", "AM", "LW", "RW", "ST", "ST"],
+  "ageRange": [18, 34],
+  "ratingOffsetByPosition": { "GK": 1, "CB": 0, "LB": 1, "RB": 1, "DM": 0, "CM": 2, "AM": 3, "LW": 2, "RW": 2, "ST": 3 },
+  "clubRatingFormula": { "base": 56, "prestigeScale": 0.27, "spread": 5 },
+  "startingPlayer": { "minimumOverall": 56, "maximumOverall": 72 },
+  "nationality": "ENG"
+}

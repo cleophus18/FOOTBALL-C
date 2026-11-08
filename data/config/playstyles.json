@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "limits": { "developing": 3, "established": 6, "elite": 8, "plusMax": 2 },
+  "standardScale": 1,
+  "plusScale": 1.85,
+  "evidenceUnlock": 3,
+  "evidenceUpgrade": 12,
+  "description": "PlayStyle effects are contextual and never contribute directly to displayed overall ratings."
+}

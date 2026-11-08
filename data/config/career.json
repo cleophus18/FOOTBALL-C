@@ -1,0 +1,27 @@
+{
+  "$comment": "Phase 1 progression and difficulty tuning. Values are points unless specified.",
+  "training": {
+    "weeklyPoints": 2,
+    "appearancePoints": 3,
+    "strongPerformanceBonus": 2,
+    "objectiveBonus": 2,
+    "attributePointCost": 1,
+    "weeklyFatigueRecovery": 17,
+    "weeklyFitnessRecovery": 5,
+    "weeklySharpnessGain": 2,
+    "matchFatigue": 18
+  },
+  "finance": {
+    "startingBalance": 10000,
+    "startingWeeklyWage": 5000,
+    "appearanceBonus": 500,
+    "goalBonus": 1000
+  },
+  "difficultyBonuses": {
+    "$comment": "Strength bonus applied to the user's team in every match. Realistic is the hardest difficulty: the AI gets no help and the user must earn every result. Easy is the most forgiving.",
+    "Realistic": 0,
+    "Hard": 1.5,
+    "Normal": 3,
+    "Easy": 5.5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$comment": "Initial configurable model access list. The 36-place league-phase target is limited to supplied, eligible European club identities; change per association as coefficient history grows.",
+  "leaguePhaseSize": 36,
+  "opponentsPerClub": 6,
+  "associationPoints": { "win": 2, "draw": 1, "loss": 0 },
+  "performanceSpotCount": 2,
+  "associations": {
+    "ENG": { "association": "England", "direct": 4, "qualifying": 0 },
+    "ESP": { "association": "Spain", "direct": 4, "qualifying": 0 },
+    "GER": { "association": "Germany", "direct": 4, "qualifying": 0 },
+    "ITA": { "association": "Italy", "direct": 4, "qualifying": 0 },
+    "FRA": { "association": "France", "direct": 3, "qualifying": 1 },
+    "NED": { "association": "Netherlands", "direct": 2, "qualifying": 1 },
+    "POR": { "association": "Portugal", "direct": 2, "qualifying": 1 },
+    "BEL": { "association": "Belgium", "direct": 1, "qualifying": 1 },
+    "SCO": { "association": "Scotland", "direct": 1, "qualifying": 1 },
+    "TUR": { "association": "Türkiye", "direct": 1, "qualifying": 1 }
+  }
+}

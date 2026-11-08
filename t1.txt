@@ -1,0 +1,184 @@
+﻿✔ career creation builds a seeded 20-club double round-robin (201.6884ms)
+✔ clubs with empty imported rosters receive a full generated squad in every playable league (219.708ms)
+✔ key moments offer more than 30 position-specific action choices (76.5732ms)
+✖ selected passing actions resolve with their own attributes and match effects (24.7715ms)
+✔ the agent gate enables transfer offers and a transfer acceptance path (86.6647ms)
+✔ transfer refresh rotates clubs and accepts a move into another playable league (128.0544ms)
+✔ background leagues record player scoring and rating stats for cross-league browsing (105.3548ms)
+✖ career player starts only in their natural position across every field role (37.2089ms)
+✖ the best natural-position player starts and the user can replace them when tired (18.4573ms)
+✔ ST substitute enters only in the ST slot and does not replace another position (43.4516ms)
+✔ a poorly rated player can be substituted without losing the match result (40.2996ms)
+✔ 50 safe match situations include career-once events and persist their usage (79.5612ms)
+✖ weekly matches drive player performance, training and league results (66.9435ms)
+✔ league scorer totals follow every club's recorded goals and teammate ratings are saved (105.6438ms)
+✔ weak foot and skill-move upgrades share the same rising cost curve (39.7117ms)
+✖ Ballon d'Or race is limited to five major leagues and World Cup stats (30.5168ms)
+✔ assists and the award race use league-only player totals (46.0928ms)
+✖ salary and match bonuses update a saved player balance and transaction history (50.8736ms)
+✔ fan approval reacts to good and poor performances and forecasts the next fixture (12.7742ms)
+✔ fixtures identify their competition, match number, opponent, and scheduled date (28.0444ms)
+✔ the World Cup starts in career year three and then runs every four years (15.1745ms)
+✔ the Champions League, CAF Champions League, and a scheduled World Cup progress through full saved brackets (53.348ms)
+✖ the user's Champions League fixture is playable and records into the tournament, not the league (25.5195ms)
+✔ hiring a manager spends personal funds, saves the hire, and applies the new tactics (71.8324ms)
+✔ Messi and Ronaldo are present in the requested La Liga clubs (25.3431ms)
+✔ changing the career player's position recalculates overall for the new role (44.2698ms)
+✖ key-moment decisions change the live score and count only after full time (24.1925ms)
+✖ live match clock pauses at key moments and resumes after a decision (40.858ms)
+✔ an in-match injury ends the player's participation and carries into recovery (64.8705ms)
+✔ AI players develop with potential and context, and world-player growth persists (79.2234ms)
+✔ finishing tendencies and goalkeeper quality affect scoring chances (15.1401ms)
+✔ elite defenders and goalkeepers stop more goals across repeated matches (122.8818ms)
+✔ saving and restoring during a live match preserves its pending goals and score (47.4964ms)
+✔ career creation supports a roster-backed club in an imported league (20.8356ms)
+✔ all listed Betway clubs build playable generated squads (18.8734ms)
+✔ save and restore preserve standings and future seeded results (274.127ms)
+✔ league rounds start at the first configured week and completed results include the user match (53.8653ms)
+✔ a full Premier League season completes with 38 matches per club (320.5192ms)
+✔ unknown clubs and empty player names are rejected (25.6385ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 30
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3021.722
+
+✖ failing tests:
+
+test at test\career.test.mjs:178:1
+✖ selected passing actions resolve with their own attributes and match effects (24.7715ms)
+  TypeError: Cannot set properties of undefined (setting 'kind')
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:187:41)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\career.test.mjs:263:1
+✖ career player starts only in their natural position across every field role (37.2089ms)
+  AssertionError [ERR_ASSERTION]: LB career player must not be assigned to CB
+  
+  'CB' !== 'LB'
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:274:23)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'CB',
+    expected: 'LB',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:279:1
+✖ the best natural-position player starts and the user can replace them when tired (18.4573ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:302:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:403:1
+✖ weekly matches drive player performance, training and league results (66.9435ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:413:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:490:1
+✖ Ballon d'Or race is limited to five major leagues and World Cup stats (30.5168ms)
+  TypeError: Cannot read properties of null (reading 'teams')
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:498:42)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\career.test.mjs:558:1
+✖ salary and match bonuses update a saved player balance and transaction history (50.8736ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(restored.financialHistory.some((entry) => entry.reason === "Match bonuses"))
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:579:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:685:1
+✖ the user's Champions League fixture is playable and records into the tournament, not the league (25.5195ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:707:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:760:1
+✖ key-moment decisions change the live score and count only after full time (24.1925ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(match.playerResult.keyMoments.length > 0)
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:770:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:806:1
+✖ live match clock pauses at key moments and resumes after a decision (40.858ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'finished'
+  - 'paused'
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:835:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'finished',
+    expected: 'paused',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

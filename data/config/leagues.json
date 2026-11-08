@@ -1,0 +1,38 @@
+{
+    "$comment":  "Phase 1 league configuration. Only the Premier League club identity is configured here; the other four major leagues get club data from career-league-teams.json.",
+    "premier-league":  {
+                           "id":  "premier-league",
+                           "name":  "Premier League",
+                           "nation":  "ENG",
+                           "tier":  1,
+                           "clubGroup":  "england",
+                           "teamIds":  [
+                                           "arsenal",
+                                           "astonvilla",
+                                           "bournemouth",
+                                           "brentford",
+                                           "brighton",
+                                           "chelsea",
+                                           "coventry",
+                                           "crystalpalace",
+                                           "everton",
+                                           "fulham",
+                                           "hull",
+                                           "ipswich",
+                                           "leeds",
+                                           "liverpool",
+                                           "manchestercity",
+                                           "manchesterunited",
+                                           "newcastle",
+                                           "nottinghamforest",
+                                           "sunderland",
+                                           "tottenham"
+                                       ],
+                           "seasonStartYear":  2026,
+                           "seasonWeeks":  44,
+                           "fixtureStartWeek":  3,
+                           "fixtureEndWeek":  40,
+                           "pointsForWin":  3,
+                           "pointsForDraw":  1
+                       }
+}

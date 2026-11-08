@@ -1,0 +1,214 @@
+{
+  "positionGroups": {
+    "GK": "keeper",
+    "CB": "defence",
+    "LB": "defence",
+    "RB": "defence",
+    "DM": "midfield",
+    "CM": "midfield",
+    "AM": "attack",
+    "LW": "attack",
+    "RW": "attack",
+    "ST": "striker"
+  },
+  "moments": {
+    "bigPass": {
+      "keeper": [
+        { "id": "gk-short-roll", "label": "Roll a short pass to a nearby defender", "attribute": "passing", "modifier": 0.12, "effect": "pass" },
+        { "id": "gk-clip-wide", "label": "Clip the ball wide to a full-back", "attribute": "passing", "modifier": 0.02, "effect": "pass" },
+        { "id": "gk-driven-throw", "label": "Drive a long throw into space", "attribute": "passing", "modifier": -0.04, "effect": "pass" },
+        { "id": "gk-long-kick", "label": "Launch a long kick toward the striker", "attribute": "passing", "modifier": -0.12, "effect": "pass" }
+      ],
+      "defence": [
+        { "id": "def-short-pass", "label": "Play a short pass to the closest teammate", "attribute": "passing", "modifier": 0.14, "effect": "pass" },
+        { "id": "def-fullback-overlap", "label": "Feed the overlapping full-back", "attribute": "passing", "modifier": 0.05, "effect": "pass" },
+        { "id": "def-switch-play", "label": "Switch play to the far wing", "attribute": "passing", "modifier": -0.04, "effect": "pass" },
+        { "id": "def-line-breaker", "label": "Attempt a risky line-breaking pass", "attribute": "passing", "modifier": -0.13, "effect": "pass" }
+      ],
+      "midfield": [
+        { "id": "mid-short-pass", "label": "Keep possession with a short pass", "attribute": "passing", "modifier": 0.14, "effect": "pass" },
+        { "id": "mid-one-two", "label": "Play a quick one-two through midfield", "attribute": "passing", "modifier": 0.05, "effect": "pass" },
+        { "id": "mid-switch-play", "label": "Switch the attack to the opposite flank", "attribute": "passing", "modifier": -0.03, "effect": "pass" },
+        { "id": "mid-through-ball", "label": "Thread a through-ball behind the defence", "attribute": "passing", "modifier": -0.12, "effect": "pass" }
+      ],
+      "attack": [
+        { "id": "att-short-layoff", "label": "Lay the ball off to the closest teammate", "attribute": "passing", "modifier": 0.14, "effect": "pass" },
+        { "id": "att-slip-runner", "label": "Slip a pass into a teammate's run", "attribute": "passing", "modifier": 0.04, "effect": "pass" },
+        { "id": "att-cutback", "label": "Cut the ball back across the box", "attribute": "passing", "modifier": -0.02, "effect": "pass" },
+        { "id": "att-risky-through-ball", "label": "Try a first-time through-ball between defenders", "attribute": "passing", "modifier": -0.13, "effect": "pass" }
+      ],
+      "striker": [
+        { "id": "st-layoff", "label": "Hold up play and lay it off", "attribute": "physical", "modifier": 0.08, "effect": "pass" },
+        { "id": "st-slip-runner", "label": "Slip a teammate through on goal", "attribute": "passing", "modifier": 0.03, "effect": "pass" },
+        { "id": "st-flick-on", "label": "Flick the ball into the channel", "attribute": "dribbling", "modifier": -0.04, "effect": "pass" },
+        { "id": "st-turn-and-shoot-pass", "label": "Turn away from your marker and feed a runner", "attribute": "passing", "modifier": -0.08, "effect": "pass" },
+        { "id": "st-first-time-flick", "label": "Flick the ball first time into a teammate's path", "attribute": "dribbling", "modifier": -0.1, "effect": "pass" }
+      ]
+    },
+    "chance": {
+      "keeper": [
+        { "id": "gk-chance-smother", "label": "Rush out and smother the loose ball", "attribute": "reflexes", "modifier": 0.08, "effect": "save" },
+        { "id": "gk-chance-narrow", "label": "Hold position and narrow the angle", "attribute": "positioning", "modifier": 0.1, "effect": "save" },
+        { "id": "gk-chance-dive", "label": "Dive early to the striker's shooting side", "attribute": "reflexes", "modifier": -0.01, "effect": "save" },
+        { "id": "gk-chance-parry", "label": "Parry the shot away from danger", "attribute": "handling", "modifier": -0.05, "effect": "save" }
+      ],
+      "defence": [
+        { "id": "def-chance-header", "label": "Attack the cross with a powerful header", "attribute": "physical", "modifier": 0.04, "effect": "shot" },
+        { "id": "def-chance-volley", "label": "Try a first-time volley from the delivery", "attribute": "shooting", "modifier": -0.08, "effect": "shot" },
+        { "id": "def-chance-layoff", "label": "Knock the ball down for a teammate", "attribute": "passing", "modifier": 0.08, "effect": "layoff" },
+        { "id": "def-chance-place", "label": "Place a composed finish into the corner", "attribute": "shooting", "modifier": -0.02, "effect": "shot" }
+      ],
+      "midfield": [
+        { "id": "mid-chance-place", "label": "Place a controlled shot into the corner", "attribute": "shooting", "modifier": 0.04, "effect": "shot" },
+        { "id": "mid-chance-first-time", "label": "Hit a first-time shot before the defence closes", "attribute": "shooting", "modifier": -0.03, "effect": "shot" },
+        { "id": "mid-chance-layoff", "label": "Square the ball to a teammate in space", "attribute": "passing", "modifier": 0.09, "effect": "layoff" },
+        { "id": "mid-chance-curl", "label": "Curl a shot around the defender", "attribute": "shooting", "modifier": -0.08, "effect": "shot" }
+      ],
+      "attack": [
+        { "id": "att-chance-place", "label": "Place the finish into the far corner", "attribute": "shooting", "modifier": 0.06, "effect": "shot" },
+        { "id": "att-chance-power", "label": "Drive a powerful shot at goal", "attribute": "shooting", "modifier": -0.02, "effect": "shot" },
+        { "id": "att-chance-chip", "label": "Lift a delicate chip over the goalkeeper", "attribute": "shooting", "modifier": -0.1, "effect": "shot" },
+        { "id": "att-chance-square", "label": "Square the ball for a teammate to finish", "attribute": "passing", "modifier": 0.08, "effect": "layoff" }
+      ],
+      "striker": [
+        { "id": "st-chance-low-drive", "label": "Fire a low-driven finish across the keeper", "attribute": "shooting", "modifier": 0.04, "effect": "shot" },
+        { "id": "st-chance-first-time", "label": "Hit the cross first time", "attribute": "shooting", "modifier": -0.02, "effect": "shot" },
+        { "id": "st-chance-header", "label": "Attack the cross with a diving header", "attribute": "physical", "modifier": 0.01, "effect": "shot" },
+        { "id": "st-chance-volley", "label": "Attempt an acrobatic volley", "attribute": "shooting", "modifier": -0.13, "effect": "shot" },
+        { "id": "st-chance-backheel", "label": "Try a backheel flick at goal", "attribute": "dribbling", "modifier": -0.16, "effect": "shot" },
+        { "id": "st-chance-layoff", "label": "Bring the ball down for a teammate", "attribute": "physical", "modifier": 0.08, "effect": "layoff" }
+      ]
+    },
+    "penalty": {
+      "keeper": [
+        { "id": "gk-penalty-wait", "label": "Wait for the taker's movement before diving", "attribute": "reflexes", "modifier": 0.1, "effect": "save" },
+        { "id": "gk-penalty-guess-left", "label": "Commit early to the left corner", "attribute": "reflexes", "modifier": -0.04, "effect": "save" },
+        { "id": "gk-penalty-guess-right", "label": "Commit early to the right corner", "attribute": "reflexes", "modifier": -0.04, "effect": "save" },
+        { "id": "gk-penalty-middle", "label": "Hold your ground and cover the middle", "attribute": "positioning", "modifier": 0.02, "effect": "save" }
+      ],
+      "defence": [
+        { "id": "def-penalty-place", "label": "Side-foot the penalty into the corner", "attribute": "shooting", "modifier": 0.12, "effect": "shot" },
+        { "id": "def-penalty-power", "label": "Strike the penalty hard and high", "attribute": "shooting", "modifier": -0.02, "effect": "shot" },
+        { "id": "def-penalty-stutter", "label": "Use a stutter-step to read the goalkeeper", "attribute": "dribbling", "modifier": -0.04, "effect": "shot" },
+        { "id": "def-penalty-paneka", "label": "Attempt a delicate Panenka", "attribute": "shooting", "modifier": -0.14, "effect": "shot" }
+      ],
+      "midfield": [
+        { "id": "mid-penalty-place", "label": "Place the penalty low into the corner", "attribute": "shooting", "modifier": 0.12, "effect": "shot" },
+        { "id": "mid-penalty-power", "label": "Drive the penalty hard down the middle", "attribute": "shooting", "modifier": 0.01, "effect": "shot" },
+        { "id": "mid-penalty-stutter", "label": "Pause in the run-up and react to the keeper", "attribute": "dribbling", "modifier": -0.04, "effect": "shot" },
+        { "id": "mid-penalty-paneka", "label": "Try to chip the goalkeeper with a Panenka", "attribute": "shooting", "modifier": -0.14, "effect": "shot" }
+      ],
+      "attack": [
+        { "id": "att-penalty-place", "label": "Pick your spot and pass it into the corner", "attribute": "shooting", "modifier": 0.12, "effect": "shot" },
+        { "id": "att-penalty-power", "label": "Smash the penalty high into the net", "attribute": "shooting", "modifier": 0.01, "effect": "shot" },
+        { "id": "att-penalty-stutter", "label": "Stutter-step and send the keeper the wrong way", "attribute": "dribbling", "modifier": -0.04, "effect": "shot" },
+        { "id": "att-penalty-paneka", "label": "Attempt a cheeky Panenka down the middle", "attribute": "shooting", "modifier": -0.14, "effect": "shot" }
+      ],
+      "striker": [
+        { "id": "st-penalty-place", "label": "Wait for the keeper then roll into the corner", "attribute": "shooting", "modifier": 0.12, "effect": "shot" },
+        { "id": "st-penalty-power", "label": "Strike through the ball with power", "attribute": "shooting", "modifier": 0, "effect": "shot" },
+        { "id": "st-penalty-paneka", "label": "Chip a Panenka down the middle", "attribute": "shooting", "modifier": -0.14, "effect": "shot" },
+        { "id": "st-penalty-stutter", "label": "Use a stutter run-up to wrong-foot the keeper", "attribute": "dribbling", "modifier": -0.03, "effect": "shot" },
+        { "id": "st-penalty-delay", "label": "Pause before placing the ball low", "attribute": "shooting", "modifier": 0.05, "effect": "shot" }
+      ]
+    },
+    "oneOnOne": {
+      "keeper": [
+        { "id": "gk-oneonone-rush", "label": "Rush off your line to close the angle", "attribute": "reflexes", "modifier": 0.03, "effect": "save" },
+        { "id": "gk-oneonone-hold", "label": "Stay big and force the striker to choose", "attribute": "positioning", "modifier": 0.1, "effect": "save" },
+        { "id": "gk-oneonone-dive", "label": "Dive at the striker's feet", "attribute": "reflexes", "modifier": -0.02, "effect": "save" },
+        { "id": "gk-oneonone-spread", "label": "Spread your body to block the shot", "attribute": "handling", "modifier": 0.02, "effect": "save" }
+      ],
+      "defence": [
+        { "id": "def-oneonone-place", "label": "Stay composed and place the finish", "attribute": "shooting", "modifier": 0.06, "effect": "shot" },
+        { "id": "def-oneonone-lob", "label": "Lift the ball over the advancing keeper", "attribute": "shooting", "modifier": -0.08, "effect": "shot" },
+        { "id": "def-oneonone-round", "label": "Take a touch around the goalkeeper", "attribute": "dribbling", "modifier": -0.02, "effect": "shot" },
+        { "id": "def-oneonone-square", "label": "Pass across goal to a teammate", "attribute": "passing", "modifier": 0.04, "effect": "layoff" }
+      ],
+      "midfield": [
+        { "id": "mid-oneonone-place", "label": "Place the finish beyond the goalkeeper", "attribute": "shooting", "modifier": 0.06, "effect": "shot" },
+        { "id": "mid-oneonone-lob", "label": "Try a controlled chip over the keeper", "attribute": "shooting", "modifier": -0.08, "effect": "shot" },
+        { "id": "mid-oneonone-round", "label": "Use close control to round the goalkeeper", "attribute": "dribbling", "modifier": -0.02, "effect": "shot" },
+        { "id": "mid-oneonone-square", "label": "Square the chance to a supporting runner", "attribute": "passing", "modifier": 0.04, "effect": "layoff" }
+      ],
+      "attack": [
+        { "id": "att-oneonone-place", "label": "Open your body and place it into the far corner", "attribute": "shooting", "modifier": 0.06, "effect": "shot" },
+        { "id": "att-oneonone-lob", "label": "Chip the goalkeeper as they come off the line", "attribute": "shooting", "modifier": -0.08, "effect": "shot" },
+        { "id": "att-oneonone-round", "label": "Take the ball around the goalkeeper", "attribute": "dribbling", "modifier": -0.02, "effect": "shot" },
+        { "id": "att-oneonone-square", "label": "Square it for a teammate to tap in", "attribute": "passing", "modifier": 0.04, "effect": "layoff" }
+      ],
+      "striker": [
+        { "id": "st-oneonone-near-post", "label": "Snap a shot at the near post", "attribute": "shooting", "modifier": 0.02, "effect": "shot" },
+        { "id": "st-oneonone-far-corner", "label": "Guide a placed shot into the far corner", "attribute": "shooting", "modifier": 0.06, "effect": "shot" },
+        { "id": "st-oneonone-chip", "label": "Lift a chip over the advancing goalkeeper", "attribute": "shooting", "modifier": -0.08, "effect": "shot" },
+        { "id": "st-oneonone-round", "label": "Take a touch around the keeper", "attribute": "dribbling", "modifier": -0.02, "effect": "shot" },
+        { "id": "st-oneonone-feint", "label": "Feint past the keeper before finishing", "attribute": "dribbling", "modifier": -0.1, "effect": "shot" },
+        { "id": "st-oneonone-square", "label": "Square it for a teammate to finish", "attribute": "passing", "modifier": 0.04, "effect": "layoff" }
+      ]
+    },
+    "lastDitch": {
+      "keeper": [
+        { "id": "gk-last-smother", "label": "Dive at the attacker's feet to smother the ball", "attribute": "reflexes", "modifier": 0.02, "effect": "block" },
+        { "id": "gk-last-parry", "label": "Parry the ball away from the goalmouth", "attribute": "handling", "modifier": 0.06, "effect": "block" },
+        { "id": "gk-last-claim", "label": "Claim the cross under pressure", "attribute": "handling", "modifier": -0.03, "effect": "block" },
+        { "id": "gk-last-rush", "label": "Rush out and clear before the striker arrives", "attribute": "pace", "modifier": -0.06, "effect": "clear" }
+      ],
+      "defence": [
+        { "id": "def-last-tackle", "label": "Commit to a standing tackle", "attribute": "defending", "modifier": 0.08, "effect": "tackle" },
+        { "id": "def-last-slide", "label": "Slide in to block the shooting lane", "attribute": "defending", "modifier": -0.02, "effect": "block" },
+        { "id": "def-last-intercept", "label": "Read the pass and step in to intercept", "attribute": "defending", "modifier": 0.03, "effect": "interception" },
+        { "id": "def-last-clear", "label": "Hook the ball clear under pressure", "attribute": "physical", "modifier": 0.05, "effect": "clear" }
+      ],
+      "midfield": [
+        { "id": "mid-last-press", "label": "Press from behind and try to win the ball", "attribute": "physical", "modifier": -0.02, "effect": "tackle" },
+        { "id": "mid-last-intercept", "label": "Anticipate the pass and intercept it", "attribute": "defending", "modifier": 0.07, "effect": "interception" },
+        { "id": "mid-last-block", "label": "Drop back and block the shot", "attribute": "defending", "modifier": 0.02, "effect": "block" },
+        { "id": "mid-last-clear", "label": "Clear the loose ball toward the touchline", "attribute": "physical", "modifier": 0.05, "effect": "clear" }
+      ],
+      "attack": [
+        { "id": "att-last-counterpress", "label": "Counter-press immediately to win possession", "attribute": "physical", "modifier": -0.02, "effect": "tackle" },
+        { "id": "att-last-track", "label": "Track back and challenge the ball carrier", "attribute": "defending", "modifier": 0.03, "effect": "tackle" },
+        { "id": "att-last-lane", "label": "Recover into the passing lane to intercept", "attribute": "defending", "modifier": 0.07, "effect": "interception" },
+        { "id": "att-last-block", "label": "Get back to block the shot", "attribute": "physical", "modifier": 0.02, "effect": "block" }
+      ],
+      "striker": [
+        { "id": "st-last-counterpress", "label": "Press the defender immediately", "attribute": "physical", "modifier": -0.02, "effect": "tackle" },
+        { "id": "st-last-track", "label": "Track back and make a recovery challenge", "attribute": "defending", "modifier": 0.03, "effect": "tackle" },
+        { "id": "st-last-lane", "label": "Cut out the pass to stop the counter", "attribute": "defending", "modifier": 0.07, "effect": "interception" },
+        { "id": "st-last-block", "label": "Drop back to block the shot", "attribute": "physical", "modifier": 0.02, "effect": "block" }
+      ]
+    },
+    "keeperSave": {
+      "keeper": [
+        { "id": "gk-save-reflex", "label": "React with a quick reflex dive", "attribute": "reflexes", "modifier": 0.08, "effect": "save" },
+        { "id": "gk-save-position", "label": "Set your feet and cover the near post", "attribute": "positioning", "modifier": 0.1, "effect": "save" },
+        { "id": "gk-save-parry", "label": "Parry the shot wide of danger", "attribute": "handling", "modifier": 0.02, "effect": "save" },
+        { "id": "gk-save-catch", "label": "Try to hold the shot cleanly", "attribute": "handling", "modifier": -0.04, "effect": "save" }
+      ],
+      "defence": [
+        { "id": "def-save-cover", "label": "Cover the keeper's near-post angle", "attribute": "defending", "modifier": 0.05, "effect": "block" },
+        { "id": "def-save-close", "label": "Close down the shooter before the strike", "attribute": "pace", "modifier": 0.02, "effect": "block" },
+        { "id": "def-save-block", "label": "Throw your body in front of the shot", "attribute": "physical", "modifier": -0.02, "effect": "block" },
+        { "id": "def-save-clear", "label": "Prepare to clear the rebound", "attribute": "physical", "modifier": 0.04, "effect": "clear" }
+      ],
+      "midfield": [
+        { "id": "mid-save-track", "label": "Track the runner and cover the passing lane", "attribute": "defending", "modifier": 0.06, "effect": "block" },
+        { "id": "mid-save-close", "label": "Sprint back to pressure the shooter", "attribute": "pace", "modifier": 0.02, "effect": "block" },
+        { "id": "mid-save-block", "label": "Drop into the shot lane to block it", "attribute": "physical", "modifier": -0.02, "effect": "block" },
+        { "id": "mid-save-rebound", "label": "Get goal-side to clear the rebound", "attribute": "defending", "modifier": 0.04, "effect": "clear" }
+      ],
+      "attack": [
+        { "id": "att-save-track", "label": "Track back to cover the passing option", "attribute": "pace", "modifier": 0.04, "effect": "block" },
+        { "id": "att-save-press", "label": "Press the shooter and force a rushed attempt", "attribute": "physical", "modifier": 0.02, "effect": "block" },
+        { "id": "att-save-block", "label": "Recover to block the shot", "attribute": "defending", "modifier": -0.02, "effect": "block" },
+        { "id": "att-save-clear", "label": "Help clear the ball after the keeper's save", "attribute": "physical", "modifier": 0.04, "effect": "clear" }
+      ],
+      "striker": [
+        { "id": "st-save-press", "label": "Press the shooter to force a mistake", "attribute": "physical", "modifier": 0.02, "effect": "block" },
+        { "id": "st-save-cover", "label": "Cover the passing lane across the box", "attribute": "pace", "modifier": 0.04, "effect": "block" },
+        { "id": "st-save-block", "label": "Get back to block the rebound", "attribute": "defending", "modifier": -0.02, "effect": "block" },
+        { "id": "st-save-clear", "label": "Help clear the loose ball", "attribute": "physical", "modifier": 0.04, "effect": "clear" }
+      ]
+    }
+  }
+}
