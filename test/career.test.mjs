@@ -1470,11 +1470,41 @@ test("the agent gate enables transfer offers and a transfer acceptance path", as
     },
   ];
   const career = createCareer(data, options());
+  career.money = 500000;
   assert.throws(() => career.generateTransferOffers(), /agent/);
+  const startingMoney = career.money;
   const hired = career.hireAgent("agent-1");
   assert.equal(hired.agent.name, "Milo Ace");
+  assert.equal(career.money, startingMoney - 100000 - 8000);
+  assert.ok(career.financialHistory.some((entry) => entry.type === "agent-hire"));
   assert.ok(career.transferOffers.length > 0);
+  assert.deepEqual(career.agentPerformance["agent-1"], {
+    searches: 1,
+    offers: career.transferOffers.length,
+    deals: 0,
+  });
   assert.throws(() => career.generateTransferOffers(), /two weeks/);
+
+  const requestedClubId = career.transferOffers[0].clubId;
+  career.transferMarketState.searchCount = 0;
+  career.transferMarketState.lastSearchDay = null;
+  const requestedOffers = career.generateTransferOffers({
+    clubIds: [requestedClubId],
+  });
+  assert.ok(requestedOffers.length > 0);
+  assert.ok(requestedOffers.every((offer) => offer.clubId === requestedClubId));
+});
+
+test("hiring an agent requires enough money and charges the user", async () => {
+  const data = await loadData();
+  const career = createCareer(data, options(41828));
+  const startingMoney = career.money;
+  assert.throws(
+    () => career.hireAgent(career.agentPool[0].id),
+    /to hire/,
+  );
+  assert.equal(career.money, startingMoney);
+  assert.equal(career.agent, null);
 });
 
 test("limited destination searches accept a move into another playable league", async () => {
@@ -1523,6 +1553,7 @@ test("limited destination searches accept a move into another playable league", 
   }
   const result = career.resolveTransferOffer(crossLeagueOffer.id, "accept");
   assert.equal(result.accepted, true);
+  assert.equal(career.agentPerformance[career.agent.id].deals, 1);
   assert.equal(career.league.name, crossLeagueOffer.leagueName);
   assert.equal(career.club.id, crossLeagueOffer.clubId);
   assert.equal(career.player.clubId, crossLeagueOffer.clubId);
@@ -1534,6 +1565,7 @@ test("limited destination searches accept a move into another playable league", 
   const restored = createCareer(data, saved.creation, saved);
   assert.equal(restored.league.name, crossLeagueOffer.leagueName);
   assert.equal(restored.club.id, crossLeagueOffer.clubId);
+  assert.deepEqual(restored.agentPerformance, career.agentPerformance);
   assert.deepEqual(restored.player.leaguePerformance, {
     apps: 0,
     ratingSum: 0,
@@ -4089,6 +4121,14 @@ test("the available national pool completes a balanced World Cup with durable ho
   assert.ok(championPlayer);
   const wins = championPlayer.internationalStats.worldCupWins;
   const honours = championPlayer.honours.length;
+  assert.equal(
+    championPlayer.honours.filter(
+      (honour) =>
+        honour.award === "FIFA World Cup Winner" &&
+        honour.season === tournament.season,
+    ).length,
+    1,
+  );
   career.awardWorldCupHonours(tournament);
   assert.equal(championPlayer.internationalStats.worldCupWins, wins);
   assert.equal(championPlayer.honours.length, honours);

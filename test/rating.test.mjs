@@ -117,6 +117,31 @@ test("potential is separate from current OVR and history records only real chang
   assert.equal(candidate.ratingHistory[0].current, candidate.overall);
 });
 
+test("imported starting OVR is calibrated while attributes continue to drive development", () => {
+  const imported = {
+    source: "real-world",
+    position: "ST",
+    overall: 80,
+    potential: 85,
+    attrs: { pace: 80, shooting: 84, passing: 68, dribbling: 78, defending: 42, physical: 76 },
+  };
+  imported.overallAdjustment =
+    imported.overall -
+    calculatePlayerOverall({
+      ...imported,
+      source: null,
+      overallAdjustment: 0,
+    });
+
+  assert.equal(calculatePlayerOverall(imported), 80);
+  imported.attrs.shooting = 99;
+  const result = updatePlayerOverall(imported, "Training development", {
+    ceiling: imported.potential,
+  });
+  assert.ok(result.current > 80);
+  assert.ok(result.current <= imported.potential);
+});
+
 test("secondary positions receive a small suitability adjustment", () => {
   const candidate = player("ST");
   candidate.altPositions = ["LW"];

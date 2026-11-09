@@ -442,6 +442,7 @@ export class Career {
       searchCount: 0,
       lastSearchDay: null,
     };
+    this.agentPerformance = {};
     this.transferHistory = [];
     this.transferRumours = [];
     this.positionNeedCache = null;
@@ -972,7 +973,7 @@ export class Career {
               );
             })
             .map((record) => {
-              const id = `real-${clubId}-${record.id}`;
+              const id = record.playerId ?? `real-${clubId}-${record.id}`;
               const existingPlayer = existingSquad.find(
                 (player) => player.id === id,
               );
@@ -985,6 +986,15 @@ export class Career {
                 !legend &&
                 record.attrs &&
                 Object.values(record.attrs).some((value) => value != null);
+              const overallAdjustment = hasCsvAttrs && record.playerId
+                ? Number(record.overall) -
+                  calculateOverall({
+                    position: record.position,
+                    attrs: record.attrs,
+                    subAttrs: record.subAttrs,
+                    gkAttrs: record.gkAttrs,
+                  })
+                : null;
               const model = hasCsvAttrs
                 ? null
                 : generateAttributes(
@@ -1037,6 +1047,9 @@ export class Career {
                 subAttrs: hasCsvAttrs ? null : (model?.subAttrs ?? null),
                 gkAttrs: hasCsvAttrs ? null : (model?.gkAttrs ?? null),
                 source: record.source ?? "real-world",
+                overallAdjustment,
+                dataStatus: record.dataStatus,
+                dataSource: record.dataSource,
                 value: legend?.value ?? record.value,
                 wage: legend?.wage ?? record.wage,
                 position: record.position,
@@ -3169,9 +3182,19 @@ export class Career {
         if (!player) continue;
         player.internationalAchievements ??= [];
         const achievement = `${award} ${tournament.year}`;
+        const winnerHonourId = `${tournament.season}:FIFA World Cup:FIFA World Cup Winner`;
+        const winnerHonourExists =
+          award === "FIFA World Cup Winner" &&
+          (player.honours?.some(
+            (honour) =>
+              (honour.id ??
+                `${honour.season}:${honour.competition}:${honour.award}`) ===
+              winnerHonourId,
+          ) ||
+            player.internationalAchievements.includes(achievement));
         if (!player.internationalAchievements.includes(achievement))
           player.internationalAchievements.push(achievement);
-        if (award === "FIFA World Cup Winner") {
+        if (award === "FIFA World Cup Winner" && !winnerHonourExists) {
           player.internationalStats ??= { worldCupWins: 0 };
           player.internationalStats.worldCupWins =
             (player.internationalStats.worldCupWins ?? 0) + 1;
@@ -6821,7 +6844,7 @@ export class Career {
 
   buildClubs() {
     const source = {
-      ...this.data.clubs[this.data.league.clubGroup],
+      ...(this.data.clubs[this.data.league.clubGroup] ?? {}),
       ...(this.baseData.clubs[this.data.league.clubGroup] ?? {}),
     };
     const sourceLeagues =
@@ -6831,7 +6854,14 @@ export class Career {
     );
     const teamIds = sourceEntry?.league.teamIds ?? this.data.league.teamIds;
     return teamIds.map((id) => {
-      const identity = source[id] ?? sourceEntry?.clubIdentities?.[id];
+      const identity =
+        source[id] ??
+        sourceEntry?.clubIdentities?.[id] ??
+        sourceLeagues.find((entry) => entry.clubIdentities?.[id])
+          ?.clubIdentities[id] ??
+        Object.values(this.baseData.clubs ?? {})
+          .map((group) => group?.[id])
+          .find(Boolean);
       if (!identity) throw new Error(`League references unknown club "${id}"`);
       const style = this.chooseCoachStyle(id, identity);
       return new Club({
@@ -7654,7 +7684,10 @@ export class Career {
       const realPlayers =
         templates.realPlayersByClub?.[club.id] ??
         this.baseData.careerLeagues?.find(
-          (entry) => entry.league.id === this.data.league.id,
+          (entry) =>
+            entry.league.id === this.data.league.id ||
+            (this.baseData.playerDatabase &&
+              entry.league.name === this.data.league.name),
         )?.rostersByClub?.[club.id] ??
         [];
       for (const record of realPlayers) {
@@ -7682,14 +7715,18 @@ export class Career {
             : null;
         const age = legend ? 25 : clamp(Number(record.age) || 25, 16, 42);
         const player = createPlayer({
-          id: `real-${club.id}-${record.id}`,
+          id: record.playerId ?? `real-${club.id}-${record.id}`,
           first: record.first,
           last: record.last,
           nationality: record.nationality || templates.nationality,
-          dob: legend ? toDayIndex(2001, 6, 24) : toDayIndex(2026 - age, 1, 1),
+          dob: legend
+            ? toDayIndex(2001, 6, 24)
+            : (record.dob ?? toDayIndex(2026 - age, 1, 1)),
           position: record.position,
           altPositions:
-            SIMILAR_POSITIONS[normalizePosition(record.position)] ?? [],
+            record.altPositions?.length
+              ? record.altPositions
+              : SIMILAR_POSITIONS[normalizePosition(record.position)] ?? [],
           archetype: legend
             ? legend.archetype
             : this.pickArchetypeForPosition(rng, record.position),
@@ -7724,7 +7761,12 @@ export class Career {
           squadStatus: "First Team",
           value: legend?.value ?? record.value,
           contract:
-            (legend?.wage ?? record.wage)
+            (legend?.wage ??
+            record.wage ??
+            record.contractStartDate ??
+            record.contractExpiryDate ??
+            record.releaseClause ??
+            record.loanStatus)
               ? {
                   wage: legend?.wage ?? record.wage,
                   expires:
@@ -7732,9 +7774,22 @@ export class Career {
                       ? null
                       : this.season +
                         (legend?.contractYears ?? record.contractYears),
+                  startDate: record.contractStartDate ?? null,
+                  expiryDate: record.contractExpiryDate ?? null,
+                  releaseClause: record.releaseClause ?? null,
+                  loanStatus: record.loanStatus ?? null,
+                  loanParentClub: record.loanParentClub ?? null,
                 }
               : null,
+          contractStartDate: record.contractStartDate,
+          contractExpiryDate: record.contractExpiryDate,
+          releaseClause: record.releaseClause,
+          loanStatus: record.loanStatus,
+          loanParentClub: record.loanParentClub,
           source: record.source ?? "real-world",
+          dataSource: record.dataSource,
+          dataStatus: record.dataStatus,
+          lastVerified: record.lastVerified,
           isLegend: !!legend,
           personality: [
             legend?.personality ??
@@ -7752,6 +7807,15 @@ export class Career {
         if (hasCsvAttrs && !legend) {
           player.attrs = { ...record.attrs };
           player.overall = clamp(Number(record.overall), 48, 91);
+          if (record.playerId) {
+            player.overallAdjustment =
+              player.overall -
+              calculateOverall({
+                ...player,
+                source: null,
+                overallAdjustment: 0,
+              });
+          }
         }
         players.push(player);
         club.addPlayer(player.id);
@@ -8166,6 +8230,16 @@ export class Career {
     return this.agent;
   }
 
+  agentPerformanceFor(agentId = this.agent?.id) {
+    if (!agentId) return { searches: 0, offers: 0, deals: 0 };
+    this.agentPerformance ??= {};
+    return (this.agentPerformance[agentId] ??= {
+      searches: 0,
+      offers: 0,
+      deals: 0,
+    });
+  }
+
   isTransferWindowWeek(dayIndex = this.currentDay()) {
     const month = fromDayIndex(dayIndex).month;
     return month === 7 || month === 8 || month === 1;
@@ -8309,10 +8383,34 @@ export class Career {
     if (!agent) throw new Error("That agent is not available.");
     if (this.agent && this.agent.id !== agent.id)
       throw new Error("Release your current agent before hiring another.");
+    if (this.agent?.id === agent.id)
+      throw new Error("That agent is already employed.");
+    if (!this.spendMoney(agent.fee, `Hired agent: ${agent.name}`)) {
+      throw new Error(
+        `You need €${agent.fee.toLocaleString()} to hire ${agent.name}.`,
+      );
+    }
+    this.financialHistory ??= [];
+    this.financialHistory.push({
+      id: `agent-hire-${this.season}-${this.week}-${agent.id}`,
+      date: this.currentDay(),
+      type: "agent-hire",
+      amount: -agent.fee,
+      description: `${agent.name} hiring fee`,
+    });
     this.agent = agent;
     this.renewAgentSearchWindow();
     this.transferOffers = [];
-    const offers = this.isTransferWindowWeek()
+    const searchFee = Math.round(agent.fee * 0.08);
+    const searchAvailable =
+      this.transferMarketState.searchCount <
+        agentSearchTerms(agent).searches &&
+      (this.transferMarketState.lastSearchDay == null ||
+        this.currentDay() - this.transferMarketState.lastSearchDay >= 14);
+    const offers =
+      this.isTransferWindowWeek() &&
+      searchAvailable &&
+      this.money >= searchFee
       ? this.generateTransferOffers()
       : [];
     this.news.push(
@@ -8543,9 +8641,24 @@ export class Career {
     if (!this.isManagerCareer) this.pendingPlayerTransfer = null;
   }
 
-  generateTransferOffers() {
+  generateTransferOffers({ clubIds = [] } = {}) {
     const agent = this.ensureAgent();
     const terms = agentSearchTerms(agent);
+    const requestedClubIds = [...new Set(clubIds)];
+    if (requestedClubIds.length) {
+      const knownClubIds = new Set(
+        (this.worldCareerLeagues ?? []).flatMap(
+          (entry) => entry.league.teamIds,
+        ),
+      );
+      const unknownClubId = requestedClubIds.find(
+        (clubId) => !knownClubIds.has(clubId),
+      );
+      if (unknownClubId)
+        throw new Error(
+          `The requested destination "${unknownClubId}" is unavailable.`,
+        );
+    }
     this.transferMarketState ??= {
       season: this.season,
       window: null,
@@ -8596,7 +8709,10 @@ export class Career {
     this.transferMarketState.lastSearchDay = today;
     this.transferRefreshCount = this.transferMarketState.searchCount;
     if (agentCost > 0) {
-      this.money -= agentCost;
+      if (!this.spendMoney(agentCost, `${agent.name} destination search`))
+        throw new Error(
+          `You need €${agentCost.toLocaleString()} to fund this search.`,
+        );
       this.financialHistory ??= [];
       this.financialHistory.push({
         id: `agent-search-${this.season}-${this.week}-${this.transferMarketState.searchCount}`,
@@ -8614,8 +8730,9 @@ export class Career {
         : 48 + Math.max(0, 58 - terms.maxPrestige) * 0.15,
     }).filter(
       ({ club }) =>
+        (!requestedClubIds.length || requestedClubIds.includes(club.id)) &&
         Number(club.prestige ?? 50) <=
-        terms.maxPrestige + (this.player.overall >= 88 ? 24 : 0),
+          terms.maxPrestige + (this.player.overall >= 88 ? 24 : 0),
     );
     if ((this.player.overall ?? 0) >= 90) {
       candidates.sort((left, right) =>
@@ -8647,6 +8764,7 @@ export class Career {
                 : "Backup Player";
       return {
         id: `offer-${club.id}-${this.season}-${this.week}-${this.transferMarketState.searchCount}`,
+        agentId: agent.id,
         leagueId: league?.id ?? club.leagueId,
         leagueName: league?.league?.name ?? this.league.name,
         clubId: club.id,
@@ -8668,12 +8786,16 @@ export class Career {
       };
     });
     if (!ranked.length) {
+      this.agentPerformanceFor(agent.id).searches++;
       this.transferOffers = [];
       this.news.unshift(
         "Your agent found no credible club interest: clubs lack a strong positional need, the budget or wage room is insufficient, or the proposed squad role would be too limited.",
       );
       return [];
     }
+    const agentPerformance = this.agentPerformanceFor(agent.id);
+    agentPerformance.searches++;
+    agentPerformance.offers += ranked.length;
     this.transferOffers = ranked;
     this.news.unshift(
       `${agent.name} completed destination search ${this.transferMarketState.searchCount}/${terms.searches}; ${ranked.length} clubs have credible interest.`,
@@ -9018,6 +9140,7 @@ export class Career {
       };
       const transfer = {
         id: `career-transfer-${offer.id}`,
+        agentId: offer.agentId ?? this.agent.id,
         playerId: this.player.id,
         playerName: `${this.player.first} ${this.player.last}`,
         fromClubId: currentClubBeforeMove.id,
@@ -9032,6 +9155,7 @@ export class Career {
       };
       this.transferHistory ??= [];
       this.transferHistory.unshift(transfer);
+      this.agentPerformanceFor(transfer.agentId).deals++;
       this.reconcileSquadMembership();
       this.positionNeedCache = null;
       this.transferOffers = [];
@@ -12718,6 +12842,7 @@ export class Career {
       transferRefreshCount: this.transferRefreshCount,
       transferMarketState: this.transferMarketState,
       transferHistory: this.transferHistory ?? [],
+      agentPerformance: this.agentPerformance ?? {},
       transferRumours: this.transferRumours ?? [],
       nextCpuTransferEvaluationWeek: this.nextCpuTransferEvaluationWeek ?? 0,
       pendingPlayerTransfer: this.pendingPlayerTransfer ?? null,
@@ -12899,6 +13024,7 @@ export class Career {
     this.transferMarketState.searchCount ??= saved.transferRefreshCount ?? 0;
     this.transferMarketState.window ??= null;
     this.transferHistory = saved.transferHistory ?? [];
+    this.agentPerformance = saved.agentPerformance ?? {};
     this.transferRumours = saved.transferRumours ?? [];
     this.nextCpuTransferEvaluationWeek =
       saved.nextCpuTransferEvaluationWeek ?? 0;

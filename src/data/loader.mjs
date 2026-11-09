@@ -1,10 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { parsePlayerDatabaseCsv } from "./player-database.mjs";
 import {
   buildPlayableCareerLeagues,
-  combineRosterPlayers,
   parseCompetitionMetadataCsv,
-  parseFc26RatingsCsv,
-  parseSupplementalPlayersCsv,
 } from "./fc25-roster.mjs";
 
 const readJson = (path) =>
@@ -21,14 +19,11 @@ export async function loadData() {
     objectives,
     careerSettings,
     agents,
-    ratingsCsv,
-    fc26ClubLeagues,
     competitionCsv,
     careerLeagueTeams,
     expandedLeagueConfig,
     europeanAccessConfig,
-    supplementalCsv,
-    supplementalAliases,
+    playerDatabaseCsv,
     keyMomentOptions,
   ] = await Promise.all([
     readJson("../../data/config/clubs.json"),
@@ -38,23 +33,49 @@ export async function loadData() {
     readJson("../../data/config/objectives.json"),
     readJson("../../data/config/career.json"),
     readJson("../../data/config/agents.json"),
-    readText("../../data/squads/fc26_player_ratings.csv"),
-    readJson("../../data/config/fc26-club-leagues.json"),
     readText("../../data/config/football_leagues.csv"),
     readJson("../../data/config/career-league-teams.json"),
     readJson("../../data/config/expanded-leagues.json"),
     readJson("../../data/config/europe-access.json"),
-    readText("../../data/squads/player_additions.csv"),
-    readJson("../../data/config/supplemental-club-aliases.json"),
+    readText("../../data/squads/touchline_player_database.csv"),
     readJson("../../data/config/key-moment-options.json"),
   ]);
 
   leagueConfig.$expandedLeagues = expandedLeagueConfig;
   leagueConfig.$europeanAccess = europeanAccessConfig;
-  const players = combineRosterPlayers(
-    parseFc26RatingsCsv(ratingsCsv, fc26ClubLeagues),
-    parseSupplementalPlayersCsv(supplementalCsv, supplementalAliases),
+  const playerDatabase = parsePlayerDatabaseCsv(playerDatabaseCsv);
+  const players = playerDatabase.players;
+  const expectedClubCounts = Object.fromEntries(
+    Object.entries(careerLeagueTeams)
+      .filter(([league]) => playerDatabase.report.byLeague[league])
+      .map(([league, clubs]) => [league, clubs.length]),
   );
+  const slug = (value) =>
+    String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  const clubCounts = new Map();
+  for (const player of players) {
+    const key = `${player.league}:${slug(player.clubName)}`;
+    clubCounts.set(key, (clubCounts.get(key) ?? 0) + 1);
+  }
+  playerDatabase.expectedClubCounts = expectedClubCounts;
+  playerDatabase.incompleteLeagues = Object.entries(expectedClubCounts)
+    .filter(([leagueName, expected]) => {
+      const leaguePlayers = playerDatabase.byLeague.get(leagueName.toLowerCase()) ?? [];
+      const coveredClubs = new Set(leaguePlayers.map((player) => slug(player.clubName)));
+      return (
+        coveredClubs.size < expected ||
+        [...coveredClubs].some(
+          (clubId) =>
+            (clubCounts.get(`${leagueName}:${clubId}`) ?? 0) < 18,
+        )
+      );
+    })
+    .map(([leagueName]) => leagueName);
   return {
     clubs,
     league: leagueConfig["premier-league"],
@@ -67,6 +88,7 @@ export async function loadData() {
     keyMomentOptions,
     expandedLeagueConfig,
     europeanAccessConfig,
+    playerDatabase,
     fc25Players: players,
     fc25Leagues: [],
     careerLeagues: buildPlayableCareerLeagues(

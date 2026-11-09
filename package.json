@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/server.mjs",
     "test": "node --test",
+    "playerdb:report": "node tools/migrate-player-database.mjs",
+    "playerdb:migrate": "node tools/migrate-player-database.mjs --migrate",
     "deploy": "firebase deploy --only hosting --project extrooww",
     "serve:hosting": "firebase serve --only hosting --project extrooww"
   }

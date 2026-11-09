@@ -2250,7 +2250,8 @@ function renderGame() {
               ["conversation", "Talk to Coach", "✦"],
             ]),
         ...(!career.isManagerCareer ? [["training", "Training", "↗"]] : []),
-        ["transfers", "Agent", "⇄"],
+        ["transfers-list", "Transfers List", "⇄"],
+        ...(!career.isManagerCareer ? [["agent", "Agent", "♙"]] : []),
       ],
     },
     {
@@ -2349,6 +2350,39 @@ function renderGame() {
       renderGame();
     }),
   );
+  const destinationLeagueSelect = $app.querySelector(
+    "#agent-destination-league",
+  );
+  const destinationClubSelect = $app.querySelector(
+    "#agent-destination-club",
+  );
+  const searchSelectedClubButton = $app.querySelector(
+    '[data-action="refresh-offers"][data-search-all="false"]',
+  );
+  destinationLeagueSelect?.addEventListener("change", () => {
+    destinationClubSelect.replaceChildren(
+      new Option("Choose a club", ""),
+    );
+    const league = career.worldCareerLeagues.find(
+      (entry) => entry.league.id === destinationLeagueSelect.value,
+    );
+    if (!league) {
+      destinationClubSelect.disabled = true;
+      return;
+    }
+    for (const clubId of league.league.teamIds) {
+      if (clubId === career.club.id) continue;
+      const clubName = league.clubIdentities?.[clubId]?.name ?? clubId;
+      destinationClubSelect.add(new Option(clubName, clubId));
+    }
+    destinationClubSelect.disabled = destinationClubSelect.options.length < 2;
+    searchSelectedClubButton.disabled = true;
+  });
+  destinationClubSelect?.addEventListener("change", () => {
+    searchSelectedClubButton.disabled =
+      !destinationClubSelect.value ||
+      Number(searchSelectedClubButton.dataset.searchesRemaining) <= 0;
+  });
   // On a phone the sidebar becomes a horizontal icon strip that can overflow; keep
   // the active screen visible rather than hidden off the right-hand edge.
   $app
@@ -2661,7 +2695,8 @@ function renderScreen() {
     return viewedPlayerId ? renderOtherPlayer() : renderPlayerDirectory();
   if (screen === "player") return renderPlayer();
   if (screen === "conversation") return renderConversation();
-  if (screen === "transfers") return renderTransfers();
+  if (screen === "transfers-list") return renderTransfersList();
+  if (screen === "agent") return renderAgent();
   if (screen === "history") return renderHistory();
   if (screen === "investments") return renderInvestments();
   if (screen === "scouting") return renderScouting();
@@ -3068,85 +3103,177 @@ function renderWorld() {
     </section>`;
 }
 
-function renderTransfers() {
+function renderTransfersList() {
+  const market = career.transferMarket();
+  return `
+    <div class="page-heading">
+      <div>
+        <div class="eyebrow lime">TRANSFER MARKET</div>
+        <h1>Transfers List</h1>
+        <p>Players currently available for transfer in ${esc(career.league.name)}.</p>
+      </div>
+      <span class="live-tag">${market.length} PLAYERS LISTED</span>
+    </div>
+    <section class="panel table-panel transfer-market-panel">
+      <div class="panel-heading">
+        <div><div class="eyebrow">AVAILABLE PLAYERS</div><h2>Current market</h2></div>
+        <span class="live-tag">${career.isManagerCareer ? `BUDGET €${Math.round(career.financialSummary().transferBudget).toLocaleString("en-GB")}` : "SCOUTING ONLY"}</span>
+      </div>
+      <table class="world-roster-table">
+        <thead><tr><th>PLAYER</th><th>AGE</th><th>POSITION</th><th>OVR</th><th>CURRENT CLUB</th><th>TRANSFER VALUE</th><th></th></tr></thead>
+        <tbody>${market
+          .map(
+            ({ player, club, marketValue }) => `
+              <tr>
+                <td><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b></td>
+                <td>${player.dob != null ? ageOn(player.dob, currentDay()) : player.age ?? "—"}</td>
+                <td>${esc(player.position)}</td>
+                <td class="world-rating">${player.overall}</td>
+                <td>${esc(club?.name ?? "Free agent")}</td>
+                <td>€${formatDecimal(marketValue / 1_000_000)}m</td>
+                <td><button class="button-primary" data-action="${career.isManagerCareer ? "buy-player" : "player-request"}" data-request-type="better-teammates" data-player-id="${esc(player.id)}">${career.isManagerCareer ? "Enquire" : "Ask manager to sign"}</button></td>
+              </tr>
+            `,
+          )
+          .join("") || '<tr><td colspan="7" class="scorer-empty">No players are currently listed.</td></tr>'}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderAgent() {
+  career.renewAgentSearchWindow?.();
+  const searchTerms = career.agent
+    ? agentSearchTerms(career.agent)
+    : { searches: 0, tier: "No Agent" };
+  const marketState = career.transferMarketState ?? {
+    searchCount: 0,
+    lastSearchDay: null,
+  };
+  const agentStats = career.agent
+    ? career.agentPerformance?.[career.agent.id] ?? {
+        searches: 0,
+        offers: 0,
+        deals: 0,
+      }
+    : { searches: 0, offers: 0, deals: 0 };
+  const conversionRate = agentStats.offers
+    ? Math.round((agentStats.deals / agentStats.offers) * 100)
+    : 0;
+  const leagueOptions = (career.worldCareerLeagues ?? [])
+    .map((entry) =>
+      entry.league.teamIds.some((clubId) => clubId !== career.club.id)
+        ? `<option value="${esc(entry.league.id)}">${esc(entry.league.name)}</option>`
+        : "",
+    )
+    .join("");
   const agentOptions = (data.agents ?? career.agentPool ?? [])
     .map(
       (agent) => `
-    <div class="transfer-agent">
-      <div>
-        <b>${esc(agent.name)}</b>
-        <small>${esc(agent.specialty)} · ${agent.rating} rating</small>
-      </div>
-      <div class="agent-meta">
-        <span>Reputation ${agent.reputation}</span>
-        <button class="button-quiet" data-action="hire-agent" data-agent-id="${agent.id}" ${career.agent?.id === agent.id ? "disabled" : ""}>${career.agent?.id === agent.id ? "Hired" : "Hire"}</button>
-      </div>
-    </div>
-  `,
+        <article class="transfer-agent">
+          <div>
+            <b>${esc(agent.name)}</b>
+            <small>${esc(agent.specialty)} · ${agent.rating} negotiation rating · Reputation ${agent.reputation}</small>
+            <small>${esc(agent.knownFor)}</small>
+          </div>
+          <div class="agent-meta">
+            <span>Hire fee €${formatDecimal(agent.fee)}</span>
+            <button class="button-quiet" data-action="hire-agent" data-agent-id="${esc(agent.id)}">Hire</button>
+          </div>
+        </article>
+      `,
     )
     .join("");
   const offers = career.transferOffers.length
     ? career.transferOffers
         .map(
           (offer) => `
-    <div class="transfer-offer">
-      <div>
-        <b>${esc(offer.clubName)}</b>
-        <small>${esc(offer.leagueName ?? career.league.name)} · Interest ${offer.interest}% · ${esc(offer.role ?? "Squad role unavailable")} · ${esc(offer.window)}</small>
-        <small>${esc(offer.reason ?? "Club interest")}. ${esc(offer.competitionOpportunities ?? "")}</small>
-        <small>Expected time ${offer.expectedPlayingTime ?? "—"}% · €${formatDecimal(offer.wage ?? 0)} weekly · ${offer.contractYears ?? 3}-year contract</small>
-      </div>
-      <div class="agent-meta">
-        <span>€${formatDecimal(offer.fee)} fee</span>
-        <button class="button-primary" data-action="accept-offer" data-offer-id="${offer.id}">Accept</button>
-        <button class="button-quiet" data-action="negotiate-offer" data-offer-id="${offer.id}">Negotiate wages</button>
-        <button class="button-quiet" data-action="request-offer-role" data-offer-id="${offer.id}">Request bigger role</button>
-        <button class="button-quiet" data-action="reject-offer" data-offer-id="${offer.id}">Reject</button>
-      </div>
-    </div>
-  `,
+            <article class="transfer-offer">
+              <div>
+                <b>${esc(offer.clubName)}</b>
+                <small>${esc(offer.leagueName ?? career.league.name)} · Interest ${offer.interest}% · ${esc(offer.role ?? "Squad role unavailable")} · ${esc(offer.window)}</small>
+                <small>${esc(offer.reason ?? "Club interest")}. ${esc(offer.competitionOpportunities ?? "")}</small>
+                <small>Expected time ${offer.expectedPlayingTime ?? "—"}% · €${formatDecimal(offer.wage ?? 0)} weekly · ${offer.contractYears ?? 3}-year contract</small>
+              </div>
+              <div class="agent-actions">
+                <span>€${formatDecimal(offer.fee)} transfer fee</span>
+                <button class="button-primary" data-action="accept-offer" data-offer-id="${esc(offer.id)}">Accept offer</button>
+                <button class="button-quiet" data-action="negotiate-offer" data-offer-id="${esc(offer.id)}">Negotiate wages</button>
+                <button class="button-quiet" data-action="request-offer-role" data-offer-id="${esc(offer.id)}">Request bigger role</button>
+                <button class="button-quiet" data-action="reject-offer" data-offer-id="${esc(offer.id)}">Reject</button>
+              </div>
+            </article>
+          `,
         )
         .join("")
-    : "<div class='empty-report'><p>No credible club interest has resulted in an offer yet. A search does not force a club to make an offer.</p></div>";
-  career.renewAgentSearchWindow?.();
-  const searchTerms = career.agent
-    ? agentSearchTerms(career.agent)
-    : { searches: 0, tier: "No Agent" };
-  const marketState = career.transferMarketState ?? {
-    season: career.season,
-    searchCount: 0,
-    lastSearchDay: null,
-  };
+    : "<div class='empty-report'><p>No offers to review. Choose a destination or let your agent search for suitable clubs.</p></div>";
   const latestHistory = (career.transferHistory ?? []).slice(0, 8);
-  const market = career.transferMarket().slice(0, 18);
+
   return `
     <div class="page-heading">
       <div>
-        <div class="eyebrow lime">TRANSFER GATE</div>
-        <h1>Agent and contracts</h1>
-        <p>Without a representative, you cannot negotiate or receive offers.</p>
+        <div class="eyebrow lime">PLAYER REPRESENTATION</div>
+        <h1>Your Agent</h1>
+        <p>Review your representative, discuss destinations, and negotiate offers before deciding on a move.</p>
       </div>
-      <div class="top-actions">
-        <button class="button-quiet" data-action="refresh-offers" ${!career.agent || marketState.searchCount >= searchTerms.searches ? "disabled" : ""}>Search interested clubs (${Math.max(0, searchTerms.searches - marketState.searchCount)} remaining)</button>
-        ${career.agent ? `<button class="button-quiet" data-action="fire-agent">Fire agent</button>` : ""}
-      </div>
+      ${career.agent ? `<button class="button-quiet" data-action="fire-agent">Release agent</button>` : ""}
     </div>
-    <div class="dashboard-grid">
-      <section class="panel">
-        <div class="panel-heading"><div><div class="eyebrow">YOUR REPRESENTATIVE</div><h2>${career.agent ? esc(career.agent.name) : "No agent hired"}</h2></div></div>
-        <div class="transfer-list">
-          ${career.agent ? `<div class="transfer-agent"><div><b>${esc(career.agent.name)}</b><small>${esc(career.agent.specialty)} · rating ${career.agent.rating}</small></div><div class="agent-meta">          <span>Reputation ${career.agent.reputation}</span><span>Fee €${formatDecimal(career.agent.fee)}</span></div></div>` : agentOptions}
-        </div>
-      </section>
-      <section class="panel">
-        <div class="panel-heading"><div><div class="eyebrow">TRANSFER RADAR</div><h2>Club interest & offers</h2></div><span class="live-tag">${marketState.searchCount}/${searchTerms.searches} SEARCHES</span></div>
-        <p class="muted">${searchTerms.tier} representation gives ${searchTerms.searches} searches per transfer window. Each search costs €${career.agent ? Math.round(career.agent.fee * 0.08).toLocaleString("en-GB") : "0"} and has a 14-day cooldown. Searches are available during the summer and winter windows; interest is based on club squad needs and finances.</p>
-        <div class="transfer-list">${offers}</div>
-      </section>
-    </div>
-    ${career.transferRumours?.length ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">PLAYER CAREER RUMOURS</div><h2>Clubs monitoring you</h2></div><span class="live-tag">SCOUTING</span></div><div class="transfer-list">${career.transferRumours.map((rumour) => `<div class="transfer-agent"><div><b>${esc(rumour.clubName)}</b><small>${esc(rumour.leagueName)} · ${esc(rumour.reason)}</small></div><span>${rumour.score}% suitability</span></div>`).join("")}</div></section>` : ""}
-    ${latestHistory.length ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">TRANSFER CENTRE</div><h2>Latest completed deals</h2></div><span class="live-tag">${career.transferHistory.length} RECORDED</span></div><div class="transfer-list">${latestHistory.map((item) => `<div class="transfer-agent"><div><b>${esc(item.playerName)}</b><small>${esc(item.fromClub)} → ${esc(item.toClub)} · ${item.type} · ${item.date != null ? esc(formatDate(item.date)) : "Date pending"} · ${item.contractYears ?? 3}-year deal</small></div><span>€${formatDecimal(item.fee)}</span></div>`).join("")}</div></section>` : ""}
-    <section class="panel table-panel transfer-market-panel"><div class="panel-heading"><div><div class="eyebrow">GLOBAL MARKET</div><h2>Players available for negotiation</h2></div><span class="live-tag">${career.isManagerCareer ? `BUDGET €${Math.round(career.financialSummary().transferBudget).toLocaleString("en-GB")}` : "SCOUTING ONLY"}</span></div><table class="world-roster-table"><thead><tr><th>PLAYER</th><th>POS</th><th>CLUB</th><th>OVR</th><th>POT</th><th>VALUE</th><th></th></tr></thead><tbody>${market.map(({ player, club, marketValue }) => `<tr><td><b>${esc(player.first)} ${esc(player.last)}</b></td><td>${esc(player.position)}</td><td>${esc(club?.name ?? "Free agent")}</td><td class="world-rating">${player.overall}</td><td>${player.potential ?? "—"}</td><td>€${Math.round(marketValue).toLocaleString("en-GB")}</td><td><button class="button-primary" data-action="${career.isManagerCareer ? "buy-player" : "player-request"}" data-request-type="${career.isManagerCareer ? "" : "better-teammates"}" data-player-id="${esc(player.id)}">${career.isManagerCareer ? "Enquire" : "Ask manager to sign"}</button></td></tr>`).join("") || '<tr><td colspan="7" class="scorer-empty">No players are currently listed.</td></tr>'}</tbody></table></section>
+    ${
+      career.agent
+        ? `
+          <div class="dashboard-grid agent-dashboard">
+            <section class="panel">
+              <div class="panel-heading"><div><div class="eyebrow">YOUR REPRESENTATIVE</div><h2>${esc(career.agent.name)}</h2></div><span class="live-tag">${esc(career.agent.specialty)}</span></div>
+              <p class="muted">${esc(career.agent.knownFor)}</p>
+              <div class="stat-grid agent-stat-grid">
+                <article class="stat-card"><div class="card-label">NEGOTIATION RATING</div><div class="big-number">${career.agent.rating}<small>/100</small></div></article>
+                <article class="stat-card"><div class="card-label">REPUTATION</div><div class="big-number">${career.agent.reputation}<small>/100</small></div></article>
+                <article class="stat-card"><div class="card-label">EXPERIENCE</div><div class="big-number">${agentStats.searches}<small> searches</small></div></article>
+                <article class="stat-card"><div class="card-label">PERFORMANCE</div><div class="big-number">${conversionRate}<small>% conversion</small></div><div class="muted">${agentStats.deals} completed · ${agentStats.offers} offers</div></article>
+              </div>
+              <div class="agent-detail-row"><span>Overall quality</span><b>${career.agent.quality}/100</b></div>
+              <div class="agent-detail-row"><span>Hiring fee paid</span><b>€${formatDecimal(career.agent.fee)}</b></div>
+              <div class="agent-detail-row"><span>Searches this window</span><b>${marketState.searchCount}/${searchTerms.searches}</b></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading"><div><div class="eyebrow">TRANSFER INSTRUCTIONS</div><h2>Discuss your next move</h2></div><span class="live-tag">${marketState.searchCount}/${searchTerms.searches} SEARCHES</span></div>
+              <p class="muted">Choose a league first, then a club to direct your search. Or ask your agent to search all suitable destinations. Clubs still decide based on squad needs, finances, and player fit.</p>
+              <div class="agent-destination-controls">
+                <label class="position-select">League
+                  <select id="agent-destination-league">
+                    <option value="">Choose a league</option>
+                    ${leagueOptions}
+                  </select>
+                </label>
+                <label class="position-select">Club
+                  <select id="agent-destination-club" disabled>
+                    <option value="">Choose a league first</option>
+                  </select>
+                </label>
+                <button class="button-primary" data-action="refresh-offers" data-search-all="false" data-searches-remaining="${Math.max(0, searchTerms.searches - marketState.searchCount)}" ${marketState.searchCount >= searchTerms.searches ? "disabled" : ""}>Search selected club</button>
+                <button class="button-quiet" data-action="refresh-offers" data-search-all="true" ${marketState.searchCount >= searchTerms.searches ? "disabled" : ""}>Search all suitable clubs</button>
+              </div>
+              <p class="muted agent-fee-note">Each search costs €${Math.round(career.agent.fee * 0.08).toLocaleString("en-GB")} and is available during transfer windows, with a 14-day cooldown. Your balance is charged when you search.</p>
+            </section>
+          </div>
+          <section class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">CLUB RESPONSES</div><h2>Offers and negotiations</h2></div><span class="live-tag">${career.transferOffers.length} OFFERS</span></div>
+            <div class="transfer-list">${offers}</div>
+          </section>
+        `
+        : `
+          <section class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">CHOOSE REPRESENTATION</div><h2>Hire an agent</h2></div></div>
+            <p class="muted">Your agent handles club interest and contract negotiations. The listed hiring fee is deducted from your balance.</p>
+            <div class="transfer-list">${agentOptions}</div>
+          </section>
+        `
+    }
+    ${
+      latestHistory.length
+        ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">TRANSFER CENTRE</div><h2>Latest completed deals</h2></div><span class="live-tag">${career.transferHistory.length} RECORDED</span></div><div class="transfer-list">${latestHistory.map((item) => `<article class="transfer-agent"><div><b>${esc(item.playerName)}</b><small>${esc(item.fromClub)} → ${esc(item.toClub)} · ${item.type} · ${item.date != null ? esc(formatDate(item.date)) : "Date pending"} · ${item.contractYears ?? 3}-year deal</small></div><span>€${formatDecimal(item.fee)}</span></article>`).join("")}</div></section>`
+        : ""
+    }
   `;
 }
 
@@ -5790,7 +5917,7 @@ function handleAction(action, details = {}) {
   if (action === "hire-agent") {
     try {
       const result = career.hireAgent(details.agentId);
-      notice = `${result.agent.name} has joined your camp.`;
+      notice = `${result.agent.name} hired for €${formatDecimal(result.agent.fee)}.`;
     } catch (error) {
       notice = `Could not hire agent: ${error.message}`;
     }
@@ -5805,7 +5932,15 @@ function handleAction(action, details = {}) {
   }
   if (action === "refresh-offers") {
     try {
-      career.generateTransferOffers();
+      const selectedClubId = $app.querySelector(
+        "#agent-destination-club",
+      )?.value;
+      const searchAllClubs = details.searchAll === "true";
+      if (!searchAllClubs && !selectedClubId)
+        throw new Error("Choose a league and club first.");
+      career.generateTransferOffers({
+        clubIds: searchAllClubs ? [] : [selectedClubId],
+      });
       notice = career.transferOffers.length
         ? `Your agent found ${career.transferOffers.length} credible club interest${career.transferOffers.length === 1 ? "" : "s"}.`
         : "No clubs have a strong enough squad need and budget to pursue you right now.";
@@ -5867,7 +6002,7 @@ function handleAction(action, details = {}) {
         fee,
         wage: weeklyWage,
       });
-      screen = "transfers";
+      screen = "transfers-list";
       notice = `${marketEntry.player.first} ${marketEntry.player.last} joined ${career.club.name} for €${formatDecimal(fee)}.`;
     } catch (error) {
       notice = `Could not complete transfer: ${error.message}`;

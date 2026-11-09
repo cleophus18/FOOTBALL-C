@@ -567,9 +567,12 @@ export function calculatePlayerOverall(player, position = player?.position) {
   // Legends are frozen at their fixed rating regardless of attributes or form.
   if (player.isLegend) return LEGEND_OVERALL;
   // Imported real-world players keep their CSV overall exactly; the attribute
-  // layer exists for match-engine detail but the displayed rating must match
-  // the source data rather than being re-derived from it.
-  if (player.source === "real-world" && Number.isFinite(player.overall))
+  // layer is calibrated at import so later attribute changes still move OVR.
+  if (
+    player.source === "real-world" &&
+    Number.isFinite(player.overall) &&
+    !Number.isFinite(player.overallAdjustment)
+  )
     return clampAttr(player.overall);
   // Aggregate world-league performers predate the detailed player model. They are
   // intentionally kept as compact records and retain their imported overall.
@@ -579,9 +582,9 @@ export function calculatePlayerOverall(player, position = player?.position) {
   if (pos === "GK") {
     const a = {
       ...player.attrs,
-      ...player.gkAttrs,
+      ...(player.gkAttrs ?? {}),
       // Diving/speed are derived on the fly if the save predates them.
-      ...deriveGkAttrs(player.gkAttrs, player.attrs),
+      ...deriveGkAttrs(player.gkAttrs ?? {}, player.attrs),
     };
     const weights = POSITION_ATTRIBUTE_WEIGHTS.GK;
     let total = 0;
@@ -597,10 +600,12 @@ export function calculatePlayerOverall(player, position = player?.position) {
         Object.entries(GK_WEIGHTS).reduce(
           (sum, [key, weight]) => sum + (a[key] ?? 50) * weight,
           0,
-        ),
+        ) + (player.overallAdjustment ?? 0),
       );
     }
-    const rating = clampAttr(total / weightTotal);
+    const rating = clampAttr(
+      total / weightTotal + (player.overallAdjustment ?? 0),
+    );
     return pos === normalizePosition(player.position)
       ? rating
       : clampAttr(rating - ((player.altPositions ?? []).map(normalizePosition).includes(pos) ? 1 : 3));
@@ -627,7 +632,9 @@ export function calculatePlayerOverall(player, position = player?.position) {
     total += value * weight;
     weightTotal += weight;
   }
-  const rating = clampAttr(total / weightTotal);
+  const rating = clampAttr(
+    total / weightTotal + (player.overallAdjustment ?? 0),
+  );
   if (pos === normalizePosition(player.position)) return rating;
   return clampAttr(
     rating -
@@ -970,6 +977,7 @@ export function createPlayer(spec) {
         gkAttrs: spec.gkAttrs,
       }),
     baseOverall: spec.baseOverall ?? null,
+    overallAdjustment: spec.overallAdjustment ?? null,
     traits: spec.traits ? [...spec.traits] : [],
     personality: spec.personality
       ? (Array.isArray(spec.personality) ? [...spec.personality] : [spec.personality])
@@ -1005,8 +1013,16 @@ export function createPlayer(spec) {
       (spec.wage != null
         ? { wage: Number(spec.wage), expires: spec.contractYears == null ? null : spec.contractYears }
         : null),
+    contractStartDate: spec.contractStartDate ?? null,
+    contractExpiryDate: spec.contractExpiryDate ?? null,
+    releaseClause: spec.releaseClause ?? null,
+    loanStatus: spec.loanStatus ?? null,
+    loanParentClub: spec.loanParentClub ?? null,
     value: spec.value ?? null,
     source: spec.source ?? "generated",
+    dataSource: spec.dataSource ?? null,
+    dataStatus: spec.dataStatus ?? null,
+    lastVerified: spec.lastVerified ?? null,
     trusting: spec.trusting ?? {
       manager: 50,
       fans: 50,

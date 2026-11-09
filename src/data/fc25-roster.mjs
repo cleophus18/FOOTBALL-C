@@ -8,6 +8,8 @@ import expansionConfig from "../../data/config/expanded-leagues.json" with { typ
 import configuredClubGroups from "../../data/config/clubs.json" with { type: "json" };
 import leagueConfig from "../../data/config/leagues.json" with { type: "json" };
 import { normalizeClubName, stadiumIdentityForClub } from "../model/stadiums.mjs";
+import { parseCsvRows } from "./csv.mjs";
+export { parseCsvRows } from "./csv.mjs";
 
 const EXPANSION_LEAGUES = expansionConfig.leagues.map((config) => ({
   ...config,
@@ -89,56 +91,6 @@ const POSITION_MAP = {
   DEFENDER: "CB",
   GOALKEEPER: "GK",
 };
-
-export function parseCsvRows(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"' && text[index + 1] === '"') {
-        field += '"';
-        index++;
-      } else if (char === '"') {
-        quoted = false;
-      } else {
-        field += char;
-      }
-    } else if (char === '"') {
-      quoted = true;
-    } else if (char === ",") {
-      row.push(field);
-      field = "";
-    } else if (char === "\n") {
-      row.push(field.replace(/\r$/, ""));
-      if (row.some((value) => value.trim())) rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += char;
-    }
-  }
-  if (quoted)
-    throw new Error("FC 25 roster CSV has an unterminated quoted field.");
-  if (field.length || row.length) {
-    row.push(field.replace(/\r$/, ""));
-    if (row.some((value) => value.trim())) rows.push(row);
-  }
-  if (rows.length < 2) throw new Error("FC 25 roster CSV has no player rows.");
-
-  const headers = rows.shift().map((header) =>
-    header
-      .trim()
-      .replace(/^\uFEFF/, "")
-      .toLowerCase(),
-  );
-  return rows.map((values) =>
-    Object.fromEntries(headers.map((header, i) => [header, values[i] ?? ""])),
-  );
-}
 
 function numberOrNull(value) {
   if (value == null || value === "") return null;
@@ -628,8 +580,10 @@ export function buildPlayableCareerLeagues(
         };
         rostersByClub[clubId] = roster.map((player) => ({
           id: player.id,
+          playerId: player.playerId,
           first: player.first,
           last: player.last,
+          dob: player.dob,
           nationality: player.nationality,
           age: player.age,
           shirtNumber: player.shirtNumber,
@@ -643,13 +597,20 @@ export function buildPlayableCareerLeagues(
           position: player.position,
           altPositions: player.altPositions?.length
             ? player.altPositions
-            : [player.position],
+            : [],
           overall: player.overall,
           potential: player.potential ?? player.overall,
           attrs: player.attrs,
           value: player.value,
           wage: player.wage,
           contractYears: player.contractYears,
+          contractStartDate: player.contractStartDate,
+          contractExpiryDate: player.contractExpiryDate,
+          releaseClause: player.releaseClause,
+          loanStatus: player.loanStatus,
+          loanParentClub: player.loanParentClub,
+          dataStatus: player.dataStatus,
+          dataSource: player.dataSource,
           source: player.source ?? "fc26-estimate",
         }));
       }
