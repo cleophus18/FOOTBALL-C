@@ -274,6 +274,7 @@ export function simulateMatch(opts) {
     dayIndex,
     detailedPlayerIds = [],
     forcedPlayerIds = [],
+    benchOnlyPlayerIds = [],
     excludedPlayerIds = [],
     playerRoles = {},
     mustHaveWinner = false,
@@ -313,6 +314,7 @@ export function simulateMatch(opts) {
   const homeSel = selectLineup(homeSquad, home.club.formation, dayIndex, {
     customXI: home.club.customXI ?? [],
     forcedXI: forcedPlayerIds.filter((id) => home.club.squad.includes(id)),
+    benchOnly: benchOnlyPlayerIds.filter((id) => home.club.squad.includes(id)),
     // Players explicitly excluded (e.g. an unused career player on the bench) are kept
     // out of the XI entirely, so they can never score, pick up cards or key moments.
     excluded: excludedPlayerIds.filter((id) => home.club.squad.includes(id)),
@@ -321,6 +323,7 @@ export function simulateMatch(opts) {
   const awaySel = selectLineup(awaySquad, away.club.formation, dayIndex, {
     customXI: away.club.customXI ?? [],
     forcedXI: forcedPlayerIds.filter((id) => away.club.squad.includes(id)),
+    benchOnly: benchOnlyPlayerIds.filter((id) => away.club.squad.includes(id)),
     excluded: excludedPlayerIds.filter((id) => away.club.squad.includes(id)),
     prioritizeRating: forcedPlayerIds.length > 0,
   });
@@ -543,6 +546,7 @@ export function simulateMatch(opts) {
     playerStats: simulation.playerStats,
     decidedBy: result.decidedBy,
     penalties: result.penalties,
+    addedTime: result.addedTime,
     substitutions,
     competitionId: competition?.id ?? null,
     dayIndex,

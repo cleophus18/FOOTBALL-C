@@ -9409,41 +9409,24 @@ export class Career {
             dayIndex,
             detailedPlayerIds: [this.player.id],
             playerRoles: { [this.player.id]: this.matchRole },
-            forcedPlayerIds: plannedOutgoingId,
+            forcedPlayerIds: [
+              ...(involvement.starts ? [this.player.id] : []),
+              ...plannedOutgoingId,
+            ],
+            benchOnlyPlayerIds:
+              involvement.namedOnBench && !involvement.starts
+                ? [this.player.id]
+                : [],
             excludedPlayerIds: [
-              ...(involvement.starts ? [] : [this.player.id]),
+              ...(!involvement.starts && !involvement.namedOnBench
+                ? [this.player.id]
+                : []),
               ...[...(this.worldCupUnavailableIds ?? [])],
             ],
             competition: "league",
           });
           const side = home.id === this.club.id ? "home" : "away";
           const opponent = side === "home" ? away : home;
-          const userSide = result[side];
-          if (involvement.starts && !this.club.customXI?.length) {
-            const naturalPosition = normalizePosition(this.player.position);
-            const naturalSlot = userSide.xiSlots.find(
-              (entry) => normalizePosition(entry.slot) === naturalPosition,
-            );
-            if (naturalSlot && naturalSlot.id !== this.player.id) {
-              const replacedId = naturalSlot.id;
-              userSide.xi = userSide.xi.filter((id) => id !== this.player.id);
-              naturalSlot.id = this.player.id;
-              userSide.xi = userSide.xi.map((id) =>
-                id === replacedId ? this.player.id : id,
-              );
-              userSide.startingXI = (userSide.startingXI ?? userSide.xi).map(
-                (id) => (id === replacedId ? this.player.id : id),
-              );
-              userSide.subs = (userSide.subs ?? []).filter(
-                (id) => id !== this.player.id,
-              );
-              userSide.subs.push(replacedId);
-            } else if (!naturalSlot) {
-              involvement.starts = false;
-              involvement.minutes = 0;
-              involvement.subOnMinute = null;
-            }
-          }
           if (involvement.outgoingPlayerId) {
             const outgoingPlayer = this.players.find(
               (player) => player.id === involvement.outgoingPlayerId,
@@ -9464,7 +9447,7 @@ export class Career {
             side,
             opponents: opposingXI,
             rng: this.rng.stream("player-moments"),
-            position: this.player.position,
+            position: involvement.position ?? this.player.position,
             minutes: involvement.minutes,
             role: this.matchRole,
             catalog: this.data.keyMomentOptions,
@@ -10026,120 +10009,114 @@ export class Career {
    * run-out. `minutes` drives the player engine, and the entrance minute is stored
    * so the live sim can bring him on and announce it.
    */
-  matchInvolvement() {
-    const trust = this.player.trusting?.manager ?? 50;
-    const overall = this.player.overall ?? 60;
-    const formation = FORMATIONS[this.club.formation] ?? FORMATIONS["4-3-3"];
-    const naturalPosition = normalizePosition(this.player.position);
-    if (this.club.customXI?.length) {
-      const starts = this.club.customXI.some(
-        (assignment) => assignment.playerId === this.player.id,
-      );
-      if (starts && !this.player.injury && !(this.player.suspensionWeeks > 0))
-        return { starts: true, minutes: 90, subOnMinute: null };
-      return { starts: false, minutes: 0, subOnMinute: null };
-    }
-    const hasRole = formation.slots.some(
-      (slot) => normalizePosition(slot) === naturalPosition,
+  getPlayerMatchSelection(dayIndex = this.currentDay()) {
+    const squad = this.players.filter((player) =>
+      this.club.squad.includes(player.id),
     );
-    const eligible =
-      hasRole && !this.player.injury && !(this.player.suspensionWeeks > 0);
-    if (!eligible) return { starts: false, minutes: 0, subOnMinute: null };
-    if (this.player.requestedPlayingTime === "less")
-      return { starts: false, minutes: 0, subOnMinute: null };
-    const teamSquad = this.players.filter(
-      (player) =>
-        this.club.squad.includes(player.id) &&
-        !player.injury &&
-        !(player.suspensionWeeks > 0),
+    const lineup = selectLineup(
+      squad,
+      this.club.formation,
+      dayIndex,
+      { customXI: this.club.customXI ?? [] },
     );
-    const candidates = teamSquad.filter(
-      (player) => normalizePosition(player.position) === naturalPosition,
+    const starter = lineup.xi.find(
+      (entry) => entry.player.id === this.player.id,
     );
-    const bestInPosition = candidates
-      .map((player) => ({
-        player,
-        rating: effectiveRating(player, naturalPosition),
-      }))
-      .sort((left, right) => right.rating - left.rating)[0]?.player;
-    const isBestInPosition = bestInPosition?.id === this.player.id;
-    const isRoleApprovedStarter =
-      this.player.managerRoleApproved &&
-      bestInPosition &&
-      effectiveRating(this.player, naturalPosition) >=
-        effectiveRating(bestInPosition, naturalPosition) - 3;
-    // When the user only outranks the incumbent because that man is fatigued, the coach
-    // still starts him and plans the user's second-half entrance instead.
-    const rivals = candidates.filter((player) => player.id !== this.player.id);
-    const fatiguedRival = rivals.find((player) => (player.fatigue ?? 0) >= 35);
-    const plannedEntrance = isBestInPosition && !!fatiguedRival;
-    const userCanStart =
-      overall >= 55 &&
-      (isBestInPosition || isRoleApprovedStarter) &&
-      !plannedEntrance;
-    if (userCanStart) return { starts: true, minutes: 90, subOnMinute: null };
+    const substitute = lineup.subs.find(
+      (player) => player.id === this.player.id,
+    );
+    const unavailable =
+      !this.club.squad.includes(this.player.id) ||
+      Boolean(this.player.injury) ||
+      (this.player.suspensionWeeks ?? 0) > 0 ||
+      this.worldCupUnavailableIds?.has(this.player.id) ||
+      this.player.requestedPlayingTime === "less";
+    return {
+      dayIndex,
+      lineup,
+      starter: unavailable ? null : starter ?? null,
+      substitute: unavailable ? null : substitute ?? null,
+      status: unavailable
+        ? "not-selected"
+        : starter
+          ? "starter"
+          : substitute
+            ? "bench"
+            : "not-selected",
+    };
+  }
 
-    // Planned entrance: the tired incumbent keeps his place at kick-off.
-    if (plannedEntrance) {
+  matchInvolvement(dayIndex = null) {
+    if (!Number.isFinite(dayIndex)) {
+      const roundIndex = this.league.fixtureWeeks.indexOf(this.week);
+      dayIndex =
+        roundIndex >= 0
+          ? this.fixtureDayFor(this.league, roundIndex)
+          : this.currentDay();
+    }
+    const selection = this.getPlayerMatchSelection(dayIndex);
+    if (selection.status === "starter") {
+      return {
+        starts: true,
+        namedOnBench: false,
+        minutes: 90,
+        subOnMinute: null,
+        position: selection.starter.slot,
+      };
+    }
+    if (selection.status !== "bench") {
       return {
         starts: false,
-        minutes: 90 - 55,
-        subOnMinute: 55,
-        outgoingPlayerId: fatiguedRival.id,
+        namedOnBench: false,
+        minutes: 0,
+        subOnMinute: null,
       };
     }
 
-    const naturalAlternative = bestInPosition;
-    const naturalSlot = formation.slots.some(
-      (slot) => normalizePosition(slot) === naturalPosition,
+    const trust = this.player.trusting?.manager ?? 50;
+    const formation = FORMATIONS[this.club.formation] ?? FORMATIONS["4-3-3"];
+    const naturalPosition = normalizePosition(this.player.position);
+    const naturalAlternative = selection.lineup.xi.find(
+      (entry) => normalizePosition(entry.slot) === naturalPosition,
     );
-    if (!naturalAlternative || !naturalSlot)
-      return { starts: false, minutes: 0, subOnMinute: null };
-
-    const dayIndex =
-      this.calendar[Math.max(0, Math.min(this.week, this.calendar.length - 1))]
-        ?.matchday ?? 0;
+    const benchOnly = {
+      starts: false,
+      namedOnBench: true,
+      minutes: 0,
+      subOnMinute: null,
+      position: naturalPosition,
+    };
+    if (!naturalAlternative || trust < 25 || (this.player.overall ?? 60) < 50)
+      return benchOnly;
+    const alternative = naturalAlternative.player;
     const userRating = effectiveRating(this.player, naturalPosition, {
       dayIndex,
     });
     const alternativeRating = effectiveRating(
-      naturalAlternative,
+      alternative,
       naturalPosition,
       { dayIndex },
     );
     const isBetterOption = userRating >= alternativeRating - 3;
-    // A prospect within touching distance of the starter earns a late cameo; someone
-    // hopelessly outmatched stays an unused substitute this week.
     const cameoCandidate = userRating >= alternativeRating - 30;
-    if (trust < 25 || overall < 50) {
-      return { starts: false, minutes: 0, subOnMinute: null };
-    }
     if (this.player.requestedPlayingTime === "more") {
       return {
         starts: false,
+        namedOnBench: true,
         minutes: 25,
         subOnMinute: 65,
-        outgoingPlayerId: naturalAlternative.id,
+        outgoingPlayerId: alternative.id,
+        position: naturalPosition,
       };
     }
 
-    // Keep the best player in the XI at kick-off. Offer the user a second-half chance
-    // when the side is likely to be comfortable or the incumbent is carrying fatigue.
-    // Even an outmatched prospect still earns a late cameo — career players who never
-    // see the pitch cannot develop, so the manager gives minutes when the game is settled.
-    const tiredIncumbent = (naturalAlternative.fatigue ?? 0) >= 35;
+    const tiredIncumbent = (alternative.fatigue ?? 0) >= 35;
     const likelyComfortableMatch =
-      this.club.prestige - naturalAlternative.overall >= 8 ||
+      this.club.prestige - alternative.overall >= 8 ||
       this.player.trusting?.fans >= 75;
     const cameo = cameoCandidate && !tiredIncumbent && !likelyComfortableMatch;
-    if (
-      !isBetterOption &&
-      !tiredIncumbent &&
-      !likelyComfortableMatch &&
-      !cameo
-    ) {
-      return { starts: false, minutes: 0, subOnMinute: null };
-    }
+    if (!isBetterOption && !tiredIncumbent && !likelyComfortableMatch && !cameo)
+      return benchOnly;
     const subOnMinute = tiredIncumbent
       ? 55
       : isBetterOption
@@ -10149,9 +10126,11 @@ export class Career {
           : 75;
     return {
       starts: false,
+      namedOnBench: true,
       minutes: 90 - subOnMinute,
       subOnMinute,
-      outgoingPlayerId: naturalAlternative.id,
+      outgoingPlayerId: alternative.id,
+      position: naturalPosition,
     };
   }
 
@@ -10192,7 +10171,9 @@ export class Career {
         userStarted: false,
         userOnPitch: false,
         userEnteredPitch: false,
-        userStatus: "unused",
+        userStatus: sideData?.subs?.includes(this.player.id)
+          ? "unused"
+          : "not-selected",
         subOnMinute: null,
         substituteForPlayerId: null,
       };
@@ -11200,6 +11181,7 @@ export class Career {
       decision,
       this.rng.stream("player-moments"),
       this.data.keyMomentOptions,
+      moment.position ?? this.player.position,
     );
     moment.resolved = resolution;
     this.matchSimulation.activeMomentIndex = null;
@@ -11407,11 +11389,12 @@ export class Career {
       };
     }
 
-    this.matchSimulation.minute = 90;
-    this.releaseScheduledGoals(match, 90);
+    const fullTimeMinute = 90 + Math.max(0, Number(match.addedTime) || 0);
+    this.matchSimulation.minute = fullTimeMinute;
+    this.releaseScheduledGoals(match, fullTimeMinute);
     this.matchSimulation.status = "finished";
     this.finishMatchSimulation();
-    return { status: "finished", minute: 90, momentIndex: null };
+    return { status: "finished", minute: fullTimeMinute, momentIndex: null };
   }
 
   startMatchSimulation() {
@@ -11477,7 +11460,12 @@ export class Career {
     )
       return this.matchSimulation;
 
-    const nextMinute = Math.min(90, this.matchSimulation.minute + 1);
+    const fullTimeMinute =
+      90 + Math.max(0, Number(match.addedTime) || 0);
+    const nextMinute = Math.min(
+      fullTimeMinute,
+      this.matchSimulation.minute + 1,
+    );
     // Bring an eligible substitute on before checking this minute's key moments.
     const entering =
       !this.matchSimulation.userOnPitch &&
@@ -11520,7 +11508,7 @@ export class Career {
     } else {
       this.matchSimulation.minute = nextMinute;
       this.releaseScheduledGoals(match, nextMinute);
-      if (nextMinute >= 90) {
+      if (nextMinute >= fullTimeMinute) {
         this.matchSimulation.status = "finished";
         this.finishMatchSimulation();
       }
@@ -12406,12 +12394,12 @@ export class Career {
     const opponents = (side === "home" ? awayPlayers : homePlayers).filter(
       Boolean,
     );
-    const involvement = this.matchInvolvement();
+    const dayIndex = fixture.scheduledDay ?? this.currentDay();
+    const involvement = this.matchInvolvement(dayIndex);
     const plannedOutgoingId =
       !involvement.starts && involvement.outgoingPlayerId
         ? [involvement.outgoingPlayerId]
         : [];
-    const dayIndex = this.calendar[this.week]?.matchday ?? this.currentDay();
     const homeStrength = matchStrength(homeClub, homePlayers, dayIndex);
     const awayStrength = matchStrength(awayClub, awayPlayers, dayIndex);
     const difficultyBonus =
@@ -12430,8 +12418,18 @@ export class Career {
       dayIndex,
       detailedPlayerIds: [this.player.id],
       playerRoles: { [this.player.id]: this.matchRole },
-      forcedPlayerIds: plannedOutgoingId,
-      excludedPlayerIds: involvement.starts ? [] : [this.player.id],
+      forcedPlayerIds: [
+        ...(involvement.starts ? [this.player.id] : []),
+        ...plannedOutgoingId,
+      ],
+      benchOnlyPlayerIds:
+        involvement.namedOnBench && !involvement.starts
+          ? [this.player.id]
+          : [],
+      excludedPlayerIds:
+        !involvement.starts && !involvement.namedOnBench
+          ? [this.player.id]
+          : [],
       competition: "UEFA Champions League",
     });
     const opponent = side === "home" ? awayClub : homeClub;
@@ -12441,7 +12439,7 @@ export class Career {
       side,
       opponents,
       rng: this.rng.stream("champions-league-player-moments"),
-      position: this.player.position,
+      position: involvement.position ?? this.player.position,
       minutes: involvement.minutes,
       role: this.matchRole,
       catalog: this.data.keyMomentOptions,

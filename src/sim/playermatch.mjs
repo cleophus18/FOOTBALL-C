@@ -800,15 +800,26 @@ export function simulatePlayerMatch(opts) {
   // Position weighting makes generated moments fit the player's role. Three is the
   // hard per-match ceiling so a fixture can never overwhelm the live flow.
   const momentBudget =
-    position === "GK"
-      ? clamp(Math.round(1 + (stats.saves * roleMod.momentVolume) / 2), 1, 3)
-      : clamp(
-          Math.round(
-            1 + ((stats.shots + stats.keyPasses) * roleMod.momentVolume) / 2.5,
-          ),
-          0,
-          3,
-        );
+    (() => {
+      const involvement =
+        position === "GK"
+          ? stats.saves * 1.1 + stats.passesCompleted * 0.012
+          : stats.shots * (position === "ST" ? 0.8 : 0.55) +
+            stats.keyPasses * 0.4 +
+            stats.tacklesWon * (["CB", "LB", "RB", "DM"].includes(position) ? 0.24 : 0.12) +
+            stats.interceptions * 0.2 +
+            stats.dribblesWon * (["LW", "RW", "AM"].includes(position) ? 0.2 : 0.08);
+      const chance = clamp(
+        (0.12 + involvement * 0.13) * roleMod.momentVolume,
+        0.08,
+        0.82,
+      );
+      let opportunities = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (rng.chance(chance)) opportunities++;
+      }
+      return opportunities;
+    })();
   const opposingKeeper = opponents.find(
     (opponent) => opponent.position === "GK",
   );
@@ -837,14 +848,37 @@ export function simulatePlayerMatch(opts) {
     0.12,
   );
   for (let i = 0; i < momentBudget; i++) {
+    const minute = rng.int(5, 90);
+    const goalsBeforeMoment = (match.events ?? []).filter(
+      (event) => event.type === "goal" && event.minute <= minute,
+    );
+    const scoreDifference = goalsBeforeMoment.reduce(
+      (difference, event) =>
+        difference +
+        (event.side === side ? 1 : -1) * (event.ownGoal ? -1 : 1),
+      0,
+    );
+    const matchPressure =
+      minute >= 75 && scoreDifference < 0
+        ? 0.025
+        : minute >= 75 && scoreDifference > 0
+          ? -0.015
+          : 0;
+    const abilityAdjustment = clamp(
+      ((player.overall ?? 60) - 60) * 0.0015 +
+        ((player.fitness ?? 85) - 85) * 0.001 +
+        ((player.stamina ?? 80) - 80) * 0.0005,
+      -0.1,
+      0.1,
+    );
     const kind =
       position === "GK"
         ? rng.weightedPick(
-            ["keeperSave", "keeperSave", "bigPass", "keeperRush"],
-            (k) => (k === "keeperSave" ? 4 : 1),
+            ["keeperSave", "oneOnOne", "penalty", "bigPass"],
+            (k) => (k === "keeperSave" ? 4 : k === "bigPass" ? 1.5 : 0.6),
           )
         : rng.weightedPick(
-            ["chance", "penalty", "oneOnOne", "bigPass", "lastDitch", "assist"],
+            ["chance", "penalty", "oneOnOne", "bigPass", "lastDitch"],
             (k) => {
               const positionWeight =
                 POSITION_MOMENT_WEIGHTS[normalizePosition(position)] ??
@@ -869,7 +903,8 @@ export function simulatePlayerMatch(opts) {
           );
     const moment = {
       kind,
-      minute: rng.int(5, 90),
+      minute,
+      position,
       resolved: null,
       // Pre-computed so the "trust your attributes" option is instant and honest.
       opposingKeeperQuality,
@@ -877,7 +912,9 @@ export function simulatePlayerMatch(opts) {
       autoSuccessChance: clamp(
         autoSuccessChance(player, position, kind, opposingKeeperQuality) -
           defensivePressure +
-          roleMod.momentSuccess,
+          roleMod.momentSuccess +
+          abilityAdjustment +
+          matchPressure,
         0.05,
         0.95,
       ),
@@ -1403,6 +1440,15 @@ export function autoSuccessChance(player, position, kind, keeperQuality = 60) {
         0.65,
       );
     case "penalty":
+      if (normalizePosition(position) === "GK") {
+        return clamp(
+          0.3 +
+            ((player.gkAttrs?.reflexes ?? 60) - 60) * 0.007 +
+            ((player.gkAttrs?.positioning ?? 60) - 60) * 0.004,
+          0.12,
+          0.78,
+        );
+      }
       return clamp(
         (0.68 + ((a.shooting - 60) / 39) * 0.22) *
           (1 + ((player.weakFoot ?? 3) - 3) * 0.05) +
@@ -1411,6 +1457,16 @@ export function autoSuccessChance(player, position, kind, keeperQuality = 60) {
         0.97,
       );
     case "oneOnOne":
+      if (normalizePosition(position) === "GK") {
+        return clamp(
+          0.4 +
+            ((player.gkAttrs?.reflexes ?? 60) - 60) * 0.007 +
+            ((player.gkAttrs?.positioning ?? 60) - 60) * 0.004 +
+            ((player.gkAttrs?.handling ?? 60) - 60) * 0.003,
+          0.15,
+          0.84,
+        );
+      }
       return clamp(
         0.22 +
           ((a.dribbling - 55) / 44) *
@@ -1973,8 +2029,15 @@ function additionalPositionActions(position, kind) {
 }
 
 /** Resolve a position-specific action with its own skill check and risk profile. */
-export function resolveMomentDecision(player, moment, decision, rng, catalog) {
-  const actions = keyMomentActions(moment.kind, player.position, catalog);
+export function resolveMomentDecision(
+  player,
+  moment,
+  decision,
+  rng,
+  catalog,
+  position = moment.position ?? player.position,
+) {
+  const actions = keyMomentActions(moment.kind, position, catalog);
   let action = actions.find((candidate) => candidate.id === decision);
   if (!action && (decision === "take-risk" || decision === "play-safe")) {
     const modifier = decision === "take-risk" ? 0.08 : 0;
@@ -1986,7 +2049,9 @@ export function resolveMomentDecision(player, moment, decision, rng, catalog) {
           ? "passing"
           : moment.kind === "lastDitch"
             ? "defending"
-            : "shooting",
+            : position === "GK"
+              ? "reflexes"
+              : "shooting",
       modifier,
       effect: ["chance", "penalty", "oneOnOne"].includes(moment.kind)
         ? "shot"
@@ -2021,7 +2086,7 @@ export function resolveMomentDecision(player, moment, decision, rng, catalog) {
   const probability = clamp(
     autoSuccessChance(
       player,
-      player.position,
+    position,
       moment.kind,
       moment.opposingKeeperQuality,
     ) +

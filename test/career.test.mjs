@@ -1133,6 +1133,76 @@ test("career player in a custom starting XI is marked on the pitch, not on the b
   assert.equal(career.matchSimulation.userStatus, "starter");
 });
 
+test("a player excluded from the squad cannot appear in the match", async () => {
+  const data = await loadData();
+  const career = createCareer(data, options(7033));
+  career.club.squad = career.club.squad.filter(
+    (playerId) => playerId !== career.player.id,
+  );
+  assert.equal(career.getPlayerMatchSelection().status, "not-selected");
+  assert.equal(career.matchInvolvement().minutes, 0);
+
+  let report;
+  do {
+    report = career.advanceWeek();
+  } while (!report.userMatch);
+
+  const match = report.userMatch;
+  const side = match[match.side];
+  assert.equal(side.xi.includes(career.player.id), false);
+  assert.equal(side.subs.includes(career.player.id), false);
+  assert.equal(career.matchSimulation.userStatus, "not-selected");
+  assert.equal(match.playerResult.played, false);
+  assert.equal(match.playerResult.minutes, 0);
+  assert.equal(match.playerResult.rating, null);
+  assert.deepEqual(match.playerResult.keyMoments, []);
+
+  career.startMatchSimulation();
+  while (career.matchSimulation.status !== "finished") {
+    const state = career.tickMatchSimulation();
+    assert.notEqual(state.status, "paused");
+  }
+  assert.equal(career.player.stats.apps, 0);
+  assert.equal(career.player.stats.goals, 0);
+  assert.equal(career.player.stats.assists, 0);
+  assert.equal(career.league.table.row(career.club.id).played, 1);
+});
+
+test("injured and suspended players are excluded from the player match", async () => {
+  const data = await loadData();
+  for (const [seed, unavailable] of [
+    [
+      7034,
+      (player) =>
+        (player.injury = {
+          type: "moderate",
+          label: "Moderate injury",
+          weeks: 100,
+        }),
+    ],
+    [7035, (player) => (player.suspensionWeeks = 100)],
+  ]) {
+    const career = createCareer(data, options(seed));
+    unavailable(career.player);
+    assert.equal(career.getPlayerMatchSelection().status, "not-selected");
+
+    let report;
+    do {
+      report = career.advanceWeek();
+    } while (!report.userMatch);
+
+    const match = report.userMatch;
+    const side = match[match.side];
+    assert.equal(side.xi.includes(career.player.id), false);
+    assert.equal(side.subs.includes(career.player.id), false);
+    assert.equal(career.matchSimulation.userStatus, "not-selected");
+    assert.equal(match.playerResult.played, false);
+    assert.equal(match.playerResult.minutes, 0);
+    assert.equal(match.playerResult.rating, null);
+    assert.deepEqual(match.playerResult.keyMoments, []);
+  }
+});
+
 test("custom XI assignments preserve both slots when a formation repeats a position", async () => {
   const data = await loadData();
   const career = createCareer(data, options(7031));
@@ -1814,6 +1884,8 @@ test("the best natural-position player starts and the user can replace them when
   const data = await loadData();
   const career = createCareer(data, options(74902));
   career.club.formation = "4-3-3";
+  career.club.userChosenFormation = true;
+  career.club.customXI = [];
   const incumbent = career.players.find(
     (player) =>
       player.clubId === career.club.id &&
@@ -1821,14 +1893,37 @@ test("the best natural-position player starts and the user can replace them when
       player.id !== career.player.id,
   );
   assert.ok(incumbent);
+  career.club.squad = [...new Set([...career.club.squad, incumbent.id])];
+  const supportingAttackers = career.players.filter(
+    (player) =>
+      player.clubId === career.club.id &&
+      career.club.squad.includes(player.id) &&
+      player.id !== career.player.id &&
+      player.id !== incumbent.id &&
+      groupOf(player.position) === "ATT",
+  );
+  assert.ok(supportingAttackers.length >= 2);
+  career.club.customXI = [
+    {
+      slot: "ST",
+      slotIndex: FORMATIONS["4-3-3"].slots.indexOf("ST"),
+      playerId: incumbent.id,
+    },
+    ...["LW", "RW"].map((slot, index) => ({
+      slot,
+      slotIndex: FORMATIONS["4-3-3"].slots.indexOf(slot),
+      playerId: supportingAttackers[index].id,
+    })),
+  ];
   career.player.overall = 55;
   career.player.attrs = Object.fromEntries(
     Object.keys(career.player.attrs).map((attribute) => [attribute, 45]),
   );
   career.player.attrs.shooting = 50;
   incumbent.attrs = Object.fromEntries(
-    Object.keys(incumbent.attrs).map((attribute) => [attribute, 90]),
+    Object.keys(incumbent.attrs).map((attribute) => [attribute, 99]),
   );
+  incumbent.overall = 99;
   incumbent.fatigue = 0;
   assert.equal(career.matchInvolvement().starts, false);
   assert.equal(career.matchInvolvement().minutes, 0);
@@ -1856,6 +1951,7 @@ test("the best natural-position player starts and the user can replace them when
     "the higher-rated player must start",
   );
   assert.equal(side.xi.includes(career.player.id), false);
+  assert.equal(side.subs.includes(career.player.id), true);
   career.startMatchSimulation();
   career.matchSimulation.minute = 55;
   career.matchSimulation.status = "running";
@@ -1953,6 +2049,7 @@ test("ST substitute enters only in the ST slot and does not replace another posi
   const career = createCareer(data, options(74903));
   career.player.trusting.manager = 35;
   career.club.formation = "4-3-3";
+  career.club.userChosenFormation = true;
   career.player.attrs = Object.fromEntries(
     Object.keys(career.player.attrs).map((attribute) => [attribute, 80]),
   );
@@ -1964,6 +2061,27 @@ test("ST substitute enters only in the ST slot and does not replace another posi
       player.id !== career.player.id,
   );
   assert.ok(incumbent);
+  const supportingAttackers = career.players.filter(
+    (player) =>
+      player.clubId === career.club.id &&
+      career.club.squad.includes(player.id) &&
+      player.id !== career.player.id &&
+      player.id !== incumbent.id &&
+      groupOf(player.position) === "ATT",
+  );
+  assert.ok(supportingAttackers.length >= 2);
+  career.club.customXI = [
+    {
+      slot: "ST",
+      slotIndex: FORMATIONS["4-3-3"].slots.indexOf("ST"),
+      playerId: incumbent.id,
+    },
+    ...["LW", "RW"].map((slot, index) => ({
+      slot,
+      slotIndex: FORMATIONS["4-3-3"].slots.indexOf(slot),
+      playerId: supportingAttackers[index].id,
+    })),
+  ];
   incumbent.attrs = Object.fromEntries(
     Object.keys(incumbent.attrs).map((attribute) => [attribute, 99]),
   );
@@ -2592,6 +2710,7 @@ test("key-moment decisions change the live score and count only after full time"
   assert.equal(career.player.stats.apps, 1);
   assert.equal(career.player.stats.goals, match.playerResult.stats.goals);
   assert.equal(career.player.leagueGoals, match.playerResult.stats.goals);
+  career.rng.stream = originalStream;
   assert.doesNotThrow(() => career.advanceWeek());
 });
 
@@ -2608,6 +2727,15 @@ test("live match clock pauses at key moments and resumes after a decision", asyn
     [0, 0],
   );
   assert.equal(career.league.table.row(career.club.id).played, 0);
+  report.userMatch.playerResult.keyMoments = [
+    {
+      minute: 5,
+      kind: "chance",
+      position: career.player.position,
+      options: [],
+      resolved: null,
+    },
+  ];
   career.startMatchSimulation();
   assert.equal(career.matchSimulation.status, "running");
   const homeScorer = career.players.find(
@@ -2918,7 +3046,67 @@ test("saving and restoring during a live match preserves its pending goals and s
       career.lastReport.userMatch.awayGoals,
     ],
   );
-  assert.equal(restored.league.table.row(restored.club.id).played, 0);
+  assert.equal(restored.league.table.row(restored.club.id).played, 0  );
+});
+
+test("saving at a key moment resumes the paused decision without duplicating the result", async () => {
+  const data = await loadData();
+  const career = createCareer(data, options(23841));
+  career.club.formation = "4-3-3";
+  career.club.userChosenFormation = true;
+  career.player.attrs = Object.fromEntries(
+    Object.keys(career.player.attrs).map((attribute) => [attribute, 99]),
+  );
+  career.player.overall = calculateOverall(career.player);
+  let report;
+  do {
+    report = career.advanceWeek();
+  } while (!report.userMatch);
+
+  assert.equal(career.matchSimulation.userOnPitch, true);
+  report.userMatch.playerResult.keyMoments = [
+    {
+      minute: 1,
+      kind: "chance",
+      position: career.player.position,
+      options: [],
+      resolved: null,
+    },
+  ];
+  career.startMatchSimulation();
+  assert.equal(career.tickMatchSimulation().status, "paused");
+
+  const restored = createCareer(
+    data,
+    career.creation,
+    JSON.parse(JSON.stringify(career.toJSON())),
+  );
+  assert.equal(restored.matchSimulation.status, "paused");
+  assert.equal(restored.matchSimulation.activeMomentIndex, 0);
+  assert.equal(
+    restored.lastReport.userMatch.playerResult.keyMoments[0].resolved,
+    null,
+  );
+  restored.resolveKeyMoment(0, "play-safe");
+  assert.throws(
+    () => restored.resolveKeyMoment(0, "play-safe"),
+    /already been resolved/,
+  );
+
+  while (restored.matchSimulation.status !== "finished") {
+    const state = restored.advanceMatchSimulation();
+    if (state.status === "paused")
+      restored.resolveKeyMoment(state.momentIndex, "play-safe");
+  }
+  assert.equal(
+    restored.matchSimulation.minute,
+    90 + Math.max(0, Number(report.userMatch.addedTime) || 0),
+  );
+  assert.equal(restored.league.table.row(restored.club.id).played, 1);
+  assert.equal(restored.player.stats.apps, 1);
+  restored.finishMatchSimulation();
+  assert.equal(restored.league.table.row(restored.club.id).played, 1);
+  assert.equal(restored.player.stats.apps, 1);
 });
 
 test("career creation supports a roster-backed club in an imported league", async () => {

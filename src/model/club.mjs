@@ -605,11 +605,14 @@ export function selectLineup(
     benchSize = 9,
     forcedXI = [],
     excluded = [],
+    benchOnly = [],
     prioritizeRating = true,
     customXI = [],
   } = opts;
   const shape = FORMATIONS[formation] ?? FORMATIONS["4-3-3"];
   const available = squad.filter((p) => !p.injury && !(p.suspensionWeeks > 0) && !excluded.includes(p.id));
+  const benchOnlyIds = new Set(benchOnly);
+  const xiAvailable = available.filter((player) => !benchOnlyIds.has(player.id));
   const mandatory = new Set(forcedXI);
 
   const used = new Set();
@@ -644,7 +647,7 @@ export function selectLineup(
       preassigned.has(assignment.playerId)
     )
       continue;
-    const player = available.find((p) => p.id === assignment.playerId);
+    const player = xiAvailable.find((p) => p.id === assignment.playerId);
     if (
       !player ||
       (normalizePosition(player.position) === "GK") !==
@@ -657,12 +660,28 @@ export function selectLineup(
   }
   for (const id of mandatory) {
     if (preassigned.has(id)) continue;
-    const player = available.find((p) => p.id === id);
+    const player = xiAvailable.find((p) => p.id === id);
     if (!player) continue;
     const natural = normalizePosition(player.position);
-    const slotIndex = shape.slots.findIndex(
+    let slotIndex = shape.slots.findIndex(
       (slot, index) => slot === natural && !preSlotted.has(index),
     );
+    if (slotIndex < 0) {
+      slotIndex = shape.slots.findIndex((slot, index) => {
+        if (preSlotted.has(index)) return false;
+        const target = normalizePosition(slot);
+        if ((natural === "GK") !== (target === "GK")) return false;
+        if (groupOf(natural) !== groupOf(target)) return false;
+        const alternatives = [
+          natural,
+          ...(player.altPositions ?? []).map(normalizePosition),
+        ];
+        return (
+          alternatives.includes(target) ||
+          groupOf(natural) === groupOf(target)
+        );
+      });
+    }
     if (slotIndex >= 0) {
       preassigned.set(id, slotIndex);
       preSlotted.add(slotIndex);
@@ -683,7 +702,7 @@ export function selectLineup(
 
   // Rank players before assigning slots so the strongest player keeps the best
   // natural role and the next strongest can use a compatible role elsewhere.
-  const rankedPlayers = available
+  const rankedPlayers = xiAvailable
     .filter((player) => !used.has(player.id))
     .sort((a, b) => effectiveRating(b, b.position, { dayIndex }) - effectiveRating(a, a.position, { dayIndex }));
   for (const player of rankedPlayers) {
@@ -726,7 +745,12 @@ export function selectLineup(
   const bench = [];
   for (const g of ["GK", "DEF", "MID", "ATT"]) {
     const cands = rest
-      .filter((p) => groupOf(p.position) === g && !bench.includes(p))
+      .filter(
+        (p) =>
+          groupOf(p.position) === g &&
+          !benchOnlyIds.has(p.id) &&
+          !bench.includes(p),
+      )
       .sort(
         (a, b) =>
           effectiveRating(b, b.position, { dayIndex }) -
@@ -736,7 +760,10 @@ export function selectLineup(
   }
   bench.sort((a, b) => calculateOverall(b) - calculateOverall(a));
 
-  const subs = bench.slice(0, benchSize);
+  const reservedBench = available.filter((player) =>
+    benchOnlyIds.has(player.id),
+  );
+  const subs = [...reservedBench, ...bench].slice(0, benchSize);
   const unused = squad.filter(
     (p) => !used.has(p.id) && !subs.includes(p) && !p.injury && !(p.suspensionWeeks > 0),
   );

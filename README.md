@@ -149,13 +149,15 @@ separate save points.
 ## Phase 1 controls
 
 Create your player, choose a league and club, and advance a week at a time or play the
-next scheduled league or tournament fixture from the Career hub. The hub shows the
-upcoming fixture and match report; use the dedicated Match Sim tab to watch the live
-clock, goal announcements, commentary, and key-moment decisions. Teams with few
+next scheduled league or tournament fixture from the Career hub. Advancing to a week
+with your fixture now opens that match in the dedicated Match Sim tab without recording
+the result early; start the match there to run its live clock, goal announcements,
+commentary, and key-moment decisions. An unfinished live match resumes in Match Sim
+after a save is loaded. Teams with few
 imported players are filled out with seeded,
-generated squad members so they can field a full team. Use **Simulate one week** to
-complete all scheduled league and tournament matches in the next calendar week,
-including your own match, which is automatically played through full time. Successful
+generated squad members so they can field a full team. Use **Simulate one day** or
+**Simulate to end of season** to automatically complete scheduled fixtures, including
+your own match, through full time. Successful
 attacking decisions can score, creative decisions can create a goal, and defensive
 decisions can block an upcoming opponent goal. The table and player match record are
 finalized at full time.
@@ -163,6 +165,11 @@ Key moments offer three seeded, randomized context-sensitive actions for the pla
 position, including goalkeeper-specific saves and distribution. Actions use their
 relevant player attribute and have different success odds and match effects. Edit
 `data/config/key-moment-options.json` to change the action catalog.
+The Overview selection indicator and player match involvement use the same selected
+line-up, including custom XI assignments and player availability. A player not selected
+for the matchday squad cannot enter the simulation or receive minutes, a rating, or
+match statistics; named substitutes only participate after the match engine brings
+them on.
 The Training screen upgrades individual detailed attributes; outfield sessions
 recalculate their parent group, while goalkeepers train their keeper attributes.
 Live key-moment types are weighted by position, so defenders face more recovery and

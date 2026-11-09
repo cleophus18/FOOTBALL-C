@@ -153,6 +153,7 @@ let expandedFixtureStatsId = null;
 let fixtureFilter = "all";
 let lastAutosaveAt = 0;
 let autosaveUnavailable = false;
+let matchSimulationTimer = null;
 
 function serializeCareerSave(compact = false) {
   return JSON.stringify(
@@ -2125,6 +2126,8 @@ function renderCreation() {
       if (!raw) throw new Error(`Save slot 0${slot} is empty.`);
       const saved = JSON.parse(raw);
       career = createCareer(data, saved.creation, saved);
+      screen = resumeCareerScreen(career);
+      renderedScreen = null;
       notice = `Welcome back, ${career.player.first}.`;
       window.__career = career;
       window.__renderGame = renderGame;
@@ -2176,6 +2179,10 @@ function renderCreation() {
 }
 
 function renderGame() {
+  if (screen !== "simulation" && matchSimulationTimer != null) {
+    window.clearTimeout(matchSimulationTimer);
+    matchSimulationTimer = null;
+  }
   if (screen === "menu") return renderMenu();
   if (screen === "manager-create") return renderManagerCreation();
   if (screen === "load-game") return renderLoadGame();
@@ -2208,6 +2215,7 @@ function renderGame() {
         ...(career.isManagerCareer
           ? [["manager", "Manager hub", "♜"]]
           : [["overview", "Overview", "⌂"]]),
+        ...(!career.isManagerCareer ? [["simulation", "MATCH SIM", "▶"]] : []),
         ["info", "Game Info", "ⓘ"],
         ["history", "History", "✦"],
       ],
@@ -2644,6 +2652,369 @@ function renderGame() {
       renderGame();
     }),
   );
+  scheduleMatchSimulationTick();
+}
+
+function resumeCareerScreen(savedCareer) {
+  if (
+    savedCareer.lastReport?.userMatch &&
+    savedCareer.matchSimulation?.status !== "finished"
+  ) {
+    return "simulation";
+  }
+  return savedCareer.isManagerCareer ? "manager" : "overview";
+}
+
+function scheduleMatchSimulationTick() {
+  if (matchSimulationTimer != null) {
+    window.clearTimeout(matchSimulationTimer);
+    matchSimulationTimer = null;
+  }
+  if (
+    screen !== "simulation" ||
+    career?.matchSimulation?.status !== "running"
+  )
+    return;
+  matchSimulationTimer = window.setTimeout(() => {
+    matchSimulationTimer = null;
+    try {
+      career.tickMatchSimulation();
+      refreshLiveMatchDisplay();
+      if (
+        career.matchSimulation.minute > 0 &&
+        career.matchSimulation.minute % 10 === 0
+      ) {
+        persistAutosave();
+      }
+      if (career.matchSimulation.status === "running") {
+        scheduleMatchSimulationTick();
+      } else if (
+        ["paused", "finished"].includes(career.matchSimulation.status)
+      ) {
+        persistAutosave();
+      }
+    } catch (error) {
+      console.error("Live match simulation failed:", error);
+      notice = `Match simulation stopped: ${error.message}`;
+      updateLiveMatchNotice();
+    }
+  }, 450);
+}
+
+function refreshLiveMatchDisplay() {
+  const match = career?.lastReport?.userMatch;
+  const state = career?.matchSimulation;
+  if (!match || !state || screen !== "simulation") return;
+
+  const fullTimeMinute = 90 + Math.max(0, Number(match.addedTime) || 0);
+  const minute = $app.querySelector("#simulation-minute");
+  const progress = $app.querySelector("#simulation-progress");
+  if (minute) {
+    const clockText = `${matchMinuteLabel(state.minute)}'`;
+    if (minute.textContent !== clockText) minute.textContent = clockText;
+  }
+  if (progress) {
+    const width = `${Math.min(100, (state.minute / fullTimeMinute) * 100)}%`;
+    if (progress.style.width !== width) progress.style.width = width;
+  }
+
+  const liveTag = $app.querySelector("#simulation-live-tag");
+  if (liveTag) {
+    const statusLabel =
+      state.status === "finished"
+        ? "FULL TIME"
+        : state.status === "paused"
+          ? "KEY MOMENT · PAUSED"
+          : state.status === "running"
+            ? "LIVE"
+            : "READY";
+    const liveText =
+      liveTag.classList.contains("simulation-competition")
+        ? `${match.competitionName ?? career.league.name} · ${
+            state.status === "finished"
+              ? "FULL TIME"
+              : state.status === "paused"
+                ? "KEY MOMENT"
+                : state.status === "running"
+                  ? `LIVE · ${state.minute}'`
+                  : "READY TO PLAY"
+          }`
+        : statusLabel;
+    if (liveTag.textContent !== liveText) liveTag.textContent = liveText;
+  }
+
+  const homeScore = $app.querySelector("#home-score");
+  const awayScore = $app.querySelector("#away-score");
+  if (homeScore && homeScore.textContent !== String(match.homeGoals)) {
+    homeScore.textContent = String(match.homeGoals);
+  }
+  if (awayScore && awayScore.textContent !== String(match.awayGoals)) {
+    awayScore.textContent = String(match.awayGoals);
+  }
+
+  const goal = state.lastGoalEvent;
+  const goalKey = goal
+    ? `${goal.side}:${goal.minute}:${goal.scorerId ?? goal.scorerName}`
+    : "none";
+  const commentary = $app.querySelector("#live-goal-commentary");
+  if (commentary && commentary.dataset.goalKey !== goalKey) {
+    const scorerTeam = goal
+      ? goal.side === "home"
+        ? match.home.name
+        : match.away.name
+      : "";
+    commentary.classList.toggle("has-goal", Boolean(goal));
+    commentary.innerHTML = goal
+      ? `<span>GOAL · ${goal.minute}'</span><b>${playerProfileLink(goal.scorerId, goal.scorerName)}</b><small>${esc(scorerTeam)}${goal.assistName ? ` · Assist: ${playerProfileLink(goal.assistId, goal.assistName)}` : ""}</small>`
+      : `<span>LIVE COMMENTARY</span><b>No goals yet</b><small>The scorer will appear here when a goal is scored.</small>`;
+    commentary.dataset.goalKey = goalKey;
+    bindPlayerLinks(commentary);
+  }
+
+  const situation = state.lastSituation;
+  const situationKey = situation
+    ? `${situation.minute}:${situation.text}:${Boolean(situation.entry)}`
+    : "none";
+  const situationNode = $app.querySelector("#live-situation");
+  if (situationNode && situationNode.dataset.situationKey !== situationKey) {
+    situationNode.classList.toggle("has-situation", Boolean(situation));
+    situationNode.classList.toggle("entry", Boolean(situation?.entry));
+    situationNode.dataset.situationKey = situationKey;
+    situationNode.dataset.minute = situation?.entry
+      ? String(situation.minute)
+      : "";
+    situationNode.textContent = situation
+      ? `${situation.entry ? "PLAYER ENTERS THE PITCH · " : ""}${situation.minute}' · ${situation.text}`
+      : "";
+  }
+
+  refreshLivePlayerStatus(state, match);
+  refreshLivePitch(match, state.minute);
+  refreshLiveKeyMomentTimeline(match, state);
+  refreshLiveEventFeed(match, state);
+  refreshLiveMatchEvent(state, match);
+
+  const substitutionButton = $app.querySelector("#poor-substitution");
+  if (substitutionButton) {
+    substitutionButton.hidden = !(
+      ["running", "paused"].includes(state.status) &&
+      state.minute >= 45 &&
+      match.playerResult.rating <= 5.8 &&
+      !state.userSubbedOff
+    );
+  }
+}
+
+function refreshLivePlayerStatus(state, match) {
+  const node = $app.querySelector("#player-pitch-status");
+  if (!node) return;
+  const status = describePlayerStatus(state, match);
+  const className = `player-pitch-status ${status.tone}`;
+  if (node.className !== className) node.className = className;
+  const label = node.querySelector("span:last-child");
+  const labelMarkup = status.labelHtml ?? esc(status.label);
+  if (label && label.innerHTML !== labelMarkup) {
+    label.innerHTML = labelMarkup;
+    bindPlayerLinks(label);
+  }
+}
+
+function refreshLivePitch(match, minute) {
+  const root = $app.querySelector("#match-formations");
+  if (!root) return;
+  const lineupKey = matchLineupSignature(match);
+  if (root.dataset.lineupKey === lineupKey) {
+    refreshLivePitchIncidents(root, match, minute);
+    return;
+  }
+  const wantedMarkup = renderMatchFormations(
+    match,
+    career.matchSimulation.status === "finished"
+      ? Number.POSITIVE_INFINITY
+      : minute,
+  );
+  const template = document.createElement("template");
+  template.innerHTML = wantedMarkup;
+  const wanted = new Map(
+    [...template.content.querySelectorAll("[data-match-side]")].map((slot) => [
+      `${slot.dataset.matchSide}:${slot.dataset.matchSlotIndex}`,
+      slot,
+    ]),
+  );
+  for (const slot of root.querySelectorAll("[data-match-side]")) {
+    const key = `${slot.dataset.matchSide}:${slot.dataset.matchSlotIndex}`;
+    const next = wanted.get(key);
+    if (!next) continue;
+    if (slot.dataset.matchPlayerId !== next.dataset.matchPlayerId) {
+      slot.className = next.className;
+      slot.title = next.title;
+      slot.style.cssText = next.style.cssText;
+      slot.dataset.matchPlayerId = next.dataset.matchPlayerId;
+      slot.innerHTML = next.innerHTML;
+      bindPlayerLinks(slot);
+    } else {
+      const currentIncident = slot.querySelector(".pitch-incident");
+      const nextIncident = next.querySelector(".pitch-incident");
+      const incidentKey = nextIncident?.getAttribute("aria-label") ?? "";
+      if ((currentIncident?.getAttribute("aria-label") ?? "") !== incidentKey) {
+        currentIncident?.remove();
+        if (nextIncident) slot.insertBefore(nextIncident.cloneNode(true), slot.querySelector(".pitch-name"));
+      }
+    }
+  }
+  root.dataset.lineupKey = lineupKey;
+}
+
+function refreshLivePitchIncidents(root, match, minute) {
+  const visibleIncidents = new Map(
+    (match.misc ?? [])
+      .filter(
+        (event) =>
+          event.minute <= minute &&
+          ["yellow", "red"].includes(event.type) &&
+          event.playerId,
+      )
+      .map((event) => [
+        event.playerId,
+        event.type === "red"
+          ? { label: "Red card", icon: "🟥" }
+          : { label: "Yellow card", icon: "🟨" },
+      ]),
+  );
+  for (const slot of root.querySelectorAll("[data-match-player-id]")) {
+    const incident = visibleIncidents.get(slot.dataset.matchPlayerId);
+    const current = slot.querySelector(".pitch-incident");
+    const currentLabel = current?.getAttribute("aria-label") ?? "";
+    const nextLabel = incident?.label ?? "";
+    if (currentLabel === nextLabel) continue;
+    current?.remove();
+    if (incident) {
+      const badge = document.createElement("span");
+      badge.className = "pitch-incident";
+      badge.dataset.matchIncidentPlayer = slot.dataset.matchPlayerId;
+      badge.title = incident.label;
+      badge.setAttribute("aria-label", incident.label);
+      badge.textContent = incident.icon;
+      slot.insertBefore(badge, slot.querySelector(".pitch-name"));
+    }
+  }
+}
+
+function refreshLiveKeyMomentTimeline(match, state) {
+  const node = $app.querySelector("#simulation-key-moment-timeline");
+  if (!node) return;
+  const revealKey = match.playerResult.keyMoments
+    .map((moment, index) =>
+      moment.resolved || moment.minute <= state.minute
+        ? `${index}:${moment.resolved?.success ?? "pending"}:${index === state.activeMomentIndex}`
+        : "",
+    )
+    .filter(Boolean)
+    .join("|");
+  if (node.dataset.revealKey === revealKey) return;
+  node.dataset.revealKey = revealKey;
+  const revealed = revealedKeyMoments(match);
+  node.innerHTML = `<div class="eyebrow">KEY MOMENT TIMELINE</div>${
+    revealed.length
+      ? revealed
+          .map(
+            ({ moment, index }) =>
+              `<div class="simulation-timeline-row ${index === state.activeMomentIndex ? "current" : ""}"><b>${matchMinuteLabel(moment.minute)}'</b><span>${esc(matchMomentLabel(moment))}</span><small>${moment.resolved ? (moment.resolved.subbedOff ? "SUBBED OFF" : moment.resolved.success ? "SUCCESS" : "MISSED") : index === state.activeMomentIndex ? "NOW" : "PENDING"}</small></div>`,
+          )
+          .join("")
+      : `<p class="muted">${match.playerResult.keyMoments.length ? "Key moments will appear here as the match clock reaches them." : "No key moments generated in this match."}</p>`
+  }`;
+}
+
+function refreshLiveEventFeed(match, state) {
+  const node = $app.querySelector("#simulation-event-feed");
+  if (!node) return;
+  const minute =
+    state.status === "finished" ? Number.POSITIVE_INFINITY : state.minute;
+  const feedKey = [
+    match.events
+      .filter((event) => event.minute <= minute)
+      .map((event) => `${event.type}:${event.minute}:${event.scorerId ?? ""}`)
+      .join(","),
+    (match.misc ?? [])
+      .filter((event) => event.minute <= minute)
+      .map((event) => `${event.type}:${event.minute}:${event.playerId ?? ""}`)
+      .join(","),
+  ].join("|");
+  if (node.dataset.feedKey === feedKey) return;
+  node.dataset.feedKey = feedKey;
+  node.innerHTML = renderEventTimeline(match, minute);
+}
+
+function refreshLiveMatchEvent(state, match) {
+  const node = $app.querySelector("#simulation-live-event");
+  if (!node) return;
+  const activeMoment =
+    state.activeMomentIndex == null
+      ? null
+      : match.playerResult.keyMoments[state.activeMomentIndex];
+  const eventKey = `${state.status}:${state.activeMomentIndex ?? ""}:${state.userStatus}:${state.userEnteredPitch}:${state.userSubbedOff}`;
+  if (node.dataset.eventKey === eventKey) return;
+  node.dataset.eventKey = eventKey;
+
+  const allActions = activeMoment
+    ? keyMomentActions(
+        activeMoment.kind,
+        activeMoment.position ?? career.player.position,
+        data.keyMomentOptions,
+      )
+    : [];
+  const availableActions = activeMoment
+    ? (activeMoment.options ?? allActions.slice(0, 3))
+        .map((id) => allActions.find((action) => action.id === id))
+        .filter(Boolean)
+    : [];
+  const decisionButtons = activeMoment
+    ? `<div class="simulation-decisions">${availableActions
+        .map(
+          (option) =>
+            `<button class="moment-choice" data-action="moment-decision" data-index="${state.activeMomentIndex}" data-decision="${esc(option.id)}"><span>${esc(option.label)}</span><small>${esc(option.attribute)} · ${option.modifier >= 0.08 ? "lower risk" : option.modifier <= -0.08 ? "high risk" : "balanced"}</small></button>`,
+        )
+        .join("")}</div>`
+    : "";
+  const nextAction =
+    state.status === "finished"
+      ? `<button class="button-primary" data-action="back-to-career">Return to career hub <span>→</span></button>`
+      : state.status === "paused"
+        ? decisionButtons
+        : state.status === "running"
+          ? `<span class="simulation-running">MATCH IN PROGRESS · CLOCK RUNNING</span>`
+          : `<button class="button-primary" data-action="start-simulation">Start match <span>▶</span></button>`;
+  node.innerHTML = renderSimulationLiveEvent(
+    match,
+    state,
+    activeMoment,
+    decisionButtons,
+    nextAction,
+  );
+  node.querySelectorAll("[data-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      handleAction(button.dataset.action, button.dataset);
+    });
+  });
+  bindPlayerLinks(node);
+}
+
+function updateLiveMatchNotice() {
+  const content = $app.querySelector(".content");
+  if (!content || !notice) return;
+  let toast = content.querySelector(".toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.className = "toast";
+    content.prepend(toast);
+  }
+  toast.innerHTML = `${esc(notice)}<button aria-label="Dismiss" data-action="dismiss">×</button>`;
+  toast.querySelector('[data-action="dismiss"]')?.addEventListener("click", () => {
+    notice = "";
+    toast.remove();
+  });
 }
 
 function currentDate() {
@@ -2656,6 +3027,7 @@ function renderScreen() {
   if (screen === "settings") return renderSettings();
   if (screen === "credits") return renderCredits();
   if (screen === "overview") return renderOverview();
+  if (screen === "simulation") return renderSimulation();
   if (screen === "manager") return renderManagerHub();
   if (screen === "info") return renderGameInfo();
   if (screen === "table") return renderTable();
@@ -3302,18 +3674,26 @@ function renderOverview() {
   );
   // Where the user sits in this week's squad: starting XI, on the bench, or not
   // selected at all. The overview bar shows this at a glance.
-  const squad = career.club.squad
-    .map((id) => career.players.find((player) => player.id === id))
-    .filter(Boolean);
-  const lineup = selectLineup(squad, career.club.formation, currentDay(), {
-    customXI: career.club.customXI ?? [],
-  });
-  const userIsStarter = lineup.xi.some(
-    ({ player }) => player.id === career.player.id,
-  );
-  const userIsSub = lineup.subs.some(
-    (player) => player.id === career.player.id,
-  );
+  const liveMatch = career.lastReport?.userMatch;
+  const liveState = career.matchSimulation;
+  const matchInProgress =
+    liveMatch && liveState && liveState.status !== "finished";
+  const selectedLineup = matchInProgress
+    ? null
+    : career.getPlayerMatchSelection(next?.day ?? currentDay());
+  const userIsStarter = matchInProgress
+    ? Boolean(liveState.userStarted)
+    : selectedLineup?.status === "starter";
+  const liveSide = matchInProgress ? liveMatch[liveMatch.side] : null;
+  const userWasSubstitute =
+    matchInProgress &&
+    !liveState.userStarted &&
+    (liveSide?.subs?.includes(career.player.id) ||
+      liveState.userEnteredPitch ||
+      liveState.userSubbedOff);
+  const userIsSub = matchInProgress
+    ? Boolean(userWasSubstitute)
+    : selectedLineup?.status === "bench";
   const userOnWorldCupDuty = Boolean(nextWorldCupMatch);
   const userStatus = userOnWorldCupDuty
     ? "INTERNATIONAL DUTY"
@@ -3356,7 +3736,7 @@ function renderOverview() {
           )
           .join(
             "",
-          )}</select><small id="match-role-description">${esc(ROLE_DESCRIPTIONS[career.matchRole] ?? ROLE_DESCRIPTIONS.Balanced)}</small></label></div></section>
+          )}</select><small id="match-role-description">${esc(ROLE_DESCRIPTIONS[career.matchRole] ?? ROLE_DESCRIPTIONS.Balanced)}</small></label><button class="button-quiet" data-screen="simulation">Open MATCH SIM →</button></div></section>
       <section class="panel inbox-panel"><div class="panel-heading"><div><div class="eyebrow">CLUBHOUSE</div><h2>Latest update</h2></div><span class="inbox-count">${career.news.length.toString().padStart(2, "0")}</span></div>
         <div class="news-list">${(career.news.slice(-4).reverse().length ? career.news.slice(-4).reverse() : ["The manager is watching your progress closely.", "The new season is underway. Make every session count."]).map((item, i) => `<div class="news-item"><span class="news-indicator ${i === 0 ? "is-new" : ""}"></span><span>${esc(item)}</span></div>`).join("")}</div>
         <div class="panel-foot dashboard-balances"><span class="points-pill">${career.trainingPoints} TP</span><b class="points-pill">€${formatDecimal(career.money)}</b></div></section>
@@ -3393,14 +3773,14 @@ function renderMatchReport(match) {
     chance: "A chance in the box",
     penalty: "Penalty opportunity",
     oneOnOne: "One-on-one",
-    bigPass: "A risky pass",
+    bigPass: "Key pass or distribution",
     lastDitch: "Last-ditch defensive action",
-    keeperSave: "One-on-one save",
+    keeperSave: "Goalkeeper save",
   };
   const moments = revealedKeyMoments(match)
     .map(
       ({ moment }) =>
-        `<div class="key-moment"><div class="moment-copy"><span>${moment.minute}' · KEY MOMENT</span><b>${momentLabels[moment.kind] ?? "Key moment"}</b></div>${moment.resolved ? (moment.resolved.subbedOff ? `<span class="moment-outcome">SUBBED OFF</span>` : `<span class="moment-outcome ${moment.resolved.success ? "success" : "failure"}">${moment.resolved.success ? "SUCCESS" : "MISSED"} · ${Math.round(moment.resolved.probability * 100)}%</span>`) : `<span class="moment-outcome">PENDING IN MATCH SIM</span>`}</div>`,
+        `<div class="key-moment"><div class="moment-copy"><span>${matchMinuteLabel(moment.minute)}' · KEY MOMENT</span><b>${moment.kind === "oneOnOne" && moment.position === "GK" ? "One-on-one save" : momentLabels[moment.kind] ?? "Key moment"}</b></div>${moment.resolved ? (moment.resolved.subbedOff ? `<span class="moment-outcome">SUBBED OFF</span>` : `<span class="moment-outcome ${moment.resolved.success ? "success" : "failure"}">${moment.resolved.success ? "SUCCESS" : "MISSED"} · ${Math.round(moment.resolved.probability * 100)}%</span>`) : `<span class="moment-outcome">PENDING IN MATCH SIM</span>`}</div>`,
     )
     .join("");
   const standoutBadge =
@@ -3519,17 +3899,6 @@ function renderTeammateRatings(match) {
 function describePlayerStatus(state, match) {
   const side = match?.[match.side];
   const actuallyOnPitch = side?.xi?.includes(career.player.id) ?? false;
-  if (!actuallyOnPitch) {
-    return {
-      tone: "bench",
-      label:
-        state.userStatus === "unused"
-          ? "NOT IN THE MATCHDAY SQUAD"
-          : state.subOnMinute != null
-            ? `ON THE BENCH · expected on around ${state.subOnMinute}'`
-            : "ON THE BENCH",
-    };
-  }
   if (state.userSubbedOff || state.userStatus === "off") {
     return {
       tone: "off",
@@ -3539,6 +3908,28 @@ function describePlayerStatus(state, match) {
       labelHtml: state.substituteName
         ? `OFF THE PITCH · replaced by ${playerProfileLink(null, state.substituteName)}`
         : null,
+    };
+  }
+  if (!actuallyOnPitch) {
+    const listedOnBench = side?.subs?.includes(career.player.id) ?? false;
+    if (state.userStatus === "not-selected") {
+      return { tone: "bench", label: "NOT SELECTED FOR THIS MATCH" };
+    }
+    if (!listedOnBench) {
+      return { tone: "bench", label: "NOT IN THE MATCHDAY SQUAD" };
+    }
+    if (state.subOnMinute != null) {
+      return {
+        tone: "bench",
+        label: `ON THE BENCH · expected on around ${state.subOnMinute}'`,
+      };
+    }
+    return {
+      tone: "bench",
+      label:
+        state.userStatus === "unused"
+          ? "ON THE BENCH · unused substitute"
+          : "ON THE BENCH",
     };
   }
   if (
@@ -3553,15 +3944,6 @@ function describePlayerStatus(state, match) {
   if (actuallyOnPitch) {
     return { tone: "on", label: "ON THE PITCH · started" };
   }
-  if (state.userStatus === "unused")
-    return { tone: "bench", label: "NOT IN THE MATCHDAY SQUAD" };
-  return {
-    tone: "bench",
-    label:
-      state.subOnMinute != null
-        ? `ON THE BENCH · expected on around ${state.subOnMinute}'`
-        : "ON THE BENCH",
-  };
 }
 
 /**
@@ -3597,7 +3979,7 @@ function renderMatchFormations(match, minute = Number.POSITIVE_INFINITY) {
           id,
           slot: knownPlayers.get(id)?.position ?? "CM",
         }));
-    const entries = xiSlots.map((entry) => {
+    const entries = xiSlots.map((entry, entryIndex) => {
       const slot = String(entry.slot ?? "CM").replace(/^ALT-/, "");
       const player = knownPlayers.get(entry.id) ?? {
         id: entry.id,
@@ -3607,7 +3989,11 @@ function renderMatchFormations(match, minute = Number.POSITIVE_INFINITY) {
         overall: entry.overall ?? 50,
         shirtNumber: entry.shirtNumber ?? "—",
       };
-      return { slot, player };
+      return {
+        slot,
+        player,
+        slotIndex: entry.slotIndex ?? entryIndex,
+      };
     });
     const averageStamina = entries.length
       ? Math.round(entries.reduce((sum, entry) => sum + ensureStamina(entry.player), 0) / entries.length)
@@ -3617,10 +4003,42 @@ function renderMatchFormations(match, minute = Number.POSITIVE_INFINITY) {
       career.clubs.find((club) => club.id === team.clubId)?.name ?? team.name;
     return `<div class="match-formation ${isUserSide ? "is-user" : ""}">
       <div class="match-formation-head"><span class="match-formation-shape">${esc(team.formation ?? career.club.formation)}</span><div><b>${esc(team.name)}</b><small>${esc(team.coach ?? "Head coach")}${isUserSide ? " · YOUR TEAM" : ""}</small>${staminaMarkup({ stamina: averageStamina }, true)}</div></div>
-      <div class="pitch pitch-compact"><div class="pitch-markings"></div><span class="pitch-arc"></span>${renderPitchMarkup(entries, { highlightIds: isUserSide ? [career.player.id] : [], incidents: liveIncidents, shirtColor: clubCrestColors(clubName)[0] })}</div>
+      <div class="pitch pitch-compact"><div class="pitch-markings"></div><span class="pitch-arc"></span>${renderPitchMarkup(entries, { highlightIds: isUserSide ? [career.player.id] : [], incidents: liveIncidents, shirtColor: clubCrestColors(clubName)[0], matchSide: side })}</div>
     </div>`;
   };
   return `<div class="match-formations">${buildSide("home")}${buildSide("away")}</div>`;
+}
+
+function matchLineupSignature(match) {
+  return ["home", "away"]
+    .map((side) => {
+      const team = match[side];
+      const entries =
+        team?.xiSlots?.length
+          ? team.xiSlots
+          : (team?.xi ?? []).map((id) => ({ id }));
+      return entries
+        .map((entry, index) => `${entry.slotIndex ?? index}:${entry.id}`)
+        .join(",");
+    })
+    .join("|");
+}
+
+function matchMinuteLabel(minute) {
+  return minute > 90 ? `90+${minute - 90}` : String(minute);
+}
+
+function matchMomentLabel(moment) {
+  if (moment.kind === "oneOnOne" && moment.position === "GK")
+    return "One-on-one save";
+  return {
+    chance: "Chance in the box",
+    penalty: "Penalty opportunity",
+    oneOnOne: "One-on-one",
+    bigPass: "Key pass or distribution",
+    lastDitch: "Defensive action",
+    keeperSave: "Goalkeeper save",
+  }[moment.kind] ?? "Key moment";
 }
 
 function renderSimulation({ embedded = false } = {}) {
@@ -3630,6 +4048,7 @@ function renderSimulation({ embedded = false } = {}) {
     return `<div class="page-heading"><div><div class="eyebrow lime">MATCH CENTRE</div><h1>Match simulation</h1><p>Start your next fixture to follow the match clock and resolve key moments.</p></div></div>
       <section class="panel simulation-empty"><h2>${next ? `${esc(next.home.name)} vs ${esc(next.away.name)}` : "No upcoming fixture"}</h2>
       <p class="muted">${next ? formatDate(next.day) : "Your season is complete."}</p>
+      ${next ? `<p class="muted">Advance the career to the scheduled matchday. Your match will open here without being completed automatically.</p><button class="button-primary" data-action="advance">Advance to matchday <span>→</span></button>` : ""}
       </section>`;
   }
 
@@ -3645,20 +4064,12 @@ function renderSimulation({ embedded = false } = {}) {
     state.activeMomentIndex == null
       ? null
       : match.playerResult.keyMoments[state.activeMomentIndex];
-  const labels = {
-    chance: "Chance in the box",
-    penalty: "Penalty opportunity",
-    oneOnOne: "One-on-one",
-    bigPass: "Risky pass",
-    lastDitch: "Last-ditch defensive action",
-    keeperSave: "One-on-one save",
-  };
   const lastGoalEvent = state.lastGoalEvent;
   const revealedMoments = revealedKeyMoments(match);
   const allActions = activeMoment
     ? keyMomentActions(
         activeMoment.kind,
-        career.player.position,
+        activeMoment.position ?? career.player.position,
         data.keyMomentOptions,
       )
     : [];
@@ -3692,30 +4103,51 @@ function renderSimulation({ embedded = false } = {}) {
     match.playerResult.rating <= 5.8 &&
     !state.userSubbedOff;
   const playerStatus = describePlayerStatus(state, match);
-  return `${embedded ? "" : `<div class="page-heading"><div><div class="eyebrow lime">LIVE MATCH ENGINE</div><h1>Match simulation</h1><p>${esc(playerTeam.name)} · ${esc(match.opponent)}</p></div><span class="live-tag">${state.status === "finished" ? "FULL TIME" : state.status === "paused" ? "KEY MOMENT · PAUSED" : state.status === "running" ? "LIVE" : "READY"}</span></div>`}
+  const fullTimeMinute = 90 + Math.max(0, Number(match.addedTime) || 0);
+  return `${embedded ? "" : `<div class="page-heading"><div><div class="eyebrow lime">LIVE MATCH ENGINE</div><h1>Match simulation</h1><p>${esc(playerTeam.name)} · ${esc(match.opponent)}</p></div><span id="simulation-live-tag" class="live-tag">${state.status === "finished" ? "FULL TIME" : state.status === "paused" ? "KEY MOMENT · PAUSED" : state.status === "running" ? "LIVE" : "READY"}</span></div>`}
     <section class="panel simulation-panel${embedded ? " simulation-panel-embedded" : ""}">
-      ${embedded ? `<div class="simulation-competition">${esc(match.competitionName ?? career.league.name)} · ${state.status === "finished" ? "FULL TIME" : state.status === "paused" ? "KEY MOMENT" : state.status === "running" ? `LIVE · ${state.minute}'` : "READY TO PLAY"}</div>` : ""}
+      ${embedded ? `<div id="simulation-live-tag" class="simulation-competition">${esc(match.competitionName ?? career.league.name)} · ${state.status === "finished" ? "FULL TIME" : state.status === "paused" ? "KEY MOMENT" : state.status === "running" ? `LIVE · ${state.minute}'` : "READY TO PLAY"}</div>` : ""}
       <p class="muted"><b>PLAYER ROLE · ${esc(match.playerResult.role ?? career.matchRole)}</b> — ${esc(ROLE_DESCRIPTIONS[match.playerResult.role ?? career.matchRole] ?? ROLE_DESCRIPTIONS.Balanced)}</p>
       <div class="simulation-scoreboard">
-        <div class="simulation-team">${esc(match.home.name)}</div>
+        <div class="simulation-team">${renderClubCrest(match.home.name, null, "club-crest")}<span>${esc(match.home.name)}</span></div>
         <div class="simulation-score"><b id="home-score">${homeGoals}</b><span>—</span><b id="away-score">${awayGoals}</b></div>
-        <div class="simulation-team">${esc(match.away.name)}</div>
+        <div class="simulation-team">${renderClubCrest(match.away.name, null, "club-crest")}<span>${esc(match.away.name)}</span></div>
       </div>
       <div id="live-goal-commentary" class="live-goal-commentary ${lastGoalEvent ? "has-goal" : ""}" aria-live="polite">${lastGoalEvent ? `<span>GOAL · ${lastGoalEvent.minute}'</span><b>${playerProfileLink(lastGoalEvent.scorerId, lastGoalEvent.scorerName)}</b><small>${esc(scorerTeam)}${lastGoalEvent.assistName ? ` · Assist: ${playerProfileLink(lastGoalEvent.assistId, lastGoalEvent.assistName)}` : ""}</small>` : `<span>LIVE COMMENTARY</span><b>No goals yet</b><small>The scorer will appear here when a goal is scored.</small>`}</div>
       <div id="live-situation" class="live-situation ${state.lastSituation?.entry ? "has-situation entry" : ""}" aria-live="polite" ${state.lastSituation?.entry ? `data-minute="${state.lastSituation.minute}"` : ""}>${state.lastSituation?.entry ? `PLAYER ENTERS THE PITCH · ${state.lastSituation.minute}' · ${esc(state.lastSituation.text)}` : ""}</div>
-      <div class="simulation-clock"><span id="simulation-minute">${String(state.minute).padStart(2, "0")}'</span><div class="simulation-track"><i id="simulation-progress" style="width:${Math.min(100, (state.minute / 90) * 100)}%"></i></div><span>90'</span></div>
+      <div class="simulation-clock"><span id="simulation-minute">${matchMinuteLabel(state.minute)}'</span><div class="simulation-track"><i id="simulation-progress" style="width:${Math.min(100, (state.minute / fullTimeMinute) * 100)}%"></i></div><span>${matchMinuteLabel(fullTimeMinute)}'</span></div>
       <div id="player-pitch-status" class="player-pitch-status ${playerStatus.tone}" aria-live="polite">
         <span class="player-pitch-dot"></span>
         <b>${playerProfileLink(career.player)}</b>
         <span>${playerStatus.labelHtml ?? esc(playerStatus.label)}</span>
       </div>
-      ${renderMatchFormations(match, state.status === "finished" ? Number.POSITIVE_INFINITY : state.minute)}
-      ${currentMinuteMoment ? `<div class="simulation-event"><span class="eyebrow">MATCH CLOCK STOPPED · ${activeMoment.minute}'</span><h2>${esc(labels[activeMoment.kind] ?? "Key moment")}</h2><p>Choose how to handle it. The clock will remain paused until you decide.</p>${decisionButtons}</div>` : state.status === "finished" ? `<div class="simulation-event"><span class="eyebrow">FULL TIME</span><h2>${playerProfileLink(career.player)} · ${match.playerResult.rating == null ? "—" : formatDecimal(match.playerResult.rating)} rating</h2><p>${state.userSubbedOff ? `Substituted in the ${state.minute}th minute for ${playerProfileLink(null, state.substituteName)}. ` : state.userEnteredPitch ? `Came on as a substitute in the ${state.enteredPitchMinute ?? state.minute}th minute. ` : state.userStatus === "unused" ? "An unused substitute. " : ""}All match moments have been resolved. The final score is recorded in your season.</p>${nextAction}</div>` : `<div class="simulation-event"><span class="eyebrow">${state.status === "running" ? "PLAYING" : "READY FOR KICK-OFF"}</span><h2>${state.status === "running" ? "The match is underway." : "The teams are ready."}</h2><p>${state.status === "running" ? "The clock is moving. It will pause automatically when a key moment occurs." : "Start the match simulation. Time will stop automatically at each player key moment."}</p>${nextAction}</div>`}
+      <div id="match-formations" data-lineup-key="${esc(matchLineupSignature(match))}">${renderMatchFormations(match, state.status === "finished" ? Number.POSITIVE_INFINITY : state.minute)}</div>
+      <div id="simulation-live-event">${renderSimulationLiveEvent(match, state, activeMoment, decisionButtons, nextAction)}</div>
       <button id="poor-substitution" class="button-quiet" data-action="substitute-player" ${canRequestSubstitution ? "" : "hidden"}>Request substitution</button>
-      <div class="simulation-timeline"><div class="eyebrow">KEY MOMENT TIMELINE</div>${revealedMoments.length ? revealedMoments.map(({ moment, index }) => `<div class="simulation-timeline-row ${index === state.activeMomentIndex ? "current" : ""}"><b>${moment.minute}'</b><span>${esc(labels[moment.kind] ?? "Player moment")}</span><small>${moment.resolved ? (moment.resolved.subbedOff ? "SUBBED OFF" : moment.resolved.success ? "SUCCESS" : "MISSED") : index === state.activeMomentIndex ? "NOW" : "PENDING"}</small></div>`).join("") : `<p class="muted">${match.playerResult.keyMoments.length ? "Key moments will appear here as the match clock reaches them." : "No key moments generated in this match."}</p>`}</div>
+      <div id="simulation-key-moment-timeline" class="simulation-timeline"><div class="eyebrow">KEY MOMENT TIMELINE</div>${revealedMoments.length ? revealedMoments.map(({ moment, index }) => `<div class="simulation-timeline-row ${index === state.activeMomentIndex ? "current" : ""}"><b>${matchMinuteLabel(moment.minute)}'</b><span>${esc(matchMomentLabel(moment))}</span><small>${moment.resolved ? (moment.resolved.subbedOff ? "SUBBED OFF" : moment.resolved.success ? "SUCCESS" : "MISSED") : index === state.activeMomentIndex ? "NOW" : "PENDING"}</small></div>`).join("") : `<p class="muted">${match.playerResult.keyMoments.length ? "Key moments will appear here as the match clock reaches them." : "No key moments generated in this match."}</p>`}</div>
       <div class="simulation-events"><div class="eyebrow">MATCH TIMELINE</div><div id="simulation-event-feed" class="match-events">${renderEventTimeline(match, state.status === "finished" ? Number.POSITIVE_INFINITY : state.minute)}</div></div>
       ${state.status === "finished" ? renderTeammateRatings(match) : ""}
     </section>`;
+}
+
+function renderSimulationLiveEvent(match, state, activeMoment, decisionButtons, nextAction) {
+  if (state.status === "paused" && activeMoment) {
+    return `<div class="simulation-event"><span class="eyebrow">MATCH CLOCK STOPPED · ${matchMinuteLabel(activeMoment.minute)}'</span><h2>${esc(matchMomentLabel(activeMoment))}</h2><p>Choose how to handle it. The clock will remain paused until you decide.</p>${decisionButtons}</div>`;
+  }
+  if (state.status === "finished") {
+    const playerSummary = state.userSubbedOff
+      ? `Substituted in the ${matchMinuteLabel(state.minute)}th minute for ${playerProfileLink(null, state.substituteName)}. `
+      : state.userEnteredPitch
+        ? `Came on as a substitute in the ${matchMinuteLabel(state.enteredPitchMinute ?? state.minute)}th minute. `
+        : state.userStatus === "unused"
+          ? "An unused substitute. "
+          : state.userStatus === "not-selected"
+            ? "Not selected for this match. "
+            : "";
+    return `<div class="simulation-event"><span class="eyebrow">FULL TIME</span><h2>${playerProfileLink(career.player)} · ${match.playerResult.rating == null ? "—" : formatDecimal(match.playerResult.rating)} rating</h2><p>${playerSummary}All match moments have been resolved. The final score is recorded in your season.</p>${nextAction}</div>`;
+  }
+  const isRunning = state.status === "running";
+  return `<div class="simulation-event"><span class="eyebrow">${isRunning ? "PLAYING" : "READY FOR KICK-OFF"}</span><h2>${isRunning ? "The match is underway." : "The teams are ready."}</h2><p>${isRunning ? "The clock is moving. It will pause automatically when a key moment occurs." : "Start the match simulation. Time will stop automatically at each player key moment."}</p>${nextAction}</div>`;
 }
 
 function renderTable() {
@@ -4359,6 +4791,7 @@ function renderPitchMarkup(
     incidents = new Map(),
     interactive = false,
     shirtColor = clubCrestColors(career.club.name)[0],
+    matchSide = null,
   } = {},
 ) {
   const coords = pitchCoordinates(entries);
@@ -4368,7 +4801,7 @@ function renderPitchMarkup(
       const highlight = highlightIds.includes(player.id);
       const incident = incidents.get(player.id);
       const incidentIcon = incident
-        ? `<span class="pitch-incident" title="${esc(incident.label)}" aria-label="${esc(incident.label)}">${incident.icon}</span>`
+        ? `<span class="pitch-incident" data-match-incident-player="${esc(player.id)}" title="${esc(incident.label)}" aria-label="${esc(incident.label)}">${incident.icon}</span>`
         : "";
       const actualSlot = String(slot).replace(/^ALT-/, "");
       const tag = "div";
@@ -4384,7 +4817,11 @@ function renderPitchMarkup(
         ? career.displayOverall(player)
         : baseOverall;
       const stamina = ensureStamina(player);
-      return `<${tag} class="pitch-slot${highlight ? " is-user" : ""}${interactive ? " is-editable lineup-starter" : ""}"${interactionAttrs} style="grid-row:${row};grid-column:${column};--shirt-color:${esc(shirtColor)}" title="${esc(`${actualSlot} · shirt ${player.shirtNumber ?? "—"}`)}"><span class="pitch-badge">${player.shirtNumber ?? "—"}</span>${incidentIcon}<span class="pitch-name">${playerProfileLink(player, player.last, "pitch-player-link")}</span><span class="pitch-stamina" title="Stamina ${stamina}%"><span style="width:${stamina}%"></span></span><small class="pitch-meta">${esc(actualSlot)} · ${overall} OVR · ${stamina}% STM${highlight ? " · YOU" : ""}</small></${tag}>`;
+      const matchAttrs =
+        matchSide == null
+          ? ""
+          : ` data-match-side="${esc(matchSide)}" data-match-slot-index="${entries[index].slotIndex}" data-match-player-id="${esc(player.id)}"`;
+      return `<${tag} class="pitch-slot${highlight ? " is-user" : ""}${interactive ? " is-editable lineup-starter" : ""}"${interactionAttrs}${matchAttrs} style="grid-row:${row};grid-column:${column};--shirt-color:${esc(shirtColor)}" title="${esc(`${actualSlot} · shirt ${player.shirtNumber ?? "—"}`)}"><span class="pitch-badge">${player.shirtNumber ?? "—"}</span>${incidentIcon}<span class="pitch-name">${playerProfileLink(player, player.last, "pitch-player-link")}</span><span class="pitch-stamina" title="Stamina ${stamina}%"><span style="width:${stamina}%"></span></span><small class="pitch-meta">${esc(actualSlot)} · ${overall} OVR · ${stamina}% STM${highlight ? " · YOU" : ""}</small></${tag}>`;
     })
     .join("");
 }
@@ -5616,7 +6053,7 @@ function handleAction(action, details = {}) {
       if (!raw) throw new Error(`Save slot 0${slot} is empty.`);
       const saved = JSON.parse(raw);
       career = createCareer(data, saved.creation, saved);
-      screen = career.isManagerCareer ? "manager" : "overview";
+      screen = resumeCareerScreen(career);
       renderedScreen = null;
       screenHistory = [];
       notice = career.isManagerCareer
@@ -5636,7 +6073,7 @@ function handleAction(action, details = {}) {
       if (!raw) throw new Error("No autosave is available.");
       const saved = JSON.parse(raw);
       career = createCareer(data, saved.creation, saved);
-      screen = career.isManagerCareer ? "manager" : "overview";
+      screen = resumeCareerScreen(career);
       renderedScreen = null;
       screenHistory = [];
       notice = career.isManagerCareer
@@ -5705,16 +6142,8 @@ function handleAction(action, details = {}) {
       finishLiveMatchForSimulation();
       const report = career.advanceWeek();
       if (report.userMatch?.playerResult) {
-        finishLiveMatchForSimulation();
-        const result = report.userMatch;
-        const userScore =
-          result[result.side === "home" ? "homeGoals" : "awayGoals"];
-        const opponentScore =
-          result[result.side === "home" ? "awayGoals" : "homeGoals"];
-        career.news.push(
-          `${career.club.name} ${userScore}–${opponentScore} ${result.opponent} · ${formatDecimal(result.playerResult.rating)} match rating.`,
-        );
-        notice = `Matchday ${career.league.table.row(career.club.id).played}: result recorded.`;
+        screen = "simulation";
+        notice = `Matchday ${career.league.table.row(career.club.id).played + 1}: ready for kick-off.`;
       } else {
         const completedMatches = report.fixtures.filter(
           (fixture) => !fixture.pending,
@@ -6021,6 +6450,7 @@ function handleAction(action, details = {}) {
       else {
         const saved = JSON.parse(raw);
         career = createCareer(data, saved.creation, saved);
+        screen = resumeCareerScreen(career);
         notice = `Career loaded from Slot 0${slot}.`;
       }
     } catch (error) {
@@ -6035,6 +6465,24 @@ function handleAction(action, details = {}) {
     } catch (error) {
       notice = `Could not delete save: ${error.message}`;
     }
+  }
+  if (
+    screen === "simulation" &&
+    [
+      "start-simulation",
+      "moment-decision",
+      "moment-risk",
+      "moment-safe",
+      "substitute-player",
+    ].includes(action)
+  ) {
+    refreshLiveMatchDisplay();
+    updateLiveMatchNotice();
+    persistAutosave();
+    if (career.matchSimulation?.status === "running") {
+      scheduleMatchSimulationTick();
+    }
+    return;
   }
   renderGame();
 }
