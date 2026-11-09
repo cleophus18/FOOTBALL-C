@@ -62,7 +62,32 @@ export async function loadData() {
     const key = `${player.league}:${slug(player.clubName)}`;
     clubCounts.set(key, (clubCounts.get(key) ?? 0) + 1);
   }
+  const unmatchedClubs = [];
+  const configuredClubsByLeague = new Map(
+    Object.entries(careerLeagueTeams)
+      .filter(([, clubs]) => Array.isArray(clubs))
+      .map(([league, clubs]) => [league, new Set(clubs.map(slug))]),
+  );
+  for (const [league, clubs] of playerDatabase.byLeague) {
+    const leagueName = players.find(
+      (player) => player.league.toLowerCase() === league,
+    )?.league;
+    const configured = configuredClubsByLeague.get(leagueName) ?? new Set();
+    for (const club of new Set(clubs.map((player) => slug(player.clubName)))) {
+      if (!configured.has(club))
+        unmatchedClubs.push({ league: leagueName, club });
+    }
+  }
   playerDatabase.expectedClubCounts = expectedClubCounts;
+  playerDatabase.unmatchedClubs = unmatchedClubs;
+  if (unmatchedClubs.length) {
+    const details = unmatchedClubs
+      .map(({ league, club }) => `${league}: ${club}`)
+      .join(", ");
+    throw new Error(
+      `Player database contains clubs not configured for the five leagues: ${details}.`,
+    );
+  }
   playerDatabase.incompleteLeagues = Object.entries(expectedClubCounts)
     .filter(([leagueName, expected]) => {
       const leaguePlayers = playerDatabase.byLeague.get(leagueName.toLowerCase()) ?? [];
@@ -71,7 +96,7 @@ export async function loadData() {
         coveredClubs.size < expected ||
         [...coveredClubs].some(
           (clubId) =>
-            (clubCounts.get(`${leagueName}:${clubId}`) ?? 0) < 18,
+            (clubCounts.get(`${leagueName}:${clubId}`) ?? 0) < 20,
         )
       );
     })

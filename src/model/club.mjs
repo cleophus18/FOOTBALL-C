@@ -193,6 +193,10 @@ export class Club {
 
     /** Squad as an array of player ids. Player objects live in the World. */
     this.squad = spec.squad ? [...spec.squad] : [];
+    this.registrationLimit =
+      Number.isInteger(spec.registrationLimit) && spec.registrationLimit >= 25
+        ? spec.registrationLimit
+        : null;
 
     this.manager =
       spec.manager instanceof Manager
@@ -382,8 +386,11 @@ export class Club {
 export function ensureSquadRegistration(
   club,
   players,
-  { min = MIN_REGISTERED_SQUAD_SIZE, max = MAX_REGISTERED_SQUAD_SIZE } = {},
+  options = {},
 ) {
+  const min = options.min ?? MIN_REGISTERED_SQUAD_SIZE;
+  const max =
+    options.max ?? club.registrationLimit ?? MAX_REGISTERED_SQUAD_SIZE;
   const known = new Map(players.map((player) => [player.id, player]));
   club.squad = [...new Set((club.squad ?? []).filter((id) => known.has(id)))];
   if (club.squad.length > max) {

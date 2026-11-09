@@ -927,6 +927,7 @@ export function createPlayer(spec) {
       : ["CM", "CAM", "CDM"].includes(position) ? "Central Playmaker"
       : ["LW", "RW", "LM", "RM"].includes(position) ? "Wide Playmaker"
       : "Balanced Player";
+  const hasSuppliedAltPositions = Array.isArray(spec.altPositions);
   const suppliedAltPositions = (spec.altPositions ?? [])
     .map(normalizePosition)
     .filter(
@@ -954,10 +955,9 @@ export function createPlayer(spec) {
     displayPosition: spec.displayPosition ?? position,
     shirtNumber:
       spec.shirtNumber ?? preferredShirtNumbers(position)[0],
-    altPositions:
-      suppliedAltPositions.length
-        ? suppliedAltPositions
-        : [secondaryPositionFor(position)],
+    altPositions: hasSuppliedAltPositions
+      ? suppliedAltPositions
+      : [secondaryPositionFor(position)],
     familiarity: spec.familiarity ? { ...spec.familiarity } : {},
     archetype: spec.archetype ?? fallbackArchetype,
     attrs: { ...spec.attrs },

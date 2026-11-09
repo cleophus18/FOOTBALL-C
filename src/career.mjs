@@ -966,7 +966,9 @@ export class Career {
           const players = [...existingSquad, ...roster]
             .filter((record) => {
               // A legend never appears for a club other than his own.
-              const legend = legendForName(`${record.first} ${record.last}`);
+              const legend = record.playerId
+                ? null
+                : legendForName(`${record.first} ${record.last}`);
               return !legend || legendAllowedAt(
                 `${record.first} ${record.last}`,
                 clubId,
@@ -978,7 +980,9 @@ export class Career {
                 (player) => player.id === id,
               );
               if (existingPlayer) return existingPlayer;
-              const legend = legendForName(`${record.first} ${record.last}`);
+              const legend = record.playerId
+                ? null
+                : legendForName(`${record.first} ${record.last}`);
               const development = legend
                 ? {}
                 : (this.worldPlayerDevelopment[id] ?? {});
@@ -986,22 +990,23 @@ export class Career {
                 !legend &&
                 record.attrs &&
                 Object.values(record.attrs).some((value) => value != null);
+              const model =
+                hasCsvAttrs && record.position !== "GK"
+                  ? null
+                  : generateAttributes(
+                      this.rng.stream(`world-attributes-${id}`),
+                      record.position,
+                      development.overall ?? record.overall,
+                    );
               const overallAdjustment = hasCsvAttrs && record.playerId
                 ? Number(record.overall) -
                   calculateOverall({
                     position: record.position,
                     attrs: record.attrs,
                     subAttrs: record.subAttrs,
-                    gkAttrs: record.gkAttrs,
+                    gkAttrs: record.gkAttrs ?? model?.gkAttrs,
                   })
                 : null;
-              const model = hasCsvAttrs
-                ? null
-                : generateAttributes(
-                    this.rng.stream(`world-attributes-${id}`),
-                    record.position,
-                    development.overall ?? record.overall,
-                  );
               const previous = this.worldLeagues
                 ?.flatMap((worldState) => worldState.performers ?? [])
                 .find(
@@ -1045,7 +1050,9 @@ export class Career {
                 ],
                 attrs: hasCsvAttrs ? record.attrs : (model?.attrs ?? null),
                 subAttrs: hasCsvAttrs ? null : (model?.subAttrs ?? null),
-                gkAttrs: hasCsvAttrs ? null : (model?.gkAttrs ?? null),
+                gkAttrs: hasCsvAttrs
+                  ? (record.gkAttrs ?? model?.gkAttrs ?? null)
+                  : (model?.gkAttrs ?? null),
                 source: record.source ?? "real-world",
                 overallAdjustment,
                 dataStatus: record.dataStatus,
@@ -1053,10 +1060,8 @@ export class Career {
                 value: legend?.value ?? record.value,
                 wage: legend?.wage ?? record.wage,
                 position: record.position,
-                altPositions:
-                  record.first === "Lionel" && record.last === "Messi"
-                    ? ["ST", "RW", "LW"]
-                    : (SIMILAR_POSITIONS[normalizePosition(record.position)] ?? []),
+                traits: record.traits ?? [],
+                altPositions: record.altPositions ?? [],
                 displayPosition:
                   record.first === "Lionel" && record.last === "Messi"
                     ? "CAM"
@@ -1071,7 +1076,10 @@ export class Career {
                     ),
                 age: legend
                   ? 25
-                  : (development.age ?? (Number(record.age) || 25)),
+                  : (development.age ??
+                    (record.dob != null
+                      ? ageOn(record.dob, this.currentDay())
+                      : Number(record.age) || 25)),
                 potential: legend
                   ? LEGEND_OVERALL
                   : (development.potential ??
@@ -1087,6 +1095,7 @@ export class Career {
                   progress: {},
                   history: [],
                 },
+                traits: record.traits ?? [],
                 form: previous?.form ?? 50,
                 confidence: previous?.confidence ?? 60,
                 fitness: previous?.fitness ?? 100,
@@ -7692,7 +7701,9 @@ export class Career {
         [];
       for (const record of realPlayers) {
         // Legends only ever play for their own club; skip them everywhere else.
-        const legend = legendForName(`${record.first} ${record.last}`);
+        const legend = record.playerId
+          ? null
+          : legendForName(`${record.first} ${record.last}`);
         if (
           legend &&
           !legendAllowedAt(`${record.first} ${record.last}`, club.id)
@@ -7710,7 +7721,7 @@ export class Career {
           record.attrs &&
           Object.values(record.attrs).some((value) => value != null);
         const generated =
-          !hasCsvAttrs && !legend
+          (!hasCsvAttrs || record.position === "GK") && !legend
             ? generateAttributes(rng, record.position, target)
             : null;
         const age = legend ? 25 : clamp(Number(record.age) || 25, 16, 42);
@@ -7723,10 +7734,7 @@ export class Career {
             ? toDayIndex(2001, 6, 24)
             : (record.dob ?? toDayIndex(2026 - age, 1, 1)),
           position: record.position,
-          altPositions:
-            record.altPositions?.length
-              ? record.altPositions
-              : SIMILAR_POSITIONS[normalizePosition(record.position)] ?? [],
+          altPositions: record.altPositions ?? [],
           archetype: legend
             ? legend.archetype
             : this.pickArchetypeForPosition(rng, record.position),
@@ -7753,7 +7761,9 @@ export class Career {
               }),
           attrs: hasCsvAttrs ? record.attrs : (generated?.attrs ?? null),
           subAttrs: hasCsvAttrs ? null : (generated?.subAttrs ?? null),
-          gkAttrs: hasCsvAttrs ? null : (generated?.gkAttrs ?? null),
+          gkAttrs: hasCsvAttrs
+            ? (record.gkAttrs ?? generated?.gkAttrs ?? null)
+            : (generated?.gkAttrs ?? null),
           potential: legend
             ? LEGEND_OVERALL
             : clamp(Number(record.potential) || target, target, 99),
@@ -7820,15 +7830,11 @@ export class Career {
         players.push(player);
         club.addPlayer(player.id);
       }
+      const depthNeeded = Math.max(0, 20 - club.squad.length);
       const fullSquadPositions = [
-        ...remainingSlots,
+        ...remainingSlots.slice(0, depthNeeded),
         ...Array.from(
-          {
-            length: Math.max(
-              0,
-              20 - realPlayers.length - remainingSlots.length,
-            ),
-          },
+          { length: Math.max(0, depthNeeded - remainingSlots.length) },
           (_, extra) => ({
             position: templates.positions[extra % templates.positions.length],
             index: templates.positions.length + extra,
@@ -7880,6 +7886,7 @@ export class Career {
         players.push(player);
         club.addPlayer(player.id);
       }
+      club.registrationLimit = Math.max(25, realPlayers.length + 2);
       ensureSquadRegistration(club, players);
     }
     return players;

@@ -50,7 +50,9 @@ records without the new trophy list fall back to their saved league standings.
 League champion honours are also assigned to every player in NPC background leagues,
 so their player profiles and trophy cases retain domestic titles just like players in
 the active career league. Club squads in active and background leagues are completed
-with generated NPCs when the imported roster is short.
+with generated NPCs only when fewer than 20 source players are available. The five
+major-league squads use the central 2026/27 player database; generated depth players
+are not added when those clubs already have 20 or more imported players.
 
 All players, including NPCs in background leagues, use the same position-weighted
 attribute OVR engine. Legacy world performers are hydrated with detailed attributes on
@@ -112,40 +114,31 @@ Command Prompt if you prefer the shorter Windows command.
 - `data/config/football_leagues.csv` contains the supplied competition metadata used
   to show league sizes and season labels.
 - `data/config/career-league-teams.json` lists the playable clubs in the five major
-  European leagues and the Betway Premiership; the World tab uses it to list every
-  club, including teams with no supplied player rows. Frosinone and Monza are retained
-  as extra Serie A clubs because they are named in the supplied player list.
-- `data/config/fc26-club-leagues.json` maps supplied FC 26 player clubs to leagues
-  where the roster CSV has no league value.
-- `data/squads/ENG.json` contains editable generated-squad settings and a curated set
-  of real-player examples with approximate gameplay ratings. The examples reflect
-  publicly known 2024/25 club affiliations and are not verified 2026/27 rosters;
-  generated players fill out each squad.
-- `data/squads/player_additions.csv` contains the supplied player list. Its performance
-  ratings are retained as match ratings; gameplay overalls are explicitly estimates
-  derived from those ratings or, when absent, from position and listed goals.
-- The World tab fills each club to 18 browsable squad entries with seeded generated
-  players when supplied player data is incomplete. Generated names are labeled and are
-  not presented as real footballers. Generated NPCs start below 90 overall; no more
-  than four generated NPCs can reach 90 overall in a career, while their potential may
-  still exceed 90.
-- `data/config/supplemental-club-aliases.json` maps names in the supplied roster to
-  canonical clubs. Names, goals, and ratings remain editable in the CSV.
-- To browse player ratings and squad summaries, the World tab imports
-  `data/squads/fc26_player_ratings.csv`. The supplied FC 26-style CSV is parsed locally;
-  its blank League values are grouped using `data/config/fc26-club-leagues.json`.
-  Open the World tab, choose a league, and then select a club. This CSV describes its
-  ratings as estimates, not verified official EA ratings; team coverage reflects the
-  records actually present in the file. Some clubs have fewer than 11 players; teams
-  without rows appear in the World tab without fabricated real-player stats.
-- Player creation and the World league filter are limited to the Premier League,
-  La Liga, Bundesliga, Serie A, Ligue 1, and Betway Premiership. All listed clubs are
-  playable; clubs without roster records receive generated squads.
+  European leagues; the five league rosters must match the central player database.
+- `data/squads/touchline_player_database.csv` is the primary player source for the five
+  major leagues. The supplied 2026/27 master contains 2,786 records across 96 clubs.
+  The application does not merge `fc26_player_ratings.csv` or `player_additions.csv`
+  into these league rosters. The supplied records retain their IDs, ratings, potential,
+  attributes, nationality, positions, and birth dates. Their source status says club
+  membership and ratings still require independent verification; blank contract,
+  financial, physical, and shirt-number fields remain blank in the database.
+- `src/data/touchline_2026_27_all_five_leagues.csv` is the supplied master-file copy;
+  it is installed unchanged as `data/squads/touchline_player_database.csv`. The loader
+  validates IDs, ratings, positions, league/club coverage, and quoted UTF-8 CSV data.
+  “Ipswich” is normalized to the configured club name “Ipswich Town” during loading.
+- `data/squads/ENG.json` contains generated-squad settings. Generated players remain
+  available for other supported leagues and as a depth fallback only when a configured
+  club has fewer than 20 source players; they are kept separate from master records.
+- `data/squads/fc26_player_ratings.csv`, `data/squads/player_additions.csv`, and their
+  mapping files are retained for legacy-save migration and compatibility tests, but
+  are not loaded into new five-league careers or the World player browser.
+- Imported roster sizes can exceed 25 players. Their registration capacity is preserved
+  from the source roster (with a small transfer buffer), while clubs without this
+  database-specific capacity retain the existing 25-player limit.
 
-The provided project data does not include current 2026/27 player rosters. Supporting
-players are therefore generated reproducibly from the squad configuration. Replace
-that data with a roster you are licensed to use for personal projects; names and badges
-are not licensed or included here.
+The supplied records are not independently verified by the game. The master CSV's
+data-status field is preserved so users can distinguish its estimates from verified
+information; missing values are not written back as invented database facts.
 
 The game has three manual browser save slots and maintains a latest autosave in local
 storage. Progress is autosaved after game actions and periodically during a live match,

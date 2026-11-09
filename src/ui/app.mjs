@@ -51,13 +51,11 @@ import {
 } from "../core/coaching.mjs";
 import {
   buildPlayableCareerLeagues,
-  combineRosterPlayers,
   parseCompetitionMetadataCsv,
-  parseFc26RatingsCsv,
-  parseSupplementalPlayersCsv,
   PLAYABLE_LEAGUES,
   summarizeRosterLeagues,
 } from "../data/fc25-roster.mjs";
+import { parsePlayerDatabaseCsv } from "../data/player-database.mjs";
 
 const $app = document.querySelector("#app");
 const SAVE_PREFIX = "touchline-career-slot-";
@@ -231,14 +229,11 @@ async function loadData() {
     objectives,
     careerSettings,
     agents,
-    fc26Csv,
-    fc26ClubLeagues,
     competitionCsv,
     careerLeagueTeams,
     expandedLeagueConfig,
     europeanAccessConfig,
-    supplementalCsv,
-    supplementalAliases,
+    playerDatabaseCsv,
     keyMomentOptions,
   ] = await Promise.all([
     fetchData("data/config/clubs.json").then(checkJson),
@@ -248,15 +243,6 @@ async function loadData() {
     fetchData("data/config/objectives.json").then(checkJson),
     fetchData("data/config/career.json").then(checkJson),
     fetchData("data/config/agents.json").then(checkJson),
-    fetchData("data/squads/fc26_player_ratings.csv").then(async (response) => {
-      if (response.status === 404) return "";
-      if (!response.ok)
-        throw new Error(
-          `Could not load FC 26 ratings data (${response.status}).`,
-        );
-      return response.text();
-    }),
-    fetchData("data/config/fc26-club-leagues.json").then(checkJson),
     fetchData("data/config/football_leagues.csv").then(async (response) => {
       if (!response.ok)
         throw new Error(`Could not load league data (${response.status}).`);
@@ -265,25 +251,16 @@ async function loadData() {
     fetchData("data/config/career-league-teams.json").then(checkJson),
     fetchData("data/config/expanded-leagues.json").then(checkJson),
     fetchData("data/config/europe-access.json").then(checkJson),
-    fetchData("data/squads/player_additions.csv").then(async (response) => {
+    fetchData("data/squads/touchline_player_database.csv").then(async (response) => {
       if (!response.ok)
-        throw new Error(
-          `Could not load supplemental player data (${response.status}).`,
-        );
+        throw new Error(`Could not load the central player database (${response.status}).`);
       return response.text();
     }),
-    fetchData("data/config/supplemental-club-aliases.json").then(checkJson),
     fetchData("data/config/key-moment-options.json").then(checkJson),
   ]);
   leagueConfig.$expandedLeagues = expandedLeagueConfig;
   leagueConfig.$europeanAccess = europeanAccessConfig;
-  const ratingsPlayers = fc26Csv
-    ? parseFc26RatingsCsv(fc26Csv, fc26ClubLeagues)
-    : [];
-  const addedPlayers = parseSupplementalPlayersCsv(
-    supplementalCsv,
-    supplementalAliases,
-  );
+  const playerDatabase = parsePlayerDatabaseCsv(playerDatabaseCsv);
   data = {
     clubs,
     league: leagueConfig["premier-league"],
@@ -293,8 +270,9 @@ async function loadData() {
     careerSettings,
     agents,
     keyMomentOptions,
-    fc25Players: combineRosterPlayers(ratingsPlayers, addedPlayers).filter(
-      (player) => PLAYABLE_LEAGUES.includes(player.league),
+    playerDatabase,
+    fc25Players: playerDatabase.players.filter((player) =>
+      PLAYABLE_LEAGUES.includes(player.league),
     ),
   };
   data.fc25Leagues = summarizeRosterLeagues(data.fc25Players).filter((league) =>
@@ -3014,15 +2992,15 @@ function renderWorld() {
   if (!leagues.length) {
     return `
       <div class="page-heading">
-        <div><div class="eyebrow lime">FC 26 RATINGS</div><h1>Other leagues</h1>
-        <p>Browse the supplied FC 26 player ratings and team data.</p></div>
+        <div><div class="eyebrow lime">PLAYER DATABASE</div><h1>Other leagues</h1>
+        <p>Browse the 2026/27 player database and team data.</p></div>
         <a class="button-quiet" href="data/logos/team-crests.html" target="_blank" rel="noreferrer">Open team crest catalog ↗</a>
       </div>
       ${legendsPanel}
       <section class="panel">
         <div class="eyebrow">ROSTER FILE MISSING</div>
-        <h2>FC 26 ratings CSV not found</h2>
-        <p class="muted">Expected <code>data/squads/fc26_player_ratings.csv</code>. Refresh after adding the file.</p>
+        <h2>Player database is empty</h2>
+        <p class="muted">No supported league players were found in <code>data/squads/touchline_player_database.csv</code>.</p>
       </section>`;
   }
 

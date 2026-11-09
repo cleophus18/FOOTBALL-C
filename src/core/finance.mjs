@@ -245,8 +245,11 @@ export function transferPlayer({
     throw new Error("The buying club cannot afford this transfer fee.");
   if (buyerFinance.wageBudget < Number(wage ?? player.contract?.wage ?? 0))
     throw new Error("The buying club cannot fit this player's wages.");
-  if ((buyer.squad?.length ?? 0) >= 25)
-    throw new Error("The buying club has reached its 25-player registration limit.");
+  const registrationLimit = buyer.registrationLimit ?? 25;
+  if ((buyer.squad?.length ?? 0) >= registrationLimit)
+    throw new Error(
+      `The buying club has reached its ${registrationLimit}-player registration limit.`,
+    );
   if ((seller.squad?.length ?? 0) <= 20)
     throw new Error("The selling club must retain at least 20 registered players.");
   if (!seller.has(player.id) || buyer.has(player.id))

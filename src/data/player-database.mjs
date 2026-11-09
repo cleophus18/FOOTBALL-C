@@ -67,6 +67,14 @@ const numericFields = [
   "weekly_wage_eur",
   "release_clause_eur",
 ];
+const ratingFields = [
+  "pace",
+  "shooting",
+  "passing",
+  "dribbling",
+  "defending",
+  "physicality",
+];
 const positionSet = new Set(POSITIONS.map(normalizePosition));
 
 function numberOrNull(value) {
@@ -107,14 +115,23 @@ function normalizeRecord(record) {
   const dataStatus = String(record.data_status ?? "").trim();
   const dataSource = String(record.data_source ?? "").trim();
   const id = String(record.player_id ?? "").trim();
-  const club = String(record.club ?? "").trim();
   const league = String(record.league ?? "").trim();
+  const sourceClub = String(record.club ?? "").trim();
+  const club =
+    league === "Premier League" &&
+    sourceClub.toLocaleLowerCase() === "ipswich"
+      ? "Ipswich Town"
+      : sourceClub;
   const displayName = String(record.display_name ?? "").trim();
   const first = String(record.first_name ?? "").trim();
   const last = String(record.last_name ?? "").trim();
-  const alternatePositions = splitList(record.alternate_positions).map(
-    normalizePosition,
-  );
+  const alternatePositions = [
+    ...new Set(
+      splitList(record.alternate_positions)
+        .map(normalizePosition)
+        .filter((alternate) => alternate !== position),
+    ),
+  ];
   const sourceStatus = dataStatus.toLowerCase();
   return {
     ...record,
@@ -159,7 +176,11 @@ function normalizeRecord(record) {
     dataSource,
     dataStatus,
     lastVerified: String(record.last_verified ?? "").trim() || null,
-    source: sourceStatus.includes("real player") ? "real-world" : dataSource,
+    source: sourceStatus.includes("generated")
+      ? "generated"
+      : id
+        ? "real-world"
+        : dataSource,
   };
 }
 
@@ -201,6 +222,11 @@ export function validatePlayerDatabase(records) {
       const value = normalized[field];
       if (Number.isNaN(value))
         errors.push(`Row ${row}: ${field} must be numeric when supplied.`);
+    }
+    for (const field of ratingFields) {
+      const value = normalized[field];
+      if (value != null && (value < 1 || value > 99))
+        errors.push(`Row ${row}: ${field} must be from 1 to 99.`);
     }
     if (
       Number.isFinite(normalized.overall) &&
@@ -298,8 +324,10 @@ export function playerDatabaseReport(records) {
       ])
       .filter(([, count]) => count > 0),
   );
-  const estimatedRecords = records
-    .filter((record) => /estimate|unverified/i.test(record.data_status ?? ""))
+  const estimatedCandidates = records
+    .filter((record) => /estimate|unverified|verification/i.test(record.data_status ?? ""));
+  const estimatedRecords = estimatedCandidates
+    .slice(0, 20)
     .map((record) => ({
       playerId: record.player_id,
       player: record.display_name,
@@ -316,8 +344,11 @@ export function playerDatabaseReport(records) {
     totalClubs: new Set(records.map((record) => `${record.league}:${record.club}`)).size,
     byLeague,
     missingFields,
-    estimatedRecordCount: estimatedRecords.length,
+    estimatedRecordCount: estimatedCandidates.length,
     estimatedRecords,
+    unverifiedRecordCount: records.filter((record) =>
+      /unverified|verification/i.test(record.data_status ?? ""),
+    ).length,
     verifiedRecordCount,
   };
 }
@@ -472,6 +503,13 @@ export function migrateLegacyPlayerDatabase({
     merged.push(fresh);
     existingById.set(playerId, fresh);
     existingByIdentity.set(identity, fresh);
+  }
+
+  for (const record of merged) {
+    for (const field of ratingFields) {
+      const value = String(record[field] ?? "").trim();
+      if (value && Number(value) === 0) record[field] = "";
+    }
   }
 
   const validation = validatePlayerDatabase(merged);

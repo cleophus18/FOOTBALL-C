@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createCareer } from "../src/career.mjs";
+import { transferPlayer } from "../src/core/finance.mjs";
 import { loadData } from "../src/data/loader.mjs";
 import { parseCsvRows, serializeCsvRows } from "../src/data/csv.mjs";
 import {
@@ -20,27 +21,51 @@ test("central database follows the supplied schema and indexes imported players"
   assert.deepEqual(template.trim().split(","), PLAYER_DATABASE_HEADERS);
 
   const parsed = parsePlayerDatabaseCsv(csv);
-  assert.equal(parsed.players.length, 71);
-  assert.equal(parsed.byId.size, 71);
+  assert.equal(parsed.players.length, 2786);
+  assert.equal(parsed.byId.size, 2786);
   assert.equal(parsed.byName.get("kylian mbappé")[0].overall, 91);
-  assert.equal(parsed.byName.get("kylian mbappé")[0].potential, 94);
-  assert.equal(parsed.byName.get("erling haaland")[0].attrs.pace, 88);
-  assert.equal(parsed.byLeague.get("premier league").length, 29);
-  assert.equal(parsed.report.estimatedRecordCount, 71);
+  assert.equal(parsed.byName.get("kylian mbappé")[0].potential, 91);
+  assert.equal(parsed.byName.get("erling haaland")[0].attrs.pace, 87);
+  assert.equal(parsed.byLeague.get("premier league").length, 612);
+  assert.equal(parsed.report.estimatedRecordCount, 2786);
   assert.equal(parsed.report.verifiedRecordCount, 0);
-  assert.equal(parsed.report.missingFields.date_of_birth, 71);
-  assert.equal(parsed.report.missingFields.shirt_number, 71);
-  assert.equal(parsed.report.missingFields.market_value_eur, 71);
-  assert.equal(parsed.report.missingFields.weekly_wage_eur, 71);
-  assert.equal(parsed.report.missingFields.contract_expiry_date, 71);
-  assert.equal(parsed.report.totalClubs, 21);
-  assert.ok(parsed.players.every((player) => player.playerId.startsWith("real-")));
+  assert.equal(parsed.report.totalClubs, 96);
+  assert.equal(parsed.warnings.length, 0);
+  assert.ok(parsed.players.every((player) => player.source === "real-world"));
+  assert.equal(
+    parsed.byClub.get("premier league:ipswich town").length,
+    30,
+  );
+  assert.ok(
+    ["height_cm", "weight_kg", "shirt_number", "market_value_eur", "weekly_wage_eur",
+      "contract_expiry_date"].every(
+      (field) => parsed.report.missingFields[field] === 2786,
+    ),
+  );
 });
 
 test("central loader uses the canonical player database for new career data", async () => {
   const data = await loadData();
-  assert.equal(data.fc25Players.length, 71);
-  assert.equal(data.playerDatabase.incompleteLeagues.length, 5);
+  assert.equal(data.fc25Players.length, 2786);
+  assert.deepEqual(data.playerDatabase.incompleteLeagues, []);
+  assert.deepEqual(data.playerDatabase.unmatchedClubs, []);
+  for (const league of data.careerLeagues) {
+    assert.equal(
+      Object.keys(league.rostersByClub).length,
+      league.league.teamIds.length,
+    );
+    for (const clubId of league.league.teamIds) {
+      const roster = league.rostersByClub[clubId];
+      assert.ok(roster.length >= 20, `${league.league.name}/${clubId} depth`);
+      assert.ok(
+        roster.every(
+          (player) =>
+            player.league === league.league.name &&
+            player.clubName === league.clubIdentities[clubId].name,
+        ),
+      );
+    }
+  }
   const league = data.careerLeagues.find(
     (entry) => entry.league.name === "Premier League",
   );
@@ -64,15 +89,151 @@ test("central loader uses the canonical player database for new career data", as
   });
 
   const haaland = career.players.find((player) => player.first === "Erling");
-  assert.equal(haaland.id, "real-manchester-city-fc25-1-erling");
+  assert.equal(
+    haaland.id,
+    data.playerDatabase.byName.get("erling haaland")[0].playerId,
+  );
   assert.equal(haaland.overall, 91);
   assert.equal(haaland.potential, 93);
+  assert.deepEqual(
+    haaland.attrs,
+    data.playerDatabase.byId.get(haaland.id).attrs,
+  );
+  assert.equal(
+    career.players.some(
+      (player) =>
+        player.id !== career.player.id &&
+        (player.source === "generated" ||
+          player.source?.startsWith("generated-")),
+    ),
+    false,
+  );
   const saved = JSON.parse(JSON.stringify(career.toJSON()));
   const restored = createCareer(data, saved.creation, saved);
   const restoredHaaland = restored.players.find((player) => player.id === haaland.id);
   assert.deepEqual(restoredHaaland.attrs, haaland.attrs);
   assert.equal(restoredHaaland.overall, haaland.overall);
   assert.equal(restoredHaaland.potential, haaland.potential);
+});
+
+test("new careers in all five leagues contain only players from the master database", async () => {
+  const data = await loadData();
+  for (const [index, league] of data.careerLeagues.entries()) {
+    const clubId = league.league.teamIds[0];
+    const sourcePlayers = league.league.teamIds.flatMap((id) =>
+      league.rostersByClub[id].map((player) => ({ ...player, clubId: id })),
+    );
+    const career = createCareer(data, {
+      first: "Casey",
+      last: "Manager",
+      age: "25",
+      nationality: "ENG",
+      height: "180",
+      weight: "75",
+      foot: "Right",
+      weakFoot: "3",
+      skillMoves: "3",
+      position: "ST",
+      archetype: "Poacher",
+      startingOverall: "60",
+      difficulty: "Realistic",
+      leagueId: league.id,
+      clubId,
+      seed: 38742 + index,
+    });
+    const importedIds = career.players
+      .filter((player) => player.source === "real-world")
+      .map((player) => player.id)
+      .sort();
+    assert.deepEqual(
+      importedIds,
+      sourcePlayers.map((player) => player.playerId).sort(),
+      `${league.league.name} must use every source record without fillers`,
+    );
+    for (const sourcePlayer of sourcePlayers) {
+      const imported = career.players.find(
+        (player) => player.id === sourcePlayer.playerId,
+      );
+      assert.equal(imported.clubId, sourcePlayer.clubId);
+    }
+    for (const clubId of league.league.teamIds) {
+      const clubPlayers = career.players.filter(
+        (player) => player.clubId === clubId,
+      );
+      const shirtNumbers = clubPlayers.map((player) => player.shirtNumber);
+      assert.equal(new Set(shirtNumbers).size, shirtNumbers.length);
+      assert.ok(
+        shirtNumbers.every(
+          (number) => Number.isInteger(number) && number >= 1 && number <= 99,
+        ),
+      );
+    }
+    assert.equal(
+      career.players.some(
+        (player) =>
+          player.id !== career.player.id &&
+          (player.source === "generated" ||
+            player.source?.startsWith("generated-")),
+      ),
+      false,
+    );
+  }
+});
+
+test("full master rosters can transfer within their database-sized registration limit", async () => {
+  const data = await loadData();
+  const league = data.careerLeagues.find(
+    (entry) => entry.league.name === "Premier League",
+  );
+  const career = createCareer(data, {
+    first: "Casey",
+    last: "Manager",
+    age: "25",
+    nationality: "ENG",
+    height: "180",
+    weight: "75",
+    foot: "Right",
+    weakFoot: "3",
+    skillMoves: "3",
+    position: "ST",
+    archetype: "Poacher",
+    startingOverall: "60",
+    difficulty: "Realistic",
+    leagueId: league.id,
+    clubId: "hull-city",
+    seed: 38742,
+  });
+  const seller = career.clubs.find((club) => club.id === "fulham");
+  const buyer = career.clubs.find((club) => club.id === "chelsea");
+  const player = career.players.find(
+    (entry) => entry.clubId === seller.id && entry.source === "real-world",
+  );
+  buyer.finances.transferBudget = 1_000_000_000;
+  buyer.finances.balance = 1_000_000_000;
+  buyer.finances.wageBudget = 1_000_000_000;
+  const before = buyer.squad.length;
+
+  transferPlayer({
+    seller,
+    buyer,
+    player,
+    players: career.players,
+    fee: 0,
+    wage: 0,
+    date: career.currentDay(),
+    transferId: "master-roster-transfer",
+  });
+
+  assert.equal(player.clubId, buyer.id);
+  assert.equal(seller.has(player.id), false);
+  assert.equal(buyer.has(player.id), true);
+  assert.equal(buyer.squad.length, before + 1);
+  assert.ok(buyer.squad.length <= buyer.registrationLimit);
+  const saved = JSON.parse(JSON.stringify(career.toJSON()));
+  const restored = createCareer(data, saved.creation, saved);
+  const restoredBuyer = restored.clubs.find((club) => club.id === buyer.id);
+  assert.equal(restoredBuyer.registrationLimit, buyer.registrationLimit);
+  assert.ok(restoredBuyer.has(player.id));
 });
 
 test("CSV parsing preserves quoted commas, quotes, and UTF-8 names", async () => {

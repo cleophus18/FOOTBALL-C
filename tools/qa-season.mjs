@@ -2,71 +2,13 @@
 //  1. honours recorded for legends / non-user players
 //  2. grouped trophy counts
 //  3. World Cup goal leaderboard
-import { readFile } from "node:fs/promises";
 import { createCareer } from "../src/career.mjs";
-import {
-  buildPlayableCareerLeagues,
-  combineRosterPlayers,
-  parseCompetitionMetadataCsv,
-  parseFc26RatingsCsv,
-  parseSupplementalPlayersCsv,
-} from "../src/data/fc25-roster.mjs";
+import { loadData } from "../src/data/loader.mjs";
 import {
   groupHonours,
   seasonsLabel,
   totalTrophies,
 } from "../src/model/honours.mjs";
-
-async function loadData() {
-  const read = (path) =>
-    readFile(new URL(`../data/${path}`, import.meta.url), "utf8");
-  const [
-    clubs,
-    leagues,
-    archetypes,
-    squadTemplate,
-    objectives,
-    careerSettings,
-    ratings,
-    mappings,
-    metadata,
-    teams,
-    additions,
-    aliases,
-    keyMomentOptions,
-  ] = await Promise.all([
-    read("config/clubs.json").then(JSON.parse),
-    read("config/leagues.json").then(JSON.parse),
-    read("config/archetypes.json").then(JSON.parse),
-    read("squads/ENG.json").then(JSON.parse),
-    read("config/objectives.json").then(JSON.parse),
-    read("config/career.json").then(JSON.parse),
-    read("squads/fc26_player_ratings.csv"),
-    read("config/fc26-club-leagues.json").then(JSON.parse),
-    read("config/football_leagues.csv"),
-    read("config/career-league-teams.json").then(JSON.parse),
-    read("squads/player_additions.csv"),
-    read("config/supplemental-club-aliases.json").then(JSON.parse),
-    read("config/key-moment-options.json").then(JSON.parse),
-  ]);
-  return {
-    clubs,
-    league: leagues["premier-league"],
-    archetypes,
-    squadTemplate,
-    objectives,
-    careerSettings,
-    keyMomentOptions,
-    careerLeagues: buildPlayableCareerLeagues(
-      combineRosterPlayers(
-        parseFc26RatingsCsv(ratings, mappings),
-        parseSupplementalPlayersCsv(additions, aliases),
-      ),
-      parseCompetitionMetadataCsv(metadata),
-      teams,
-    ),
-  };
-}
 
 const data = await loadData();
 const career = createCareer(data, {
@@ -85,7 +27,8 @@ const career = createCareer(data, {
   trait: "Wonderkid",
   personality: "Professional",
   difficulty: "Realistic",
-  clubId: "hull",
+  leagueId: "world-premier-league",
+  clubId: "hull-city",
   seed: 41827,
 });
 
@@ -145,4 +88,3 @@ for (const p of winnersWithHonours) {
     `  ${p.first} ${p.last}: ${groups.length} → ${groups.map((h) => h.award).join(", ")}`,
   );
 }
-

@@ -581,6 +581,8 @@ export function buildPlayableCareerLeagues(
         rostersByClub[clubId] = roster.map((player) => ({
           id: player.id,
           playerId: player.playerId,
+          league: player.league,
+          clubName: player.clubName,
           first: player.first,
           last: player.last,
           dob: player.dob,
@@ -594,6 +596,7 @@ export function buildPlayableCareerLeagues(
           weight: player.weight,
           archetype: player.archetype,
           personality: player.personality,
+          traits: player.traits,
           position: player.position,
           altPositions: player.altPositions?.length
             ? player.altPositions
