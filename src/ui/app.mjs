@@ -154,6 +154,8 @@ let fixtureFilter = "all";
 let lastAutosaveAt = 0;
 let autosaveUnavailable = false;
 let matchSimulationTimer = null;
+let simulationProgressTimer = null;
+let simulationProgressCompleteTimer = null;
 
 function serializeCareerSave(compact = false) {
   return JSON.stringify(
@@ -2191,6 +2193,7 @@ function renderGame() {
   if (!career) return renderCreation();
   persistAutosave();
   const previousScreen = renderedScreen;
+  const isScreenTransition = previousScreen !== screen;
   if (previousScreen && previousScreen !== screen && !isBackNavigation) {
     screenScrollPositions.set(previousScreen, captureGameScroll());
     if (
@@ -2268,7 +2271,7 @@ function renderGame() {
     },
   ];
   $app.innerHTML = `
-    <div class="game-shell">
+    <div class="game-shell${isScreenTransition ? " screen-transition" : ""}">
       <aside class="sidebar">
         <a class="brand" href="#"><span class="brand-ball">T</span> TOUCHLINE</a>
         <div class="side-label">CAREER HUB</div>
@@ -2318,12 +2321,17 @@ function renderGame() {
     button.addEventListener("click", (event) => {
       event.preventDefault();
       const groupId = button.dataset.navGroup;
-      if (expandedNavGroups.has(groupId)) {
-        expandedNavGroups.delete(groupId);
-      } else {
-        expandedNavGroups.add(groupId);
-      }
-      renderGame();
+      const isExpanded = !expandedNavGroups.has(groupId);
+      if (isExpanded) expandedNavGroups.add(groupId);
+      else expandedNavGroups.delete(groupId);
+      const group = button.closest(".nav-group");
+      button.setAttribute("aria-expanded", String(isExpanded));
+      button.querySelector(".nav-group-chevron").textContent = isExpanded
+        ? "▾"
+        : "▸";
+      group.classList.toggle("expanded", isExpanded);
+      group.classList.toggle("collapsed", !isExpanded);
+      group.querySelector(".nav-group-items").hidden = !isExpanded;
     }),
   );
   $app.querySelectorAll("[data-screen]").forEach((button) =>
@@ -2984,7 +2992,7 @@ function refreshLiveMatchEvent(state, match) {
         ? decisionButtons
         : state.status === "running"
           ? `<span class="simulation-running">MATCH IN PROGRESS · CLOCK RUNNING</span>`
-          : `<button class="button-primary" data-action="start-simulation">Start match <span>▶</span></button>`;
+          : `<div class="simulation-start-actions"><button class="button-primary" data-action="start-simulation">Start match <span>▶</span></button><button class="button-quiet" data-action="skip-simulation">Skip to full time</button></div>`;
   node.innerHTML = renderSimulationLiveEvent(
     match,
     state,
@@ -4095,7 +4103,7 @@ function renderSimulation({ embedded = false } = {}) {
         ? decisionButtons
         : state.status === "running"
           ? `<span class="simulation-running">MATCH IN PROGRESS · CLOCK RUNNING</span>`
-          : `<button class="button-primary" data-action="start-simulation">Start match <span>▶</span></button>`;
+          : `<div class="simulation-start-actions"><button class="button-primary" data-action="start-simulation">Start match <span>▶</span></button><button class="button-quiet" data-action="skip-simulation">Skip to full time</button></div>`;
   const currentMinuteMoment = state.status === "paused" && activeMoment;
   const canRequestSubstitution =
     ["running", "paused"].includes(state.status) &&
@@ -5830,6 +5838,7 @@ function finishLiveMatchForSimulation() {
 }
 
 function showSimProgress(label) {
+  clearSimulationProgressTimers();
   const bar = $app?.querySelector("#sim-progress-bar");
   const fill = $app?.querySelector("#sim-progress-fill");
   const labelEl = $app?.querySelector("#sim-progress-label");
@@ -5842,26 +5851,51 @@ function showSimProgress(label) {
   // The bar fills as the simulation ticks; it is cleared when the screen re-renders.
   let progress = 0;
   const tick = () => {
+    simulationProgressTimer = null;
     progress = Math.min(95, progress + Math.random() * 18 + 4);
     fill.style.width = `${progress}%`;
-    if (progress < 95) window.setTimeout(tick, 60 + Math.random() * 120);
+    if (progress < 95)
+      simulationProgressTimer = window.setTimeout(
+        tick,
+        60 + Math.random() * 120,
+      );
   };
-  window.setTimeout(tick, 120);
+  simulationProgressTimer = window.setTimeout(tick, 120);
 }
 
 function hideSimProgress() {
+  if (simulationProgressTimer != null) {
+    window.clearTimeout(simulationProgressTimer);
+    simulationProgressTimer = null;
+  }
+  if (simulationProgressCompleteTimer != null) {
+    window.clearTimeout(simulationProgressCompleteTimer);
+    simulationProgressCompleteTimer = null;
+  }
   const bar = $app?.querySelector("#sim-progress-bar");
   const fill = $app?.querySelector("#sim-progress-fill");
   const labelEl = $app?.querySelector("#sim-progress-label");
   if (!bar || !fill || !labelEl) return;
   fill.style.width = "100%";
   fill.style.background = "var(--positive, #4caf50)";
-  window.setTimeout(() => {
+  simulationProgressCompleteTimer = window.setTimeout(() => {
+    simulationProgressCompleteTimer = null;
     bar.hidden = true;
     fill.style.width = "0%";
     fill.style.background = "";
     labelEl.textContent = "Simulating…";
   }, 260);
+}
+
+function clearSimulationProgressTimers() {
+  if (simulationProgressTimer != null) {
+    window.clearTimeout(simulationProgressTimer);
+    simulationProgressTimer = null;
+  }
+  if (simulationProgressCompleteTimer != null) {
+    window.clearTimeout(simulationProgressCompleteTimer);
+    simulationProgressCompleteTimer = null;
+  }
 }
 
 function handleAction(action, details = {}) {
@@ -6301,6 +6335,14 @@ function handleAction(action, details = {}) {
       notice = `Could not start match: ${error.message}`;
     }
   }
+  if (action === "skip-simulation") {
+    try {
+      finishLiveMatchForSimulation();
+      notice = "Match skipped. Full-time result recorded.";
+    } catch (error) {
+      notice = `Could not skip match: ${error.message}`;
+    }
+  }
   if (action === "back-to-career") {
     screen = "overview";
     notice = "Full-time report saved. You can advance to the next week.";
@@ -6470,6 +6512,7 @@ function handleAction(action, details = {}) {
     screen === "simulation" &&
     [
       "start-simulation",
+      "skip-simulation",
       "moment-decision",
       "moment-risk",
       "moment-safe",

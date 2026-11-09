@@ -4446,6 +4446,13 @@ td:first-child {
   line-height: 1.6;
 }
 
+.simulation-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
 .simulation-decisions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -6608,8 +6615,8 @@ button:active:not(:disabled) {
 }
 
 @keyframes stadium-atmosphere {
-  from { background-position: 0% 0%, 100% 0%, 0% 0%; opacity: .58; }
-  to { background-position: 38% 0%, 62% 0%, 100% 0%; opacity: .9; }
+  from { transform: translate3d(-1%, 0, 0) scale(1.03); opacity: .58; }
+  to { transform: translate3d(1%, 0, 0) scale(1.03); opacity: .9; }
 }
 
 .sidebar {
@@ -7208,18 +7215,23 @@ tbody tr:hover {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.game-shell .content > * {
+.game-shell.screen-transition .content > * {
   animation: game-page-enter .32s cubic-bezier(.2,.7,.2,1) both;
 }
 
-.game-shell .content > *:nth-child(2) { animation-delay: 35ms; }
-.game-shell .content > *:nth-child(3) { animation-delay: 70ms; }
-.game-shell .content > *:nth-child(4) { animation-delay: 105ms; }
+.game-shell.screen-transition .content > *:nth-child(2) { animation-delay: 35ms; }
+.game-shell.screen-transition .content > *:nth-child(3) { animation-delay: 70ms; }
+.game-shell.screen-transition .content > *:nth-child(4) { animation-delay: 105ms; }
+
+.game-shell.screen-transition .content .panel,
+.game-shell.screen-transition .content .stat-card,
+.game-shell.screen-transition .content .menu-card {
+  animation: game-panel-enter .36s cubic-bezier(.2,.7,.2,1) both;
+}
 
 .game-shell .content .panel,
 .game-shell .content .stat-card,
 .game-shell .content .menu-card {
-  animation: game-panel-enter .36s cubic-bezier(.2,.7,.2,1) both;
   transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
 }
 
@@ -7229,9 +7241,9 @@ tbody tr:hover {
   transform: translateY(-2px);
 }
 
-.game-shell .sidebar .brand,
-.game-shell .sidebar .club-mini,
-.game-shell .topbar {
+.game-shell.screen-transition .sidebar .brand,
+.game-shell.screen-transition .sidebar .club-mini,
+.game-shell.screen-transition .topbar {
   animation: game-page-enter .3s ease-out both;
 }
 

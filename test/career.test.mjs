@@ -152,7 +152,7 @@ async function loadData() {
 function options(seed = 41827) {
   return {
     first: "Alex",
-    last: "Morgan",
+    last: "Hunter",
     age: "17",
     nationality: "ENG",
     height: "178",
@@ -175,7 +175,18 @@ test("major World Cup nations reuse existing stars and South Africa remains in t
   const career = createCareer(await loadData(), options(52121));
   const international = career.internationalPlayers();
 
-  for (const nation of ["ESP", "FRA", "NED", "ENG", "POR", "RSA", "ARG", "BRA", "GER", "ITA"]) {
+  for (const nation of [
+    "ESP",
+    "FRA",
+    "NED",
+    "ENG",
+    "POR",
+    "RSA",
+    "ARG",
+    "BRA",
+    "GER",
+    "ITA",
+  ]) {
     const squad = selectNationalTeamSquad(
       international,
       nation,
@@ -190,13 +201,20 @@ test("major World Cup nations reuse existing stars and South Africa remains in t
     );
   }
 
-  const southAfrica = international.filter((player) => player.nationality === "RSA");
-  assert.ok(southAfrica.some((player) => player.first === "Ronwen" && player.last === "Williams"));
+  const southAfrica = international.filter(
+    (player) => player.nationality === "RSA",
+  );
+  assert.ok(
+    southAfrica.some(
+      (player) => player.first === "Ronwen" && player.last === "Williams",
+    ),
+  );
   assert.equal(
-    international.filter((player) =>
-      player.nationality === "ENG" &&
-      player.first === "Bukayo" &&
-      player.last === "Saka",
+    international.filter(
+      (player) =>
+        player.nationality === "ENG" &&
+        player.first === "Bukayo" &&
+        player.last === "Saka",
     ).length,
     1,
     "an existing England star must be reused instead of duplicated",
@@ -220,7 +238,11 @@ test("existing World Cup nations are completed with positional NPCs when needed"
       team.code,
       career.internationalClubLevels(),
     );
-    assert.equal(squad.length, 26, `${team.code} has a complete World Cup squad`);
+    assert.equal(
+      squad.length,
+      26,
+      `${team.code} has a complete World Cup squad`,
+    );
   }
   assert.ok(
     career.worldCupNpcPlayers.some(
@@ -327,10 +349,7 @@ test("generated NPCs start below 90 and restores keep at most four 90+ players",
   for (const player of generated) {
     currentRatings.set(
       player.id,
-      Math.max(
-        currentRatings.get(player.id) ?? 0,
-        calculateOverall(player),
-      ),
+      Math.max(currentRatings.get(player.id) ?? 0, calculateOverall(player)),
     );
   }
   assert.equal(
@@ -344,9 +363,7 @@ test("generated NPCs start below 90 and restores keep at most four 90+ players",
     "generated players should retain potential above their starting overall",
   );
   assert.equal(career.generatedEliteIds.length, 4);
-  const generatedById = new Map(
-    generated.map((player) => [player.id, player]),
-  );
+  const generatedById = new Map(generated.map((player) => [player.id, player]));
   const eliteClubIds = career.generatedEliteIds.map(
     (id) => generatedById.get(id)?.clubId,
   );
@@ -415,10 +432,7 @@ test("generated NPCs start below 90 and restores keep at most four 90+ players",
     if (!["generated", "generated-expansion"].includes(player.source)) continue;
     restoredRatings.set(
       player.id,
-      Math.max(
-        restoredRatings.get(player.id) ?? 0,
-        calculateOverall(player),
-      ),
+      Math.max(restoredRatings.get(player.id) ?? 0, calculateOverall(player)),
     );
   }
   assert.equal(
@@ -432,7 +446,10 @@ test("generated NPCs start below 90 and restores keep at most four 90+ players",
     "only the weaker-club elite pathways can reach 90 overall",
   );
   assert.ok(
-    [...restored.players, ...restored.worldLeagues.flatMap((state) => state.performers)].some(
+    [
+      ...restored.players,
+      ...restored.worldLeagues.flatMap((state) => state.performers),
+    ].some(
       (player) =>
         saved.generatedEliteIds.includes(player.id) &&
         player.potential === 99 &&
@@ -927,14 +944,10 @@ test("an approved request for a better teammate signs the requested player", asy
   const career = createCareer(await loadData(), options(7024));
   const originalClub = career.club;
   const playerToSign = career.players.find(
-    (player) =>
-      player.clubId !== originalClub.id &&
-      !player.isLegend,
+    (player) => player.clubId !== originalClub.id && !player.isLegend,
   );
   assert.ok(playerToSign);
-  const seller = career.clubs.find(
-    (club) => club.id === playerToSign.clubId,
-  );
+  const seller = career.clubs.find((club) => club.id === playerToSign.clubId);
   const reserve = createPlayer({
     id: "manager-request-reserve",
     first: "Reserve",
@@ -990,7 +1003,8 @@ test("approved playing-time and development requests affect selection and traini
       ? career.player.gkAttrs
       : career.player.subAttrs;
   const previous = attributes[focus];
-  career.trainingPoints = career.data.careerSettings.training.attributePointCost;
+  career.trainingPoints =
+    career.data.careerSettings.training.attributePointCost;
   const training = career.train(focus);
   assert.equal(training.trained, true);
   assert.equal(attributes[focus], previous + 2);
@@ -1546,7 +1560,9 @@ test("the agent gate enables transfer offers and a transfer acceptance path", as
   const hired = career.hireAgent("agent-1");
   assert.equal(hired.agent.name, "Milo Ace");
   assert.equal(career.money, startingMoney - 100000 - 8000);
-  assert.ok(career.financialHistory.some((entry) => entry.type === "agent-hire"));
+  assert.ok(
+    career.financialHistory.some((entry) => entry.type === "agent-hire"),
+  );
   assert.ok(career.transferOffers.length > 0);
   assert.deepEqual(career.agentPerformance["agent-1"], {
     searches: 1,
@@ -1569,10 +1585,7 @@ test("hiring an agent requires enough money and charges the user", async () => {
   const data = await loadData();
   const career = createCareer(data, options(41828));
   const startingMoney = career.money;
-  assert.throws(
-    () => career.hireAgent(career.agentPool[0].id),
-    /to hire/,
-  );
+  assert.throws(() => career.hireAgent(career.agentPool[0].id), /to hire/);
   assert.equal(career.money, startingMoney);
   assert.equal(career.agent, null);
 });
@@ -2543,9 +2556,12 @@ test("Messi is at Barcelona and Ronaldo is at Manchester United", async () => {
 
   assert.ok(messi);
   assert.ok(ronaldo);
-  assert.equal(laLiga.rostersByClub["real-madrid"].some(
-    (player) => player.first === "Cristiano" && player.last === "Ronaldo",
-  ), false);
+  assert.equal(
+    laLiga.rostersByClub["real-madrid"].some(
+      (player) => player.first === "Cristiano" && player.last === "Ronaldo",
+    ),
+    false,
+  );
 });
 
 test("Messi and Ronaldo use normal player ratings and development", async () => {
@@ -2581,9 +2597,7 @@ test("Messi and Ronaldo use normal player ratings and development", async () => 
   const defaultLeagueRonaldo = [
     ...defaultCareer.players,
     ...defaultCareer.worldLeagues.flatMap((state) => state.performers),
-  ].find(
-    (player) => player.first === "Cristiano" && player.last === "Ronaldo",
-  );
+  ].find((player) => player.first === "Cristiano" && player.last === "Ronaldo");
   assert.equal(defaultLeagueRonaldo?.isLegend, false);
 });
 
@@ -2612,9 +2626,7 @@ test("restoring old saves removes Messi and Ronaldo's legacy legend protection",
   ronaldo.clubId = "real-madrid";
   ronaldo.isLegend = true;
   saved.players.push(ronaldo);
-  saved.clubs
-    .find((club) => club.id === "real-madrid")
-    .squad.push(ronaldo.id);
+  saved.clubs.find((club) => club.id === "real-madrid").squad.push(ronaldo.id);
 
   const restored = createCareer(data, careerOptions, saved);
   const restoredRonaldo = restored.players.find(
@@ -3011,8 +3023,7 @@ test("elite defenders and goalkeepers stop more goals across repeated matches", 
   }
   assert.ok(highQualityGoals < lowQualityGoals);
   assert.ok(
-    highQualityStops / highQualityShots >
-      lowQualityStops / lowQualityShots,
+    highQualityStops / highQualityShots > lowQualityStops / lowQualityShots,
   );
 });
 
@@ -3046,7 +3057,7 @@ test("saving and restoring during a live match preserves its pending goals and s
       career.lastReport.userMatch.awayGoals,
     ],
   );
-  assert.equal(restored.league.table.row(restored.club.id).played, 0  );
+  assert.equal(restored.league.table.row(restored.club.id).played, 0);
 });
 
 test("saving at a key moment resumes the paused decision without duplicating the result", async () => {
@@ -3370,9 +3381,24 @@ test("selected World Cup players see only their nation's tournament matches in t
     status: "in-progress",
     stage: "Group stage",
     qualified: [
-      { id: "user-nation", code: career.player.nationality, name: "User Nation", squadIds: [career.player.id] },
-      { id: "rival-a", code: "BRA", name: "Brazil", squadIds: ["brazil-player"] },
-      { id: "rival-b", code: "ARG", name: "Argentina", squadIds: ["argentina-player"] },
+      {
+        id: "user-nation",
+        code: career.player.nationality,
+        name: "User Nation",
+        squadIds: [career.player.id],
+      },
+      {
+        id: "rival-a",
+        code: "BRA",
+        name: "Brazil",
+        squadIds: ["brazil-player"],
+      },
+      {
+        id: "rival-b",
+        code: "ARG",
+        name: "Argentina",
+        squadIds: ["argentina-player"],
+      },
     ],
     fixtures: [
       {
@@ -3420,14 +3446,18 @@ test("a full Premier League season completes with 38 matches per club", async ()
     advanceAndResolve(career);
     weeks++;
   }
-  assert.equal(career.seasonComplete, true, JSON.stringify({
-    week: career.week,
-    season: career.season,
-    worldCupYear: career.worldCup.nextYear,
-    tournament: career.worldCup.tournament?.status,
-    leagues: career.getLeagueSeasonProgress(),
-    championsLeague: career.championsLeague?.status,
-  }));
+  assert.equal(
+    career.seasonComplete,
+    true,
+    JSON.stringify({
+      week: career.week,
+      season: career.season,
+      worldCupYear: career.worldCup.nextYear,
+      tournament: career.worldCup.tournament?.status,
+      leagues: career.getLeagueSeasonProgress(),
+      championsLeague: career.championsLeague?.status,
+    }),
+  );
   assert.equal(weeks <= 44, true);
   assert.ok(career.league.table.sorted().every((row) => row.played === 38));
   assert.ok(career.player.stats.apps > 0 && career.player.stats.apps <= 38);
@@ -4154,7 +4184,8 @@ test("World Cup fixtures progress by date and completed matches do not replay af
   assert.deepEqual(repeated.worldCupMatches, []);
   assert.equal(
     restored.worldCup.tournament.fixtures.filter(
-      (fixture) => fixture.id === firstFixture.id && fixture.status === "completed",
+      (fixture) =>
+        fixture.id === firstFixture.id && fixture.status === "completed",
     ).length,
     1,
   );
@@ -4167,9 +4198,7 @@ test("World Cup fixtures progress by date and completed matches do not replay af
     restored.dayCursor = day;
     restored.processWorldCupCalendar();
     if (day === toDayIndex(year, 7, 9)) {
-      const activeTeamIds = new Set(
-        restored.worldCup.tournament.knockoutTeams,
-      );
+      const activeTeamIds = new Set(restored.worldCup.tournament.knockoutTeams);
       const eliminatedTeams = restored.worldCup.tournament.qualified.filter(
         (team) => !activeTeamIds.has(team.id),
       );
@@ -4250,9 +4279,9 @@ test("the Ballon d'Or ceremony is a next-season, persisted, one-time event", asy
   assert.deepEqual(restored.ballonDorCeremonies, [ceremony]);
   assert.equal(restored.publishBallonDorCeremony(), null);
   assert.equal(
-    restored.getPlayerHonours(restored.player).filter(
-      (honour) => honour.award === "Ballon d'Or",
-    ).length,
+    restored
+      .getPlayerHonours(restored.player)
+      .filter((honour) => honour.award === "Ballon d'Or").length,
     1,
   );
 });
@@ -4292,7 +4321,10 @@ test("the available national pool completes a balanced World Cup with durable ho
     tournament.groups.map((group) => group.teams.length),
     Array(8).fill(4),
   );
-  assert.equal(tournament.fixtures.filter((fixture) => fixture.round === "Final").length, 1);
+  assert.equal(
+    tournament.fixtures.filter((fixture) => fixture.round === "Final").length,
+    1,
+  );
   assert.ok(tournament.winnerId);
   assert.ok(tournament.runnerUpId);
   assert.notEqual(tournament.winnerId, tournament.runnerUpId);
@@ -4303,9 +4335,9 @@ test("the available national pool completes a balanced World Cup with durable ho
   const champion = tournament.qualified.find(
     (team) => team.id === tournament.winnerId,
   );
-  const championPlayer = career.internationalPlayers().find((player) =>
-    champion.squadIds.includes(player.id),
-  );
+  const championPlayer = career
+    .internationalPlayers()
+    .find((player) => champion.squadIds.includes(player.id));
   assert.ok(championPlayer);
   const wins = championPlayer.internationalStats.worldCupWins;
   const honours = championPlayer.honours.length;
