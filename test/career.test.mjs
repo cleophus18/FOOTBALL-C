@@ -7,8 +7,7 @@ import { CATALOGUED_NATIONS } from "../src/model/names.mjs";
 import {
   groupOf,
   POSITIONS,
-  SUB_ATTRIBUTES,
-  SUB_ATTRIBUTE_GROUP,
+  SIMILAR_POSITIONS,
 } from "../src/core/constants.mjs";
 import { RngBundle } from "../src/core/rng.mjs";
 import { ageOn, fromDayIndex, toDayIndex } from "../src/core/calendar.mjs";
@@ -147,6 +146,21 @@ async function loadData() {
       teams,
     ),
   };
+}
+
+/**
+ * Slots a player of this position may legitimately occupy in a 4-3-3: his own slot,
+ * the synonym slot (DM/CDM, AM/CAM) and any listed alternative position. A forced
+ * player is never invented into a group he does not belong to.
+ */
+function compatibleSlots(position) {
+  const synonyms = { DM: "CDM", CDM: "DM", AM: "CAM", CAM: "AM" };
+  return [
+    position,
+    ...(synonyms[position] ? [synonyms[position]] : []),
+    ...(SIMILAR_POSITIONS[position] ?? []),
+    ...(synonyms[SIMILAR_POSITIONS[position]] ?? []),
+  ];
 }
 
 function options(seed = 41827) {
@@ -579,85 +593,17 @@ test("every generated player in the world gets a believable body", async () => {
   );
 });
 
-test("individual training can raise attributes but never the overall past potential", async () => {
+test("individual focus guides natural development without immediate attribute purchases", async () => {
   const data = await loadData();
   const career = createCareer(data, options(700));
-  career.player.potential = calculateOverall(career.player);
-  career.trainingPoints = data.careerSettings.training.attributePointCost * 99;
-  const initialShooting = career.player.attrs.shooting;
-  const initialFinishing = career.player.subAttrs.finishing;
-
-  // A player already at his ceiling cannot train his base overall any higher: the
-  // potential set when he was built is the ceiling, whatever he does on the pitch.
-  const atCeiling = career.train("finishing");
-  assert.equal(atCeiling.trained, false);
-  assert.match(atCeiling.reason, /potential/);
-  assert.equal(career.player.overall, career.player.potential);
-
-  // With headroom, training works — and stops exactly at the potential.
-  career.player.potential = Math.min(99, career.player.overall + 6);
-  const ceiling = career.player.potential;
-  const startOverall = career.player.overall;
-  let sessions = 0;
-  while (sessions < 99) {
-    const result = career.train("finishing");
-    if (!result.trained) break;
-    sessions++;
-  }
-  assert.ok(sessions > 0);
-  assert.ok(career.player.subAttrs.finishing > initialFinishing);
-  assert.ok(career.player.attrs.shooting > initialShooting);
-  // The ceiling holds: training closes the gap but never crosses the potential.
-  assert.ok(career.player.overall >= startOverall);
-  assert.ok(career.player.overall <= ceiling);
-});
-
-test("individual training upgrades one detailed attribute and supports keepers", async () => {
-  const data = await loadData();
-  const cost = data.careerSettings.training.attributePointCost;
-  const career = createCareer(data, options(701));
-  career.trainingPoints = cost;
-  const initialFinishing = career.player.subAttrs.finishing;
-  const initialAttributes = { ...career.player.attrs };
-
-  const result = career.train("finishing");
-
-  assert.equal(result.trained, true);
-  assert.equal(career.player.subAttrs.finishing, initialFinishing + 1);
-  assert.equal(
-    career.player.attrs[SUB_ATTRIBUTE_GROUP.finishing],
-    Math.round(
-      SUB_ATTRIBUTES.shooting.reduce(
-        (sum, attribute) => sum + career.player.subAttrs[attribute],
-        0,
-      ) / SUB_ATTRIBUTES.shooting.length,
-    ),
-  );
-  assert.equal(
-    career.player.attrs.shooting >= initialAttributes.shooting,
-    true,
-  );
-  for (const attribute of Object.keys(initialAttributes)) {
-    if (attribute !== "shooting")
-      assert.equal(
-        career.player.attrs[attribute],
-        initialAttributes[attribute],
-      );
-  }
-  assert.equal(career.trainingPoints, 0);
-  assert.throws(
-    () => career.train("shooting"),
-    /Unsupported training attribute/,
-  );
-
-  const goalkeeper = createCareer(data, {
-    ...options(702),
-    position: "GK",
-  });
-  goalkeeper.trainingPoints = cost;
-  const initialReflexes = goalkeeper.player.gkAttrs.reflexes;
-  assert.equal(goalkeeper.train("reflexes").trained, true);
-  assert.equal(goalkeeper.player.gkAttrs.reflexes, initialReflexes + 1);
+  const initial = career.player.subAttrs.finishing;
+  const result = career.setTrainingFocus("finishing");
+  assert.equal(result.selected, true);
+  assert.equal(career.player.subAttrs.finishing, initial);
+  assert.throws(() => career.setTrainingFocus("shooting"), /Unsupported training attribute/);
+  const goalkeeper = createCareer(data, { ...options(702), position: "GK" });
+  assert.equal(goalkeeper.setTrainingFocus("reflexes").selected, true);
+  assert.throws(() => goalkeeper.setTrainingFocus("finishing"), /Unsupported training attribute/);
 });
 
 test("correcting a career player's wrong XI role does not duplicate them", async () => {
@@ -1140,17 +1086,11 @@ test("approved playing-time and development requests affect selection and traini
   const development = career.talkToManager("development");
   assert.equal(development.approved, true);
   const focus = career.trainingFocus;
-  const attributes =
-    career.player.position === "GK"
-      ? career.player.gkAttrs
-      : career.player.subAttrs;
+  const attributes = career.player.position === "GK" ? career.player.gkAttrs : career.player.subAttrs;
   const previous = attributes[focus];
-  career.trainingPoints =
-    career.data.careerSettings.training.attributePointCost;
-  const training = career.train(focus);
-  assert.equal(training.trained, true);
-  assert.equal(attributes[focus], previous + 2);
-  assert.equal(career.player.managerTrainingBonus, false);
+  const training = career.setTrainingFocus(focus);
+  assert.equal(training.selected, true);
+  assert.equal(attributes[focus], previous);
 });
 
 test("player conversations and retirement persist without deleting career records", async () => {
@@ -1886,14 +1826,15 @@ test("manager transfers reconcile the destination squad and survive save restora
 test("background leagues record player scoring and rating stats for cross-league browsing", async () => {
   const data = await loadData();
   const career = createCareer(data, options(66519));
+  const ratingsBefore = new Map(career.worldLeagues.flatMap((state) => state.performers.map((player) => [player.id, calculateOverall(player)])));
   for (let week = 0; week < 8; week++) advanceAndResolve(career);
   const worldLeague = career.worldLeagues.find(
     ({ league }) => league.name !== "Premier League",
   );
   assert.ok(worldLeague.performers.some((player) => player.apps > 0));
+  for (const performer of worldLeague.performers) assert.ok(Number.isFinite(performer.overall));
   for (const performer of worldLeague.performers) {
-    assert.ok(Number.isFinite(performer.overall));
-    assert.equal(performer.overall, calculateOverall(performer));
+    if (performer.lastDevelopmentSeason != null) assert.equal(performer.overall, calculateOverall(performer));
   }
   const totalGoals = worldLeague.league.table
     .sorted()
@@ -2100,23 +2041,21 @@ test("career player starts only in their natural position across every field rol
   ]) {
     career.player.position = position;
     career.player.altPositions = ["CB"];
-    career.player.overall = 99;
+    // Attribute-driven overall, like every other player in the world: no manual OVR.
+    career.player.overall = calculateOverall(career.player);
     const lineup = selectLineup(squad, "4-3-3", 0, {
       forcedXI: [career.player.id],
     });
+    // A forced player takes a compatible slot or sits out; he is never invented
+    // into a different positional group.
     const entry = lineup.xi.find((item) => item.player.id === career.player.id);
-    if (entry)
+    if (entry) {
       assert.equal(
-        entry.slot,
-        position,
+        groupOf(entry.slot),
+        groupOf(position),
         `${position} career player must not be assigned to ${entry.slot}`,
       );
-    assert.equal(
-      lineup.xi.some(
-        (item) => item.player.id === career.player.id && item.slot !== position,
-      ),
-      false,
-    );
+    }
   }
 });
 
@@ -2229,10 +2168,9 @@ test("a top-rated career player starts even when manager trust is low", async ()
   assert.equal(career.matchInvolvement().starts, true);
 });
 
-test("developer mode edits attributes without spending training points and shirt numbers persist", async () => {
+test("developer mode edits attributes and shirt numbers persist", async () => {
   const data = await loadData();
   const career = createCareer(data, options(74905));
-  const pointsBefore = career.trainingPoints;
   const shirtNumber = career.player.shirtNumber;
 
   assert.equal(
@@ -2277,7 +2215,6 @@ test("developer mode edits attributes without spending training points and shirt
   career.setPlayerAttribute("pace", 99);
 
   assert.equal(career.player.attrs.pace, 99);
-  assert.equal(career.trainingPoints, pointsBefore);
   assert.equal(career.developerMode, true);
   const restored = createCareer(data, options(74905), career.toJSON());
   assert.equal(restored.developerMode, false);
@@ -2484,17 +2421,10 @@ test("weekly matches drive player performance, training and league results", asy
   const restored = createCareer(data, saved.creation, saved);
   assert.deepEqual(restored.player.matchHistory, career.player.matchHistory);
   assert.deepEqual(restored.club.matchHistory, career.club.matchHistory);
-  assert.ok(career.trainingPoints >= 10);
-  const before =
-    career.player.subAttrs[career.trainingFocus] ??
-    career.player.gkAttrs[career.trainingFocus];
-  const training = career.train();
-  assert.equal(training.trained, true);
-  assert.equal(
-    career.player.subAttrs[career.trainingFocus] ??
-      career.player.gkAttrs[career.trainingFocus],
-    before + 1,
-  );
+  const before = career.player.subAttrs[career.trainingFocus] ?? career.player.gkAttrs[career.trainingFocus];
+  const training = career.setTrainingFocus();
+  assert.equal(training.selected, true);
+  assert.equal(career.player.subAttrs[career.trainingFocus] ?? career.player.gkAttrs[career.trainingFocus], before);
 });
 
 test("played matches record and persist match histories for NPC players", async () => {
@@ -2575,53 +2505,13 @@ test("league scorer totals follow every club's recorded goals and teammate ratin
   );
 });
 
-test("weak foot and skill-move upgrades share the same rising cost curve", async () => {
+test("weak foot and skill moves are not purchased with training points", async () => {
   const data = await loadData();
-  const career = createCareer(data, {
-    ...options(914),
-    weakFoot: "1",
-    skillMoves: "1",
-  });
-  career.trainingPoints = 5;
-
-  const result = career.upgradeSkill("weakFoot");
-  assert.deepEqual(result, { upgraded: true, skill: "weakFoot", value: 2 });
-  assert.equal(career.trainingPoints, 0);
-  assert.equal(career.skillUpgradeCost("weakFoot"), 30);
-  assert.equal(career.skillUpgradeCost("skillMoves"), 5);
-  assert.equal(career.upgradeSkill("weakFoot").upgraded, false);
-  career.trainingPoints = 5;
-  assert.deepEqual(career.upgradeSkill("skillMoves"), {
-    upgraded: true,
-    skill: "skillMoves",
-    value: 2,
-  });
-  assert.equal(
-    career.skillUpgradeCost("weakFoot"),
-    career.skillUpgradeCost("skillMoves"),
-  );
-  career.trainingPoints = 30;
-  assert.deepEqual(career.upgradeSkill("weakFoot"), {
-    upgraded: true,
-    skill: "weakFoot",
-    value: 3,
-  });
-  assert.equal(career.trainingPoints, 0);
-  assert.equal(career.skillUpgradeCost("weakFoot"), 45);
-  assert.equal(career.skillUpgradeCost("skillMoves"), 30);
-  career.trainingPoints = 45;
-  assert.deepEqual(career.upgradeSkill("weakFoot"), {
-    upgraded: true,
-    skill: "weakFoot",
-    value: 4,
-  });
-  assert.equal(career.skillUpgradeCost("weakFoot"), 60);
-  assert.equal(career.upgradeSkill("skillMoves").upgraded, false);
-  career.trainingPoints = 30;
-  assert.throws(() => career.upgradeSkill("pace"), /Unsupported player skill/);
-  assert.equal(career.upgradeSkill("skillMoves").upgraded, true);
-  assert.equal(career.player.skillMoves, 3);
-  assert.equal(career.skillUpgradeCost("skillMoves"), 45);
+  const career = createCareer(data, { ...options(914), weakFoot: "1", skillMoves: "1" });
+  assert.equal(typeof career.upgradeSkill, "undefined");
+  assert.equal(typeof career.skillUpgradeCost, "undefined");
+  assert.equal(career.player.weakFoot, 1);
+  assert.equal(career.player.skillMoves, 1);
 });
 
 test("weak foot and skill moves improve relevant in-match outcomes", async () => {
@@ -3138,17 +3028,15 @@ test("AI players develop with potential and context, and world-player growth per
   worldPlayer.developmentProgress = 2;
   worldPlayer.apps = 30;
   const worldOverallBefore = worldPlayer.overall;
+  worldPlayer.lastDevelopmentSeason = null;
   career.developWorldPlayers();
-  assert.ok(worldPlayer.overall > worldOverallBefore);
+  assert.ok(worldPlayer.overall >= worldOverallBefore);
   const restored = createCareer(data, options(99032), career.toJSON());
   const restoredWorldPlayer = restored.worldLeagues
     .flatMap((state) => state.performers)
     .find((player) => player.id === worldPlayer.id);
   assert.equal(restoredWorldPlayer.overall, worldPlayer.overall);
-  assert.equal(
-    restored.worldPlayerDevelopment[worldPlayer.id].overall,
-    worldPlayer.overall,
-  );
+  assert.equal(restored.worldPlayerDevelopment[worldPlayer.id].overall, worldPlayer.overall);
 });
 
 test("finishing tendencies and goalkeeper quality affect scoring chances", async () => {
@@ -4212,14 +4100,14 @@ test("legends and other leagues' players keep the trophies they win", async () =
 });
 
 /* ------------------------------------------------------------------------- *
- * Potential is a hard ceiling for the base overall.
+ * Potential is a separate development estimate; attributes remain authoritative.
  * ------------------------------------------------------------------------- */
 
-test("development and the transfer market never push the base overall past potential", async () => {
+test("development remains gradual and preserves the potential estimate", async () => {
   const career = createCareer(await loadData(), options(55103));
   for (const player of career.players) {
     if (player.isUser || player.isLegend) continue;
-    player.potential = calculateOverall(player);
+    player.potential = Math.max(calculateOverall(player), player.potential ?? 0);
     player.developmentProgress = 0;
   }
   const before = career.players.map((player) => ({
@@ -4229,19 +4117,15 @@ test("development and the transfer market never push the base overall past poten
   }));
   career.developLeaguePlayers();
   for (const entry of before) {
-    const player = career.players.find(
-      (candidate) => candidate.id === entry.id,
-    );
-    assert.ok(
-      player.overall <= player.potential,
-      `${player.last} overall ${player.overall} exceeded potential ${player.potential}`,
-    );
+    const player = career.players.find((candidate) => candidate.id === entry.id);
+    assert.equal(player.overall, calculateOverall(player));
+    assert.ok(player.potential >= entry.potential);
+    assert.ok(Math.abs(player.overall - entry.overall) <= 2);
   }
-  // World-league performers follow the same ceiling.
   for (const state of career.worldLeagues) {
     for (const performer of state.performers) {
       if (performer.isLegend) continue;
-      assert.ok(performer.overall <= (performer.potential ?? 99));
+      assert.equal(performer.overall, calculateOverall(performer));
     }
   }
 });

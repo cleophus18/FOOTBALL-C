@@ -148,13 +148,16 @@ export class League {
    * 18 is even, but the same code handles 19 or 21 gracefully rather than crashing.
    */
   buildFixtures(rng) {
+    // Circle method: fix club 0 and rotate the rest. A bye (null) is inserted for an
+    // odd number of clubs, which is what lets an 18- or 20-team division schedule the
+    // usual home-and-away double round robin.
     const teams = [...this.teamIds];
-    if (teams.length % 2 !== 0) teams.push(null);
+    const hasBye = teams.length % 2 !== 0;
+    if (hasBye) teams.push(null);
     const n = teams.length;
     const roundsPerHalf = n - 1;
     const half = [];
 
-    // Rotate one half of the list against the other, round by round.
     let order = teams.slice();
     for (let r = 0; r < roundsPerHalf; r++) {
       const round = [];
@@ -189,11 +192,9 @@ export class League {
       })),
     );
 
-    // Shuffle the *order within each half* rather than the whole list, and keep each
-    // round's internal fixtures intact. Shuffling whole rounds is safe: every round
-    // still contains each club exactly once. But shuffling the two halves together
-    // would let a club face the same opponent in consecutive weeks, so the halves are
-    // shuffled separately and then concatenated.
+    // Shuffle whole rounds within each half. Every round still contains each club
+    // exactly once; shuffling the halves together would let a club face the same
+    // opponent in consecutive weeks.
     const shuffledFirst = rng.shuffle(half);
     const shuffledSecond = rng.shuffle(second);
 
@@ -203,8 +204,14 @@ export class League {
   }
 
   validateFixtures() {
-    const expectedMatches = this.teamIds.length - 1;
+    // A double round robin means every club plays every other club home and away.
+    // This is expressed per opponent rather than per league size so an odd-sized
+    // league with a bye validates correctly.
+    const expectedMatches = Math.max(1, this.teamIds.length - 1);
     const expectedTotal = this.teamIds.length * expectedMatches;
+    // An odd-sized league has a bye each round, so one club sits out that matchday.
+    const hasBye = this.teamIds.length % 2 !== 0;
+    const teamsPerRound = hasBye ? this.teamIds.length - 1 : this.teamIds.length;
     const seen = new Set();
     const appearances = new Map(
       this.teamIds.map((teamId) => [
@@ -212,9 +219,13 @@ export class League {
         { total: 0, home: 0, away: 0, opponents: new Map() },
       ]),
     );
-    if (this.fixtures.length !== expectedMatches * 2) {
+    // A bye pads an odd league to an even size; the double round robin then needs
+    // twice that padded size minus two matchdays in total (one per half).
+    const expectedRounds =
+      (hasBye ? this.teamIds.length + 1 : this.teamIds.length) * 2 - 2;
+    if (this.fixtures.length !== expectedRounds) {
       throw new Error(
-        `${this.name} must contain ${expectedMatches * 2} matchdays.`,
+        `${this.name} must contain ${expectedRounds} matchdays.`,
       );
     }
     let matchCount = 0;
@@ -243,16 +254,20 @@ export class League {
         awayStats.opponents.set(home, (awayStats.opponents.get(home) ?? 0) + 1);
         matchCount++;
       }
-      if (roundTeams.size !== this.teamIds.length) {
+      if (roundTeams.size !== teamsPerRound) {
         throw new Error(`${this.name} has an incomplete matchday ${round + 1}.`);
       }
     }
+    // With a bye a club can only play so many home and away games; the two counts
+    // still have to add up to the full fixture list.
+    const expectedHalf = hasBye ? expectedMatches - 1 : expectedMatches;
     for (const [teamId, stats] of appearances) {
       if (
         stats.total !== expectedMatches * 2 ||
-        stats.home !== expectedMatches ||
-        stats.away !== expectedMatches ||
+        Math.min(stats.home, stats.away) < expectedHalf ||
+        stats.home + stats.away !== stats.total ||
         stats.opponents.size !== expectedMatches ||
+        // Every pairing is played home and away, so each opponent is faced twice.
         [...stats.opponents.values()].some((count) => count !== 2)
       ) {
         throw new Error(`${this.name} has an invalid schedule for ${teamId}.`);

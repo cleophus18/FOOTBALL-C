@@ -327,14 +327,12 @@ export function developAcademy(club, rng, date) {
   const facilityLevel = club.investment?.facilities?.youthAcademy ?? 1;
   for (const player of state.players) {
     if (player.status !== "academy") continue;
-    const gain = Math.max(0.08, 0.14 + (manager.youthAbility - 50) * 0.002 + (facilityLevel - 1) * 0.018 + rng.range(-0.04, 0.05));
-    player.progress = (player.progress ?? 0) + gain;
-    if (player.progress >= 1 && player.overall < player.potential) {
-      const increase = Math.min(1, Math.floor(player.progress), player.potential - player.overall);
-      player.overall += increase;
-      player.progress -= increase;
-      state.developmentHistory.push({ playerId: player.id, date, change: increase, plan: player.plan });
-    }
-    player.confidence = clamp((player.confidence ?? 50) + gain * 4, 0, 100);
+    player.trainingAttendance = (player.trainingAttendance ?? 0) + 1;
+    player.morale = player.morale ?? player.confidence ?? 65;
+    player.academyCoachQuality = manager.youthAbility;
+    player.potentialTrajectory = clamp((Number(player.potentialRange?.max ?? player.potential ?? player.overall) - Number(player.overall ?? 40)) * 3 + manager.youthAbility * 0.25, 0, 100);
+    if ((player.potentialRange?.max ?? player.potential ?? 0) >= (player.overall ?? 0) + 10) player.developmentProgress = (player.developmentProgress ?? 0) + 0.1;
+    player.academyTraining = true;
+    player.confidence = clamp((player.confidence ?? 50) + (manager.youthAbility - 50) * 0.025, 0, 100);
   }
 }

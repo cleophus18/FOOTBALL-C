@@ -566,16 +566,8 @@ export function deriveGkAttrs(gkAttrs = {}, attrs = {}) {
 export function calculatePlayerOverall(player, position = player?.position) {
   // Legends are frozen at their fixed rating regardless of attributes or form.
   if (player.isLegend) return LEGEND_OVERALL;
-  // Imported real-world players keep their CSV overall exactly; the attribute
-  // layer is calibrated at import so later attribute changes still move OVR.
-  if (
-    player.source === "real-world" &&
-    Number.isFinite(player.overall) &&
-    !Number.isFinite(player.overallAdjustment)
-  )
-    return clampAttr(player.overall);
-  // Aggregate world-league performers predate the detailed player model. They are
-  // intentionally kept as compact records and retain their imported overall.
+  // Legacy compact records are hydrated on restore/world construction. Until then,
+  // keep their saved rating as a safe fallback; detailed records always use attributes.
   if (!player.attrs && !player.subAttrs && !player.gkAttrs)
     return clampAttr(player.overall ?? 50);
   const pos = normalizePosition(position || "CM");

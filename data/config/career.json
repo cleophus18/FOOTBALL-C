@@ -1,16 +1,12 @@
 {
-  "$comment": "Phase 1 progression and difficulty tuning. Values are points unless specified.",
+  "$comment": "Career finances, recovery and difficulty tuning. Player attribute growth is simulated naturally through src/core/training.mjs.",
   "training": {
-    "weeklyPoints": 2,
-    "appearancePoints": 3,
-    "strongPerformanceBonus": 2,
-    "objectiveBonus": 2,
-    "attributePointCost": 1,
     "weeklyFatigueRecovery": 17,
     "weeklyFitnessRecovery": 5,
     "weeklySharpnessGain": 2,
     "matchFatigue": 18
   },
+  "legacyTrainingPointsRemoved": true,
   "finance": {
     "startingBalance": 10000,
     "startingWeeklyWage": 5000,

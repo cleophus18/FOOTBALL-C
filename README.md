@@ -178,8 +178,7 @@ line-up, including custom XI assignments and player availability. A player not s
 for the matchday squad cannot enter the simulation or receive minutes, a rating, or
 match statistics; named substitutes only participate after the match engine brings
 them on.
-The Training screen upgrades individual detailed attributes; outfield sessions
-recalculate their parent group, while goalkeepers train their keeper attributes.
+Training & Development uses natural, attribute-based progression; there are no player attribute points, manual attribute purchases, or point rewards. Every detailed player (user, imported, generated, academy, senior squad, and background-league performer) uses the same seasonal engine and position-weighted base OVR calculation. Age, potential, minutes, match rating, contribution, morale, fitness, training attendance, coach ability/specialisation, intensity, facilities, and recovery shape development and decline. Base OVR is distinct from potential and temporary form. Player-career users can view their club's coaches and set a personal attribute focus only; coach recruitment/dismissal, contracts, wages, programme/intensity decisions, department assignments, budgets, and facility investments are manager-career controls. AI clubs run the same development engine, employ specialist staff, post staff wages through the idempotent finance ledger, and cautiously recruit when affordable. Development reports and history persist with players; old training-point save fields are ignored during migration. The Player Hub shows a compact historical development graph. PlayStyles remain independent and continue to progress through training evidence and match actions.
 Live key-moment types are weighted by position, so defenders face more recovery and
 stopping situations, midfielders see more distribution moments, and attackers get
 more finishing opportunities.
@@ -222,9 +221,7 @@ appearances, goals, assists, average ratings, and latest match ratings. The Fixt
 tab labels every listed game with its competition, match number, and date; expand any
 completed fixture to review its score, expected goals, possession, shots, saves, fouls,
 cards, and offsides. Create your player with 1- or 2-star weak-foot and skill-move
-ratings. Weak-foot and skill-move
-upgrades share the same rising cost curve: 5 training points to reach 2 stars, then 30,
-45, and 60 to reach 3, 4, and 5 stars. South Africa is available as a nationality.
+ratings. Weak-foot and skill-move ratings are retained from the player profile and are not bought with training points; match actions continue to use both attributes. South Africa is available as a nationality.
 Your player starts with €10,000, earns a weekly salary plus appearance and goal bonuses,
 and can review their balance and transaction history in Finances. Earned money can hire
 managers whose ratings directly improve club attack and defence, with tactical styles
@@ -306,7 +303,12 @@ authority.
 
 Manager careers can allocate a separate investment budget to persistent projects:
 training grounds, youth academies, medical centres, scouting networks, stadium
-expansion, and commercial facilities. Projects deduct real cash through the finance
+expansion, and commercial facilities. Manager careers also manage training coaches through
+Training & Development, recruiting among F/E/D/C/B/A/S grades with numerical 1–99 ratings,
+area specialisations, weekly salaries, recruitment costs and contract lengths. Specialists
+have distinct technical, physical, tactical, and youth abilities, so coaching grade alone does
+not replace the department fit. Club-wide programme and intensity decisions influence players
+and recovery; coach salaries and recruitment fees are real club-ledger transactions. Projects deduct real cash through the finance
 ledger, take simulation time to complete, charge recurring maintenance, and expose
 modifiers to training, recovery, scouting, stadium capacity, and commercial reputation.
 AI clubs can start conservative projects when they have sufficient reserves. Existing

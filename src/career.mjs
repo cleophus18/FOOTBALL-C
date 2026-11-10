@@ -97,6 +97,23 @@ import {
 } from "./core/coaching.mjs";
 import { League, LeagueTable, planLeagueWeeks } from "./model/league.mjs";
 import {
+  TRAINING_DEPARTMENTS,
+  TRAINING_PROGRAMMES,
+  TRAINING_INTENSITIES,
+  ensureClubTraining,
+  processClubTrainingWeek,
+  developPlayer,
+  developAcademyPlayer,
+  generateTrainingCoachMarket,
+  hireTrainingCoach,
+  dismissTrainingCoach,
+  assignTrainingCoach,
+  setClubTrainingPlan,
+  manageAITrainingStaff,
+  trainingGradeFor,
+  createWorldTrainingClub,
+} from "./core/training.mjs";
+import {
   addStats,
   calculateOverall,
   applyPhysique,
@@ -125,7 +142,10 @@ import {
   legendAllowedAt,
 } from "./model/legends.mjs";
 import { formAdjustedOverall } from "./model/form.mjs";
-import { normalizeClubName, stadiumIdentityForClub } from "./model/stadiums.mjs";
+import {
+  normalizeClubName,
+  stadiumIdentityForClub,
+} from "./model/stadiums.mjs";
 import {
   ensurePlayStyles,
   playStyleEffect,
@@ -370,7 +390,10 @@ function assignShirtNumbers(players, club, preserveExisting = false) {
     if (number != null) {
       player.shirtNumber = number;
       assigned.add(number);
-    } else if (!Number.isInteger(player.shirtNumber) || player.shirtNumber < 1) {
+    } else if (
+      !Number.isInteger(player.shirtNumber) ||
+      player.shirtNumber < 1
+    ) {
       player.shirtNumber = 99;
     }
   }
@@ -447,9 +470,8 @@ export class Career {
     );
     this.developerMode = false;
     this.matchRole = "Balanced";
-    this.trainingPoints = 0;
-    this.trainingPointsEarnedSeason = 0;
     this.performanceDevelopmentProgress = 0;
+    this.trainingMarketRefresh = 0;
     this.news = [];
     this.lastReport = null;
     this.results = [];
@@ -484,9 +506,11 @@ export class Career {
     };
 
     this.expansionLeagues = expansionConfig.leagues;
-    this.worldCareerLeagues = this.buildCareerWorldLeagues();
+    this.worldCareerLeagues = this.buildCareerWorldLeagues(options.leagueId);
+    this.league = data.league;
     this.clubs = this.buildClubs();
     this.players = this.buildSquads();
+    for (const club of this.clubs) ensureClubTraining(club, this.seed, this.season);
     for (const player of this.players) {
       if (player.first === "Lionel" && player.last === "Messi") {
         player.position = "AM";
@@ -507,7 +531,40 @@ export class Career {
       ensureClubFinance(club);
       ensureClubScouting(club, this.seed);
       ensureCoachProfile(club);
+      ensureClubTraining(club, this.seed, this.season);
+      if (club.id !== options.clubId) aiInvestmentDecision(club, toDayIndex(this.season, 7, 1));
       academyState(club);
+      if (!club.academy.players.length) {
+        const academyRng = this.rng.stream(`academy-intake-${club.id}`);
+        for (let index = 0; index < 2; index++) {
+          const position = academyRng.pick(["GK", "CB", "CM", "ST"]);
+          const rating = clamp(
+            Math.round((club.prestige ?? 50) * 0.42 + academyRng.int(10, 24)),
+            32,
+            52,
+          );
+          const attributes = generateAttributes(academyRng, position, rating);
+          club.academy.players.push(
+            createPlayer({
+              id: `academy-${club.id}-${this.season}-${index + 1}`,
+              first: this.nameForNationality(academyRng, club.nation).first,
+              last: this.nameForNationality(academyRng, club.nation).last,
+              nationality: club.nation,
+              dob: toDayIndex(this.season - academyRng.int(15, 18), 6, 1),
+              position,
+              attrs: attributes.attrs,
+              subAttrs: attributes.subAttrs,
+              gkAttrs: attributes.gkAttrs,
+              potential: clamp(rating + academyRng.int(8, 20), rating + 5, 82),
+              clubId: club.id,
+              stats: emptyStats(),
+              status: "academy",
+              plan: "Balanced development",
+              morale: 65,
+            }),
+          );
+        }
+      }
       ensureClubHierarchy(club, `${this.seed}-${club.id}`);
       if (!options.managerMode && club.hierarchy.manager) {
         const head = club.hierarchy.manager;
@@ -534,6 +591,7 @@ export class Career {
     }
     this.club = this.clubs.find((club) => club.id === options.clubId);
     if (!this.club) throw new Error(`Unknown starting club: ${options.clubId}`);
+    this.club.isUserClub = true;
     this.club.addPlayer(this.player.id);
     this.club.isUserClub = true;
     this.player.clubId = this.club.id;
@@ -571,6 +629,13 @@ export class Career {
       }
     }
     this.applyExpansionSquads();
+    for (const state of this.worldLeagues) {
+      for (const performer of state.performers ?? []) {
+        this.ensureWorldPlayerModel(performer);
+        performer.overall = performer.isLegend ? LEGEND_OVERALL : calculateOverall(performer);
+        performer.baseOverall = performer.overall;
+      }
+    }
     this.reconcileSquadMembership();
     this.ensureWorldCupMajorNationPlayers();
     this.worldCup = worldCupSchedule(this.careerStartYear);
@@ -626,81 +691,73 @@ export class Career {
   }
 
   developWorldPlayers() {
+    const finalDay =
+      this.calendar.at(-1)?.matchday ?? toDayIndex(this.season, 12, 31);
+    const developed = new Set();
     for (const state of this.worldLeagues) {
-      const entry = this.worldCareerLeagues?.find(
-        (candidate) => candidate.league.id === state.league.id,
-      );
-      const tier = entry?.league.tier ?? 1;
-      for (const player of state.performers) {
-        if (player.isLegend) continue;
-        player.age = (player.age ?? 25) + 1;
-        this.ensureWorldPlayerModel(player);
-        const currentOverall = calculateOverall(player);
-        const gap = Math.max(
-          0,
-          (player.potential ?? currentOverall) - currentOverall,
-        );
-        const appearances = clamp((player.apps ?? 0) / 30, 0, 1);
-        const clubRating = state.clubRatings[player.clubId] ?? 60;
-        const context =
-          clamp((clubRating - 60) * 0.004, -0.1, 0.14) +
-          (tier === 1 ? 0.08 : tier === 2 ? 0.03 : -0.06) +
-          appearances * 0.32;
-        let change =
-          player.age <= 20
-            ? 1.05 + gap * 0.035
-            : player.age <= 24
-              ? 0.62 + gap * 0.02
-              : player.age <= 28
-                ? 0.18 + gap * 0.008
-                : -0.22 - (player.age - 29) * 0.075;
-        change +=
-          context + this.rng.stream("player-development").normal(0, 0.28);
-        player.developmentProgress = (player.developmentProgress ?? 0) + change;
-        if (player.developmentProgress >= 1) {
-          const increase = Math.min(
-            2,
-            Math.floor(player.developmentProgress),
-            // Potential is a hard ceiling: a player never develops past it.
-            Math.max(0, (player.potential ?? 99) - currentOverall),
-          );
-          if (increase <= 0) {
-            // At the ceiling: bank nothing, so the club does not "save up" growth.
-            player.developmentProgress = Math.min(
-              player.developmentProgress,
-              0.999,
-            );
-          } else {
-            const targetOverall = Math.min(
-              currentOverall + increase,
-              player.potential ?? 99,
-            );
-            let attempts = 0;
-            while (
-              calculateOverall(player) < targetOverall &&
-              attempts++ < increase * 8
-            ) {
-              this.adjustWorldPlayerAttributes(player, 1);
-            }
-            player.developmentProgress -= increase;
-          }
-        } else if (player.developmentProgress <= -1 && player.age >= 29) {
-          const targetOverall = Math.max(40, currentOverall - 1);
-          let attempts = 0;
-          while (calculateOverall(player) > targetOverall && attempts++ < 8) {
-            this.adjustWorldPlayerAttributes(player, -1);
-          }
-          player.developmentProgress++;
+      for (const player of state.performers ?? []) {
+        if (player.isLegend || developed.has(player.id)) continue;
+        developed.add(player.id);
+        let club =
+          this.clubs.find((item) => item.id === player.clubId) ??
+          (() => {
+            state.trainingClubs ??= {};
+            return (state.trainingClubs[player.clubId] ??=
+              createWorldTrainingClub(
+                player.clubId,
+                state.clubRatings?.[player.clubId] ?? 55,
+              ));
+          })();
+        if (!state.trainingClubs && this.clubs.includes(club)) {
+          state.trainingClubs ??= {};
+          state.trainingClubs[club.id] = club;
         }
-        updatePlayerOverall(player, "Season development", {
-          season: this.season,
-          ceiling: player.potential ?? 99,
-        });
+        const training = ensureClubTraining(club, this.seed, this.season);
+        if (!this.clubs.includes(club)) aiInvestmentDecision(club, finalDay);
+        manageAITrainingStaff(
+          club,
+          finalDay,
+          this.seed + this.season,
+          this.season,
+        );
+        const wageEvent = `world-training-wages-${this.season}-${club.id}`;
+        const annualWages =
+          training.coaches.reduce(
+            (total, coach) => total + coach.weeklySalary,
+            0,
+          ) * 52;
+        if (annualWages && !club.finances.processedEvents.includes(wageEvent))
+          recordClubTransaction(club, {
+            id: wageEvent,
+            date: finalDay,
+            category: "training staff",
+            description: "Background club annual training staff wages",
+            expense: annualWages,
+          });
+        if (player.lastDevelopmentSeason === this.season) continue;
+        player.age = Number(player.age ?? 25) + 1;
+        this.ensureWorldPlayerModel(player);
+        const report = developPlayer(
+          player,
+          club,
+          this.rng.stream(`development-${this.season}-${player.id}`),
+          this.season,
+          {
+            appearances: player.apps ?? 0,
+            minutes: (player.apps ?? 0) * 75,
+            ratingSum: player.ratingSum ?? (player.apps ?? 0) * 6.5,
+            date: finalDay,
+          },
+        );
         this.worldPlayerDevelopment[player.id] = {
+          ...(this.worldPlayerDevelopment[player.id] ?? {}),
           overall: player.overall,
           age: player.age,
           potential: player.potential,
           developmentProgress: player.developmentProgress,
+          lastDevelopmentSeason: this.season,
+          developmentHistory: player.developmentHistory ?? [],
+          developmentReportHistory: player.developmentReportHistory ?? [],
         };
       }
     }
@@ -792,14 +849,18 @@ export class Career {
         const faded = age >= 34 && (player.developmentProgress ?? 0) <= 0;
         const legend = player.isLegend;
         if (!legend && (age >= 38 || (faded && rng.chance((age - 33) / 6)))) {
-          const tracking = this.populationTracking ??= { seasonIntroduced: {}, retired: {} };
-          tracking.retired[this.season] = (tracking.retired[this.season] ?? 0) + 1;
+          const tracking = (this.populationTracking ??= {
+            seasonIntroduced: {},
+            retired: {},
+          });
+          tracking.retired[this.season] =
+            (tracking.retired[this.season] ?? 0) + 1;
           const retiredPlayer = this.players.find(
             (item) => item.id === player.id,
           );
           const club = this.clubs.find((item) => item.id === player.clubId);
+          retiredIds.add(player.id);
           if (retiredPlayer) {
-            retiredIds.add(retiredPlayer.id);
             club?.removePlayer(retiredPlayer.id);
             this.players = this.players.filter(
               (item) => item.id !== retiredPlayer.id,
@@ -821,9 +882,7 @@ export class Career {
             nationality,
             position: player.position,
             overall: clamp(
-              this.season <= 1
-                ? rng.int(70, 84)
-                : rng.int(55, 75),
+              this.season <= 1 ? rng.int(70, 84) : rng.int(55, 75),
               55,
               84,
             ),
@@ -842,6 +901,9 @@ export class Career {
             ratingSum: 0,
             lastMatchRating: null,
             ratingHistory: [],
+            developmentHistory: [],
+            developmentReportHistory: [],
+            lastDevelopmentSeason: null,
             honours: [],
           });
           if (retiredPlayer) {
@@ -870,7 +932,10 @@ export class Career {
             this.expansionPlayers.push(replacement);
             club?.addPlayer(replacement.id);
             kept[kept.length - 1] = replacement;
-            const tracking = this.populationTracking ??= { seasonIntroduced: {}, retired: {} };
+            const tracking = (this.populationTracking ??= {
+              seasonIntroduced: {},
+              retired: {},
+            });
             tracking.seasonIntroduced[this.season] =
               (tracking.seasonIntroduced[this.season] ?? 0) + 1;
           }
@@ -879,6 +944,25 @@ export class Career {
         }
       }
       state.performers = kept;
+      for (const retiredId of retiredIds) {
+        state.trainingClubs ??= {};
+        const staff = state.trainingClubs[retiredId];
+        if (staff?.training) {
+          const wages =
+            staff.coaches.reduce(
+              (sum, coach) => sum + Number(coach.weeklySalary ?? 0),
+              0,
+            ) * 52;
+          if (wages)
+            recordClubTransaction(staff, {
+              id: `world-training-wages-${this.season}-${retiredId}`,
+              date: this.calendar.at(-1)?.matchday ?? null,
+              category: "training staff",
+              description: "Background club annual training staff wages",
+              expense: wages,
+            });
+        }
+      }
       for (const performer of kept) {
         if (
           !performer.source?.startsWith("generated") ||
@@ -974,6 +1058,10 @@ export class Career {
             coachFormationFor(entry, id, clubRatings[id], this.season),
           ]),
         );
+        const trainingClubs = Object.fromEntries(league.teamIds.map((id) => {
+          const previousStaff = this.worldLeagues?.find((state) => state.league.id === league.id)?.trainingClubs?.[id];
+          return [id, previousStaff ?? createWorldTrainingClub(id, clubRatings[id])];
+        }));
         const clubTactics = Object.fromEntries(
           league.teamIds.map((id) => [
             id,
@@ -992,9 +1080,9 @@ export class Career {
               const legend = record.playerId
                 ? null
                 : legendForName(`${record.first} ${record.last}`);
-              return !legend || legendAllowedAt(
-                `${record.first} ${record.last}`,
-                clubId,
+              return (
+                !legend ||
+                legendAllowedAt(`${record.first} ${record.last}`, clubId)
               );
             })
             .map((record) => {
@@ -1021,15 +1109,6 @@ export class Career {
                       record.position,
                       development.overall ?? record.overall,
                     );
-              const overallAdjustment = hasCsvAttrs && record.playerId
-                ? Number(record.overall) -
-                  calculateOverall({
-                    position: record.position,
-                    attrs: record.attrs,
-                    subAttrs: record.subAttrs,
-                    gkAttrs: record.gkAttrs ?? model?.gkAttrs,
-                  })
-                : null;
               const previous = this.worldLeagues
                 ?.flatMap((worldState) => worldState.performers ?? [])
                 .find(
@@ -1039,6 +1118,10 @@ export class Career {
                       performer.isLegend &&
                       performer.clubId === clubId),
                 );
+              const attrs = previous?.attrs ?? (hasCsvAttrs ? record.attrs : (model?.attrs ?? null));
+              const subAttrs = previous?.subAttrs ?? (hasCsvAttrs ? (record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs)) : (model?.subAttrs ?? null));
+              const gkAttrs = previous?.gkAttrs ?? (hasCsvAttrs ? (record.gkAttrs ?? model?.gkAttrs ?? null) : (model?.gkAttrs ?? null));
+              const overallAdjustment = hasCsvAttrs ? Number(record.overall) - calculateOverall({ position: record.position, attrs, subAttrs, gkAttrs, overallAdjustment: 0 }) : null;
               const calculatedOverall = hasCsvAttrs
                 ? Number(record.overall)
                 : (development.overall ??
@@ -1071,13 +1154,11 @@ export class Career {
                       record.overall,
                     ),
                 ],
-                attrs: hasCsvAttrs ? record.attrs : (model?.attrs ?? null),
-                subAttrs: hasCsvAttrs ? null : (model?.subAttrs ?? null),
-                gkAttrs: hasCsvAttrs
-                  ? (record.gkAttrs ?? model?.gkAttrs ?? null)
-                  : (model?.gkAttrs ?? null),
+                attrs,
+                subAttrs,
+                gkAttrs,
                 source: record.source ?? "real-world",
-                overallAdjustment,
+                overallAdjustment: previous?.overallAdjustment ?? overallAdjustment,
                 dataStatus: record.dataStatus,
                 dataSource: record.dataSource,
                 value: legend?.value ?? record.value,
@@ -1091,12 +1172,7 @@ export class Career {
                     : undefined,
                 overall: legend
                   ? LEGEND_OVERALL
-                  : Math.min(
-                      calculatedOverall,
-                      development.potential ??
-                        (Number(record.potential) ||
-                          Math.min(99, Number(record.overall) + 6)),
-                    ),
+                  : calculatedOverall,
                 age: legend
                   ? 25
                   : (development.age ??
@@ -1108,9 +1184,13 @@ export class Career {
                   : (development.potential ??
                     (Number(record.potential) ||
                       Math.min(99, Number(record.overall) + 6))),
-                developmentProgress: legend
-                  ? 1
-                  : (development.developmentProgress ?? 0),
+                lastDevelopmentSeason:
+                  development.lastDevelopmentSeason ??
+                  previous?.lastDevelopmentSeason ??
+                  null,
+                developmentProgress: legend ? 1 : (development.developmentProgress ?? 0),
+                developmentHistory: development.developmentHistory ?? previous?.developmentHistory ?? [],
+                developmentReportHistory: development.developmentReportHistory ?? previous?.developmentReportHistory ?? [],
                 clubId,
                 isLegend: !!legend,
                 playStyles: previous?.playStyles ?? {
@@ -1131,13 +1211,32 @@ export class Career {
                 ratingSum: previous?.ratingSum ?? 0,
                 lastMatchRating: previous?.lastMatchRating ?? null,
                 ratingHistory: previous?.ratingHistory ?? [],
+                developmentHistory: previous?.developmentHistory ?? [],
+                developmentReportHistory:
+                  previous?.developmentReportHistory ?? [],
+                lastDevelopmentSeason:
+                  previous?.lastDevelopmentSeason ??
+                  development.lastDevelopmentSeason ??
+                  null,
+                attrs:
+                  previous?.attrs ??
+                  (hasCsvAttrs ? record.attrs : model?.attrs),
+                subAttrs:
+                  previous?.subAttrs ??
+                  (hasCsvAttrs
+                    ? (record.subAttrs ??
+                      deriveSubAttrsFromGroups(record.attrs))
+                    : model?.subAttrs),
+                gkAttrs:
+                  previous?.gkAttrs ?? record.gkAttrs ?? model?.gkAttrs ?? {},
+                overallAdjustment:
+                  previous?.overallAdjustment ?? overallAdjustment,
                 matchHistory: previous?.matchHistory ?? [],
                 internationalStats: previous?.internationalStats,
                 internationalHistory: previous?.internationalHistory ?? [],
                 internationalAchievements:
                   previous?.internationalAchievements ?? [],
-                internationalReputation:
-                  previous?.internationalReputation ?? 0,
+                internationalReputation: previous?.internationalReputation ?? 0,
                 worldCupAppearances: previous?.worldCupAppearances ?? 0,
                 honours: previous?.honours ?? [],
                 contract:
@@ -1207,10 +1306,7 @@ export class Career {
                 SIMILAR_POSITIONS[normalizePosition(position)] ??
                 [],
               ...model,
-              overall: Math.min(
-                overall,
-                calculateOverall({ position, ...model }),
-              ),
+              overall: calculateOverall({ position, ...model }),
               source: "generated",
               playStyles: previous?.playStyles ?? {
                 unlocked: [],
@@ -1226,11 +1322,34 @@ export class Career {
               potential:
                 development.potential ??
                 previous?.potential ??
-                Math.min(96, clubRatings[clubId] + 8),
+                Math.min(
+                  96,
+                  Math.max(
+                    overall + 5,
+                    Math.min(
+                      overall + fillerRng.int(5, 16),
+                      clubRatings[clubId] + 12,
+                    ),
+                  ),
+                ),
               developmentProgress:
                 development.developmentProgress ??
                 previous?.developmentProgress ??
                 0,
+              lastDevelopmentSeason:
+                development.lastDevelopmentSeason ??
+                previous?.lastDevelopmentSeason ??
+                null,
+              developmentHistory:
+                development.developmentHistory ??
+                previous?.developmentHistory ??
+                [],
+              developmentReportHistory:
+                development.developmentReportHistory ??
+                previous?.developmentReportHistory ??
+                [],
+              potentialTrajectory: previous?.potentialTrajectory ?? (previous?.potential != null ? Math.max(0, (previous.potential - overall) * 5) : fillerRng.int(15, 75)),
+              source: previous?.source ?? "generated",
               clubId,
               apps: 0,
               goals: 0,
@@ -1243,8 +1362,7 @@ export class Career {
               internationalHistory: previous?.internationalHistory ?? [],
               internationalAchievements:
                 previous?.internationalAchievements ?? [],
-              internationalReputation:
-                previous?.internationalReputation ?? 0,
+              internationalReputation: previous?.internationalReputation ?? 0,
               worldCupAppearances: previous?.worldCupAppearances ?? 0,
               honours: previous?.honours ?? [],
               form: previous?.form ?? 50,
@@ -1265,14 +1383,13 @@ export class Career {
           }
           return players;
         });
-        return { league, clubRatings, clubFormations, clubTactics, performers };
+        return { league, clubRatings, clubFormations, clubTactics, trainingClubs, performers };
       });
   }
 
   /**
-   * Recompute every player's base overall from his attributes, then pin it to his
-   * potential. Called at the end of a career's setup and on load, so a save can never
-   * carry a player whose overall has drifted above his ceiling.
+   * Recompute every player's base overall from detailed attributes. Potential is
+   * a development estimate, not an OVR cap; temporary form remains a separate layer.
    */
   enforcePotentialCeiling() {
     for (const player of this.players ?? []) {
@@ -1282,8 +1399,9 @@ export class Career {
         continue;
       }
       updatePlayerOverall(player, "Save migration");
-      player.overall = Math.min(player.overall, player.potential ?? 99);
       player.ratingHistory ??= [];
+      player.developmentHistory ??= [];
+      player.developmentReportHistory ??= [];
     }
   }
 
@@ -1311,7 +1429,9 @@ export class Career {
       .map(([id, instances]) => ({
         id,
         instances,
-        overall: Math.max(...instances.map((player) => calculateOverall(player))),
+        overall: Math.max(
+          ...instances.map((player) => calculateOverall(player)),
+        ),
       }))
       .sort((a, b) => b.overall - a.overall);
 
@@ -1389,11 +1509,7 @@ export class Career {
       if (teamRatings.has(club.id)) continue;
       teamRatings.set(
         club.id,
-        clamp(
-          Math.round(55 + (club.prestige ?? 50) * 0.32),
-          48,
-          91,
-        ),
+        clamp(Math.round(55 + (club.prestige ?? 50) * 0.32), 48, 91),
       );
     }
 
@@ -1409,7 +1525,9 @@ export class Career {
           potential: Math.max(
             ...instances.map((instance) => Number(instance.potential) || 0),
           ),
-          overall: Math.max(...instances.map((instance) => calculateOverall(instance))),
+          overall: Math.max(
+            ...instances.map((instance) => calculateOverall(instance)),
+          ),
         };
       })
       .sort(
@@ -1515,21 +1633,118 @@ export class Career {
 
   ensureWorldCupMajorNationPlayers() {
     const rosters = {
-      ESP: [["GK","Unai","Simon",87,1997],["CB","Aymeric","Laporte",87,1994],["LB","Alejandro","Balde",84,2003],["CDM","Rodri","Hernandez",90,1996],["CM","Pedri","Gonzalez",90,2002],["CM","Fabian","Ruiz",86,1996],["RW","Lamine","Yamal",89,2007],["LW","Nico","Williams",84,2002],["ST","Alvaro","Morata",83,1992]],
-      FRA: [["GK","Mike","Maignan",87,1995],["CB","William","Saliba",87,2001],["CB","Ibrahima","Konate",86,1999],["LB","Theo","Hernandez",86,1997],["CDM","Aurelien","Tchouameni",87,2000],["CM","Eduardo","Camavinga",86,2002],["RW","Ousmane","Dembele",90,1997],["RW","Michael","Olise",87,2001],["ST","Kylian","Mbappe",91,1998]],
-      NED: [["GK","Bart","Verbruggen",84,2002],["CB","Virgil","van Dijk",89,1991],["CB","Stefan","de Vrij",82,1992],["LB","Micky","van de Ven",85,2001],["RB","Jeremie","Frimpong",84,2000],["CDM","Frenkie","de Jong",87,1997],["CM","Xavi","Simons",84,2003],["LW","Cody","Gakpo",86,1999],["ST","Memphis","Depay",83,1993]],
-      ENG: [["GK","Jordan","Pickford",84,1994],["CB","John","Stones",85,1994],["LB","Luke","Shaw",83,1995],["CDM","Declan","Rice",87,1999],["CM","Jude","Bellingham",90,2003],["CM","Phil","Foden",88,2000],["AM","Cole","Palmer",87,2002],["RW","Bukayo","Saka",88,2001],["ST","Harry","Kane",90,1993]],
-      POR: [["GK","Diogo","Costa",87,1999],["CB","Ruben","Dias",89,1997],["LB","Nuno","Mendes",87,2002],["CM","Vitinha","Ferreira",89,2000],["CM","Bruno","Fernandes",87,1994],["CAM","Bernardo","Silva",89,1994],["LW","Rafael","Leao",87,1999],["ST","Cristiano","Ronaldo",86,1985],["ST","Joao","Felix",84,1999]],
-      RSA: [["GK","Ronwen","Williams",84,1992],["CB","Mbekezeli","Mbokazi",75,2005],["LB","Fawaaz","Basadien",80,1996],["DM","Thalente","Mbatha",76,2000],["CM","Sphephelo","Sithole",77,1999],["LW","Relebohile","Mofokeng",79,2004],["RW","Patrick","Maswanganyi",78,1998],["ST","Lyle","Foster",80,2000],["ST","Evidence","Makgopa",77,2000]],
-      ARG: [["GK","Emiliano","Martinez",87,1992],["CB","Cristian","Romero",87,1998],["LB","Nicolas","Tagliafico",84,1992],["CM","Enzo","Fernandez",84,2001],["CM","Alexis","Mac Allister",86,1998],["CAM","Lionel","Messi",88,1987],["LW","Julian","Alvarez",86,2000],["ST","Lautaro","Martinez",89,1997]],
-      BRA: [["GK","Alisson","Becker",89,1992],["CB","Marquinhos","Correa",88,1994],["LB","Gabriel","Magalhaes",86,1997],["CM","Bruno","Guimaraes",86,1997],["LW","Vinicius","Junior",90,2000],["RW","Raphinha","Dias",87,1996],["ST","Rodrygo","Goes",88,2001]],
-      GER: [["GK","Manuel","Neuer",87,1986],["CB","Antonio","Rudiger",88,1993],["CM","Joshua","Kimmich",88,1995],["CM","Florian","Wirtz",89,2003],["LW","Jamal","Musiala",90,2003],["RW","Kai","Havertz",86,1999],["ST","Niclas","Fullkrug",83,1993]],
-      ITA: [["GK","Gianluigi","Donnarumma",89,1999],["CB","Alessandro","Bastoni",87,1999],["CB","Giovanni","Di Lorenzo",84,1993],["CM","Nicolo","Barella",87,1997],["LW","Federico","Chiesa",84,1997],["RW","Matteo","Politano",83,1993],["ST","Gianluca","Scamacca",82,1999]],
+      ESP: [
+        ["GK", "Unai", "Simon", 87, 1997],
+        ["CB", "Aymeric", "Laporte", 87, 1994],
+        ["LB", "Alejandro", "Balde", 84, 2003],
+        ["CDM", "Rodri", "Hernandez", 90, 1996],
+        ["CM", "Pedri", "Gonzalez", 90, 2002],
+        ["CM", "Fabian", "Ruiz", 86, 1996],
+        ["RW", "Lamine", "Yamal", 89, 2007],
+        ["LW", "Nico", "Williams", 84, 2002],
+        ["ST", "Alvaro", "Morata", 83, 1992],
+      ],
+      FRA: [
+        ["GK", "Mike", "Maignan", 87, 1995],
+        ["CB", "William", "Saliba", 87, 2001],
+        ["CB", "Ibrahima", "Konate", 86, 1999],
+        ["LB", "Theo", "Hernandez", 86, 1997],
+        ["CDM", "Aurelien", "Tchouameni", 87, 2000],
+        ["CM", "Eduardo", "Camavinga", 86, 2002],
+        ["RW", "Ousmane", "Dembele", 90, 1997],
+        ["RW", "Michael", "Olise", 87, 2001],
+        ["ST", "Kylian", "Mbappe", 91, 1998],
+      ],
+      NED: [
+        ["GK", "Bart", "Verbruggen", 84, 2002],
+        ["CB", "Virgil", "van Dijk", 89, 1991],
+        ["CB", "Stefan", "de Vrij", 82, 1992],
+        ["LB", "Micky", "van de Ven", 85, 2001],
+        ["RB", "Jeremie", "Frimpong", 84, 2000],
+        ["CDM", "Frenkie", "de Jong", 87, 1997],
+        ["CM", "Xavi", "Simons", 84, 2003],
+        ["LW", "Cody", "Gakpo", 86, 1999],
+        ["ST", "Memphis", "Depay", 83, 1993],
+      ],
+      ENG: [
+        ["GK", "Jordan", "Pickford", 84, 1994],
+        ["CB", "John", "Stones", 85, 1994],
+        ["LB", "Luke", "Shaw", 83, 1995],
+        ["CDM", "Declan", "Rice", 87, 1999],
+        ["CM", "Jude", "Bellingham", 90, 2003],
+        ["CM", "Phil", "Foden", 88, 2000],
+        ["AM", "Cole", "Palmer", 87, 2002],
+        ["RW", "Bukayo", "Saka", 88, 2001],
+        ["ST", "Harry", "Kane", 90, 1993],
+      ],
+      POR: [
+        ["GK", "Diogo", "Costa", 87, 1999],
+        ["CB", "Ruben", "Dias", 89, 1997],
+        ["LB", "Nuno", "Mendes", 87, 2002],
+        ["CM", "Vitinha", "Ferreira", 89, 2000],
+        ["CM", "Bruno", "Fernandes", 87, 1994],
+        ["CAM", "Bernardo", "Silva", 89, 1994],
+        ["LW", "Rafael", "Leao", 87, 1999],
+        ["ST", "Cristiano", "Ronaldo", 86, 1985],
+        ["ST", "Joao", "Felix", 84, 1999],
+      ],
+      RSA: [
+        ["GK", "Ronwen", "Williams", 84, 1992],
+        ["CB", "Mbekezeli", "Mbokazi", 75, 2005],
+        ["LB", "Fawaaz", "Basadien", 80, 1996],
+        ["DM", "Thalente", "Mbatha", 76, 2000],
+        ["CM", "Sphephelo", "Sithole", 77, 1999],
+        ["LW", "Relebohile", "Mofokeng", 79, 2004],
+        ["RW", "Patrick", "Maswanganyi", 78, 1998],
+        ["ST", "Lyle", "Foster", 80, 2000],
+        ["ST", "Evidence", "Makgopa", 77, 2000],
+      ],
+      ARG: [
+        ["GK", "Emiliano", "Martinez", 87, 1992],
+        ["CB", "Cristian", "Romero", 87, 1998],
+        ["LB", "Nicolas", "Tagliafico", 84, 1992],
+        ["CM", "Enzo", "Fernandez", 84, 2001],
+        ["CM", "Alexis", "Mac Allister", 86, 1998],
+        ["CAM", "Lionel", "Messi", 88, 1987],
+        ["LW", "Julian", "Alvarez", 86, 2000],
+        ["ST", "Lautaro", "Martinez", 89, 1997],
+      ],
+      BRA: [
+        ["GK", "Alisson", "Becker", 89, 1992],
+        ["CB", "Marquinhos", "Correa", 88, 1994],
+        ["LB", "Gabriel", "Magalhaes", 86, 1997],
+        ["CM", "Bruno", "Guimaraes", 86, 1997],
+        ["LW", "Vinicius", "Junior", 90, 2000],
+        ["RW", "Raphinha", "Dias", 87, 1996],
+        ["ST", "Rodrygo", "Goes", 88, 2001],
+      ],
+      GER: [
+        ["GK", "Manuel", "Neuer", 87, 1986],
+        ["CB", "Antonio", "Rudiger", 88, 1993],
+        ["CM", "Joshua", "Kimmich", 88, 1995],
+        ["CM", "Florian", "Wirtz", 89, 2003],
+        ["LW", "Jamal", "Musiala", 90, 2003],
+        ["RW", "Kai", "Havertz", 86, 1999],
+        ["ST", "Niclas", "Fullkrug", 83, 1993],
+      ],
+      ITA: [
+        ["GK", "Gianluigi", "Donnarumma", 89, 1999],
+        ["CB", "Alessandro", "Bastoni", 87, 1999],
+        ["CB", "Giovanni", "Di Lorenzo", 84, 1993],
+        ["CM", "Nicolo", "Barella", 87, 1997],
+        ["LW", "Federico", "Chiesa", 84, 1997],
+        ["RW", "Matteo", "Politano", 83, 1993],
+        ["ST", "Gianluca", "Scamacca", 82, 1999],
+      ],
     };
 
     this.worldCupNpcPlayers ??= [];
     const normalizedName = (first, last) =>
-      `${first ?? ""}-${last ?? ""}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+      `${first ?? ""}-${last ?? ""}`
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z]/g, "");
 
     for (const [nation, specs] of Object.entries(rosters)) {
       const existing = new Set(
@@ -1541,7 +1756,8 @@ export class Career {
         const nameKey = normalizedName(first, last);
         if (existing.has(nameKey)) continue;
         const id = `world-cup-fc27-${nation.toLowerCase()}-${nameKey}`;
-        if (this.worldCupNpcPlayers.some((player) => player.id === id)) continue;
+        if (this.worldCupNpcPlayers.some((player) => player.id === id))
+          continue;
         const attributes = generateAttributes(
           this.rng.stream(`fc27-major-roster-${nation}-${nameKey}`),
           position,
@@ -1554,7 +1770,10 @@ export class Career {
           nationality: nation,
           dob: toDayIndex(birthYear, 6, 15),
           position,
-          ...physicalProfileFor(this.rng.stream(`fc27-major-physical-${nation}-${nameKey}`), position),
+          ...physicalProfileFor(
+            this.rng.stream(`fc27-major-physical-${nation}-${nameKey}`),
+            position,
+          ),
           attrs: attributes.attrs,
           subAttrs: attributes.subAttrs,
           gkAttrs: attributes.gkAttrs,
@@ -1675,18 +1894,17 @@ export class Career {
       // Keep the eligible real players first, then fill every missing group slot
       // so qualification and tournament calendars can continue for 20+ seasons.
       const existing = players.filter(
-        (player) => player.nationality === nation && !player.retired && !player.internationalRetired,
+        (player) =>
+          player.nationality === nation &&
+          !player.retired &&
+          !player.internationalRetired,
       );
       const emergency = [];
       for (const group of groups) {
         const count = existing.filter((player) =>
           group.positions.includes(normalizePosition(player.position)),
         ).length;
-        for (
-          let index = count;
-          index < group.target;
-          index++
-        ) {
+        for (let index = count; index < group.target; index++) {
           const position = group.roster[index % group.roster.length];
           const name = this.nameForNationality(rng, nation);
           const id = `national-emergency-${nation}-${position}-${index + 1}`;
@@ -1697,7 +1915,11 @@ export class Career {
             first: name.first,
             last: name.last,
             nationality: nation,
-            dob: toDayIndex(this.season - rng.int(18, 30), rng.int(1, 12), rng.int(1, 28)),
+            dob: toDayIndex(
+              this.season - rng.int(18, 30),
+              rng.int(1, 12),
+              rng.int(1, 28),
+            ),
             position,
             ...physicalProfileFor(rng, position),
             attrs: attributes.attrs,
@@ -1724,7 +1946,11 @@ export class Career {
           first: name.first,
           last: name.last,
           nationality: nation,
-          dob: toDayIndex(this.season - rng.int(18, 30), rng.int(1, 12), rng.int(1, 28)),
+          dob: toDayIndex(
+            this.season - rng.int(18, 30),
+            rng.int(1, 12),
+            rng.int(1, 28),
+          ),
           position,
           ...physicalProfileFor(rng, position),
           attrs: attributes.attrs,
@@ -1755,27 +1981,30 @@ export class Career {
     ]);
     for (const code of nations)
       this.fillNationalSquadGaps(players, code, clubLevels);
-    const teams = [...nations].map((code) => {
-      let selected = selectNationalTeamSquad(players, code, clubLevels);
-      if (!selected) {
-        this.fillNationalSquadGaps(players, code, clubLevels);
-        selected = selectNationalTeamSquad(players, code, clubLevels);
-        if (!selected) return null;
-      }
-      const name = NATION_NAMES[code] ?? code;
-      const manager = this.internationalManager(code);
-      const average = selected.reduce(
-        (sum, entry) => sum + Number(entry.player.overall ?? 50),
-        0,
-      ) / selected.length;
-      return {
-        id: code,
-        code,
-        name,
-        rating: Math.round(average),
-        manager: { ...manager },
-      };
-    }).filter(Boolean);
+    const teams = [...nations]
+      .map((code) => {
+        let selected = selectNationalTeamSquad(players, code, clubLevels);
+        if (!selected) {
+          this.fillNationalSquadGaps(players, code, clubLevels);
+          selected = selectNationalTeamSquad(players, code, clubLevels);
+          if (!selected) return null;
+        }
+        const name = NATION_NAMES[code] ?? code;
+        const manager = this.internationalManager(code);
+        const average =
+          selected.reduce(
+            (sum, entry) => sum + Number(entry.player.overall ?? 50),
+            0,
+          ) / selected.length;
+        return {
+          id: code,
+          code,
+          name,
+          rating: Math.round(average),
+          manager: { ...manager },
+        };
+      })
+      .filter(Boolean);
     const fieldSize = worldCupFieldSize(teams.length);
     if (!fieldSize) {
       this.worldCup.qualification = {
@@ -1784,7 +2013,8 @@ export class Career {
         groups: [],
         fixtures: [],
         status: "unavailable",
-        message: "There are not enough countries with complete 26-player squads.",
+        message:
+          "There are not enough countries with complete 26-player squads.",
         roundsPlayed: 0,
       };
       return this.worldCup.qualification;
@@ -1850,38 +2080,58 @@ export class Career {
       : (teamInfo.squadIds ?? [])
           .map((id) => players.find((player) => player.id === id))
           .filter(Boolean);
-    if (roster.length < 11)
-      {
-        const candidates = this.internationalPlayers()
-          .filter((player) => player.nationality === teamInfo.code && !player.retired)
-          .sort((left, right) => (right.overall ?? 0) - (left.overall ?? 0));
-        roster.push(...candidates.slice(0, 26));
-      }
+    if (roster.length < 11) {
+      const candidates = this.internationalPlayers()
+        .filter(
+          (player) => player.nationality === teamInfo.code && !player.retired,
+        )
+        .sort((left, right) => (right.overall ?? 0) - (left.overall ?? 0));
+      roster.push(...candidates.slice(0, 26));
+    }
     if (roster.length < 11) {
       const rng = this.rng.stream(`world-cup-emergency-${teamInfo.code}`);
       const baseline = Math.max(55, Number(teamInfo.rating ?? 65) - 8);
       for (let index = roster.length; index < 11; index++) {
-        const position = ["GK", "CB", "LB", "RB", "CM", "CM", "ST", "ST", "LW", "RW", "DM"][index];
+        const position = [
+          "GK",
+          "CB",
+          "LB",
+          "RB",
+          "CM",
+          "CM",
+          "ST",
+          "ST",
+          "LW",
+          "RW",
+          "DM",
+        ][index];
         const name = this.nameForNationality(rng, teamInfo.code);
         const attributes = generateAttributes(rng, position, baseline);
-        roster.push(createPlayer({
-          id: `national-emergency-club-${teamInfo.code}-${index + 1}`,
-          first: name.first,
-          last: name.last,
-          nationality: teamInfo.code,
-          dob: toDayIndex(this.season - rng.int(18, 30), rng.int(1, 12), rng.int(1, 28)),
-          position,
-          ...physicalProfileFor(rng, position),
-          attrs: attributes.attrs,
-          subAttrs: attributes.subAttrs,
-          gkAttrs: attributes.gkAttrs,
-          potential: clamp(baseline + 8, baseline, 88),
-          source: "generated-national-team",
-          squadStatus: "National Team NPC",
-        }));
+        roster.push(
+          createPlayer({
+            id: `national-emergency-club-${teamInfo.code}-${index + 1}`,
+            first: name.first,
+            last: name.last,
+            nationality: teamInfo.code,
+            dob: toDayIndex(
+              this.season - rng.int(18, 30),
+              rng.int(1, 12),
+              rng.int(1, 28),
+            ),
+            position,
+            ...physicalProfileFor(rng, position),
+            attrs: attributes.attrs,
+            subAttrs: attributes.subAttrs,
+            gkAttrs: attributes.gkAttrs,
+            potential: clamp(baseline + 8, baseline, 88),
+            source: "generated-national-team",
+            squadStatus: "National Team NPC",
+          }),
+        );
       }
     }
-    const manager = teamInfo.manager ?? this.internationalManager(teamInfo.code);
+    const manager =
+      teamInfo.manager ?? this.internationalManager(teamInfo.code);
     const club = new Club({
       id: `national-${teamInfo.code}`,
       name: teamInfo.name,
@@ -1900,10 +2150,9 @@ export class Career {
     club.manager.playstyle = manager.style;
     club.manager.rating = manager.tacticalIntelligence;
     club.manager.name = manager.name;
-    const average = roster.reduce(
-      (sum, player) => sum + Number(player.overall ?? 50),
-      0,
-    ) / roster.length;
+    const average =
+      roster.reduce((sum, player) => sum + Number(player.overall ?? 50), 0) /
+      roster.length;
     const strength = {
       attack: average,
       midfield: average,
@@ -1923,15 +2172,19 @@ export class Career {
     };
   }
 
-  simulateInternationalMatch(homeInfo, awayInfo, {
-    id,
-    year,
-    competition,
-    knockout = false,
-    neutralVenue = true,
-    dateIndex = toDayIndex(year, 6, 15),
-    refreshTeams = true,
-  }) {
+  simulateInternationalMatch(
+    homeInfo,
+    awayInfo,
+    {
+      id,
+      year,
+      competition,
+      knockout = false,
+      neutralVenue = true,
+      dateIndex = toDayIndex(year, 6, 15),
+      refreshTeams = true,
+    },
+  ) {
     const home = this.buildInternationalTeam(homeInfo, {
       refresh: refreshTeams,
     });
@@ -2083,10 +2336,7 @@ export class Career {
             Math.max(0, 90 - event.minute),
           );
         if (event.on && event.playerId) {
-          participation.set(
-            event.playerId,
-            Math.max(0, 90 - event.minute),
-          );
+          participation.set(event.playerId, Math.max(0, 90 - event.minute));
           if (event.replacedId)
             participation.set(event.replacedId, event.minute);
         }
@@ -2192,8 +2442,7 @@ export class Career {
           0,
           100,
         );
-        player.internationalReputationLevel =
-          nationalTeamReputation(player);
+        player.internationalReputationLevel = nationalTeamReputation(player);
         if (madeInternationalDebut && player.id === this.player.id)
           this.news.unshift(
             `${this.player.first} ${this.player.last} made an international debut for ${team.name}.`,
@@ -2221,10 +2470,7 @@ export class Career {
             row.knockoutApps++;
             row.knockoutRatingSum += rating;
           }
-          if (
-            player.position === "GK" &&
-            opponentGoals === 0
-          )
+          if (player.position === "GK" && opponentGoals === 0)
             row.cleanSheets++;
         }
       }
@@ -2262,11 +2508,7 @@ export class Career {
         year: this.season + 1,
         competition: "World Cup Qualifying",
         neutralVenue: false,
-        dateIndex: toDayIndex(
-          this.season,
-          9,
-          Math.min(28, 1 + round * 5),
-        ),
+        dateIndex: toDayIndex(this.season, 9, Math.min(28, 1 + round * 5)),
       });
       Object.assign(fixture, {
         status: "completed",
@@ -2301,7 +2543,9 @@ export class Career {
     const ranked = qualification.groups.flatMap((group) => {
       const standings = sortInternationalTable(
         group.table,
-        qualification.fixtures.filter((fixture) => fixture.groupId === group.id),
+        qualification.fixtures.filter(
+          (fixture) => fixture.groupId === group.id,
+        ),
       );
       return standings.map((row, index) => ({
         ...group.teams.find((team) => team.id === row.teamId),
@@ -2350,10 +2594,9 @@ export class Career {
       for (let round = qualification.roundsPlayed; round < lastRound; round++)
         this.simulateQualificationRound(round);
     }
-    const qualified =
-      qualification.qualified?.length
-        ? qualification.qualified
-        : this.qualifiedWorldCupTeams(qualification);
+    const qualified = qualification.qualified?.length
+      ? qualification.qualified
+      : this.qualifiedWorldCupTeams(qualification);
     if (qualified.length < Math.min(8, qualification.fieldSize)) {
       this.worldCup.tournament = {
         year,
@@ -2376,11 +2619,13 @@ export class Career {
     const teams = qualified.flatMap((team) => {
       const squad = selectNationalTeamSquad(allPlayers, team.code, clubLevels);
       return squad
-        ? [{
-            ...team,
-            squadIds: squad.map((entry) => entry.player.id),
-            manager: { ...this.internationalManager(team.code) },
-          }]
+        ? [
+            {
+              ...team,
+              squadIds: squad.map((entry) => entry.player.id),
+              manager: { ...this.internationalManager(team.code) },
+            },
+          ]
         : [];
     });
     if (teams.length < Math.min(8, qualification.fieldSize)) {
@@ -2478,12 +2723,14 @@ export class Career {
         team: tournament.qualified.find((team) => team.id === id),
         row: rows.get(id),
       }))
-      .sort((left, right) =>
-        (right.row?.points ?? 0) - (left.row?.points ?? 0) ||
-        (right.row?.goalDifference ?? 0) - (left.row?.goalDifference ?? 0) ||
-        (right.row?.goalsFor ?? 0) - (left.row?.goalsFor ?? 0) ||
-        (Number(right.team?.rating) || 0) - (Number(left.team?.rating) || 0) ||
-        left.id.localeCompare(right.id),
+      .sort(
+        (left, right) =>
+          (right.row?.points ?? 0) - (left.row?.points ?? 0) ||
+          (right.row?.goalDifference ?? 0) - (left.row?.goalDifference ?? 0) ||
+          (right.row?.goalsFor ?? 0) - (left.row?.goalsFor ?? 0) ||
+          (Number(right.team?.rating) || 0) -
+            (Number(left.team?.rating) || 0) ||
+          left.id.localeCompare(right.id),
       )
       .map((entry) => entry.id);
     const knockoutSize = rankedIds.length
@@ -2497,7 +2744,9 @@ export class Career {
     const days = new Map();
     for (const fixture of tournament.fixtures) {
       if (!Number.isFinite(fixture.scheduledDay))
-        throw new Error(`World Cup fixture ${fixture.id} has no scheduled day.`);
+        throw new Error(
+          `World Cup fixture ${fixture.id} has no scheduled day.`,
+        );
       const day = days.get(fixture.scheduledDay) ?? {
         day: fixture.scheduledDay,
         fixtureIds: [],
@@ -2589,8 +2838,7 @@ export class Career {
       let due = tournament.fixtures
         .filter(
           (fixture) =>
-            fixture.status !== "completed" &&
-            fixture.scheduledDay <= today,
+            fixture.status !== "completed" && fixture.scheduledDay <= today,
         )
         .sort(
           (left, right) =>
@@ -2633,12 +2881,14 @@ export class Career {
         }
       }
       const first = due[0];
-      const sameMatchday = stageOnly ? [] : due.filter(
-        (fixture) =>
-          fixture.scheduledDay === first.scheduledDay &&
-          fixture.stage === first.stage &&
-          fixture.knockoutStage === first.knockoutStage,
-      );
+      const sameMatchday = stageOnly
+        ? []
+        : due.filter(
+            (fixture) =>
+              fixture.scheduledDay === first.scheduledDay &&
+              fixture.stage === first.stage &&
+              fixture.knockoutStage === first.knockoutStage,
+          );
       for (const fixture of sameMatchday) {
         const selectedNation =
           this.worldCup.userSelection?.selected &&
@@ -2713,8 +2963,7 @@ export class Career {
           fixture.winnerId = winnerId;
           if (fixture.round === "Final") {
             tournament.winnerId = winnerId;
-            tournament.runnerUpId =
-              winnerId === home.id ? away.id : home.id;
+            tournament.runnerUpId = winnerId === home.id ? away.id : home.id;
             tournament.winner = tournament.qualified.find(
               (team) => team.id === tournament.winnerId,
             )?.name;
@@ -2729,7 +2978,9 @@ export class Career {
             (entry) => entry.id === fixture.groupId,
           );
           if (!group)
-            throw new Error(`Missing World Cup group in fixture ${fixture.id}.`);
+            throw new Error(
+              `Missing World Cup group in fixture ${fixture.id}.`,
+            );
           updateInternationalTable(group.table, fixture);
         }
         completed.push(fixture.id);
@@ -2756,7 +3007,10 @@ export class Career {
           });
         }
         let advancing;
-        if (tournament.qualified.length === 4 && tournament.groups.length === 1) {
+        if (
+          tournament.qualified.length === 4 &&
+          tournament.groups.length === 1
+        ) {
           const standings = tournament.groups[0].table;
           advancing = standings.slice(0, 2).map((row) => row.teamId);
           tournament.thirdPlaceId = standings[2]?.teamId ?? null;
@@ -2915,9 +3169,11 @@ export class Career {
     ) {
       for (
         let round = worldCup.qualification.roundsPlayed;
-        round < Math.max(
+        round <
+        Math.max(
           ...worldCup.qualification.fixtures.map((fixture) => fixture.round),
-        ) + 1;
+        ) +
+          1;
         round++
       ) {
         qualificationFixtures.push(...this.simulateQualificationRound(round));
@@ -2944,16 +3200,12 @@ export class Career {
       };
     }
     const today = this.currentDay();
-    const worldCupProgress = this.progressWorldCupFixtures(
-      tournament,
-      today,
-    );
+    const worldCupProgress = this.progressWorldCupFixtures(tournament, today);
     const worldCupMatches = worldCupProgress.completed;
     const unavailableIds = new Set();
     for (const fixture of tournament.fixtures) {
       const active =
-        fixture.status !== "completed" ||
-        fixture.scheduledDay === today;
+        fixture.status !== "completed" || fixture.scheduledDay === today;
       if (!active) continue;
       const home = tournament.qualified.find(
         (team) => team.id === fixture.homeId,
@@ -3003,10 +3255,9 @@ export class Career {
       for (let round = qualification.roundsPlayed; round < lastRound; round++)
         this.simulateQualificationRound(round);
     }
-    const qualified =
-      qualification.qualified?.length
-        ? qualification.qualified
-        : this.qualifiedWorldCupTeams(qualification);
+    const qualified = qualification.qualified?.length
+      ? qualification.qualified
+      : this.qualifiedWorldCupTeams(qualification);
     if (qualified.length < Math.min(8, qualification.fieldSize)) {
       this.worldCup.tournament = {
         year: this.worldCup.nextYear,
@@ -3144,9 +3395,9 @@ export class Career {
         )
         .slice(0, 8)
         .map((row) => row.teamId);
-      qualifiedForKnockout = tournament.groups.flatMap((group) =>
-        group.table.slice(0, 2).map((row) => row.teamId),
-      ).concat(third);
+      qualifiedForKnockout = tournament.groups
+        .flatMap((group) => group.table.slice(0, 2).map((row) => row.teamId))
+        .concat(third);
     } else {
       const thirdPlaceQualifiers = tournament.groups
         .filter((group) => group.teams.length === 4)
@@ -3159,19 +3410,23 @@ export class Career {
             right.goalsFor - left.goalsFor ||
             left.teamId.localeCompare(right.teamId),
         );
-      const target = tournament.groups.length === 6 ? 16
-        : tournament.groups.length === 8 ? 16
-          : tournament.groups.length === 4 ? 8
-            : tournament.groups.length === 2 ? 4
-              : tournament.qualified.length;
+      const target =
+        tournament.groups.length === 6
+          ? 16
+          : tournament.groups.length === 8
+            ? 16
+            : tournament.groups.length === 4
+              ? 8
+              : tournament.groups.length === 2
+                ? 4
+                : tournament.qualified.length;
       qualifiedForKnockout = tournament.groups.flatMap((group) =>
         group.table.slice(0, 2).map((row) => row.teamId),
       );
       qualifiedForKnockout.push(
-        ...thirdPlaceQualifiers.slice(
-          0,
-          Math.max(0, target - qualifiedForKnockout.length),
-        ).map((row) => row.teamId),
+        ...thirdPlaceQualifiers
+          .slice(0, Math.max(0, target - qualifiedForKnockout.length))
+          .map((row) => row.teamId),
       );
     }
     qualifiedForKnockout = this.limitWorldCupToRoundOf16(
@@ -3183,7 +3438,9 @@ export class Career {
       tournament.fixtures.reduce((days, fixture) => {
         const day = fixture.scheduledDay;
         if (!Number.isFinite(day))
-          throw new Error(`World Cup fixture ${fixture.id} has no scheduled day.`);
+          throw new Error(
+            `World Cup fixture ${fixture.id} has no scheduled day.`,
+          );
         (days[day] ??= { day, fixtureIds: [] }).fixtureIds.push(fixture.id);
         return days;
       }, {}),
@@ -3214,9 +3471,7 @@ export class Career {
 
   simulateWorldCupKnockouts(tournament, qualifiedIds) {
     let roundTeams = qualifiedIds
-      .map((id) =>
-        tournament.qualified.find((team) => team.id === id),
-      )
+      .map((id) => tournament.qualified.find((team) => team.id === id))
       .filter(Boolean)
       .sort((left, right) => right.rating - left.rating);
     const stageNames = {
@@ -3228,7 +3483,9 @@ export class Career {
     };
     const semifinalLosers = [];
     while (roundTeams.length > 1) {
-      const stage = stageNames[roundTeams.length] ?? `Knockout round of ${roundTeams.length}`;
+      const stage =
+        stageNames[roundTeams.length] ??
+        `Knockout round of ${roundTeams.length}`;
       const winners = [];
       for (let index = 0; index < roundTeams.length / 2; index++) {
         const home = roundTeams[index];
@@ -3252,14 +3509,14 @@ export class Career {
         });
         const winnerId =
           result.homeGoals === result.awayGoals
-            ? (result.penalties?.winner === "home"
+            ? ((result.penalties?.winner === "home"
                 ? home.id
                 : result.penalties?.winner === "away"
                   ? away.id
                   : null) ??
               (this.rng.stream(`world-cup-draw-${fixture.id}`).chance(0.5)
                 ? home.id
-                : away.id)
+                : away.id))
             : result.homeGoals > result.awayGoals
               ? home.id
               : away.id;
@@ -3277,9 +3534,8 @@ export class Career {
       }
       if (roundTeams.length === 2) {
         tournament.winnerId = winners[0].id;
-        tournament.runnerUpId = roundTeams.find(
-          (team) => team.id !== winners[0].id,
-        )?.id ?? null;
+        tournament.runnerUpId =
+          roundTeams.find((team) => team.id !== winners[0].id)?.id ?? null;
       }
       roundTeams = winners;
     }
@@ -3306,14 +3562,14 @@ export class Career {
       });
       const winnerId =
         result.homeGoals === result.awayGoals
-          ? (result.penalties?.winner === "home"
+          ? ((result.penalties?.winner === "home"
               ? home.id
               : result.penalties?.winner === "away"
                 ? away.id
                 : null) ??
             (this.rng.stream(`world-cup-draw-${fixture.id}`).chance(0.5)
               ? home.id
-              : away.id)
+              : away.id))
           : result.homeGoals > result.awayGoals
             ? home.id
             : away.id;
@@ -3327,14 +3583,14 @@ export class Career {
       tournament.thirdPlaceId = winnerId;
     }
     tournament.winner =
-      tournament.qualified.find((team) => team.id === tournament.winnerId)?.name ??
-      "Unknown";
+      tournament.qualified.find((team) => team.id === tournament.winnerId)
+        ?.name ?? "Unknown";
     tournament.runnerUp =
-      tournament.qualified.find((team) => team.id === tournament.runnerUpId)?.name ??
-      "Unknown";
+      tournament.qualified.find((team) => team.id === tournament.runnerUpId)
+        ?.name ?? "Unknown";
     tournament.thirdPlace =
-      tournament.qualified.find((team) => team.id === tournament.thirdPlaceId)?.name ??
-      null;
+      tournament.qualified.find((team) => team.id === tournament.thirdPlaceId)
+        ?.name ?? null;
   }
 
   awardWorldCupHonours(tournament) {
@@ -3351,16 +3607,14 @@ export class Career {
     const playerById = new Map(
       this.internationalPlayers().map((player) => [player.id, player]),
     );
-    const meanRating = (entry) =>
-      entry.ratingSum / Math.max(1, entry.apps);
+    const meanRating = (entry) => entry.ratingSum / Math.max(1, entry.apps);
     const topRated = [...entries]
       .filter((entry) => entry.apps >= 3)
       .sort((left, right) => meanRating(right) - meanRating(left));
     const goalkeepers = entries
       .filter(
         (entry) =>
-          playerById.get(entry.playerId)?.position === "GK" &&
-          entry.apps >= 2,
+          playerById.get(entry.playerId)?.position === "GK" && entry.apps >= 2,
       )
       .sort(
         (left, right) =>
@@ -3461,7 +3715,7 @@ export class Career {
           value: `${tournament.year} · ${winner.goals} goals · ${formatDecimal(meanRating(winner))} rating`,
         });
     }
-    const countryTrophies = this.worldCup.countryTrophies ??= {};
+    const countryTrophies = (this.worldCup.countryTrophies ??= {});
     const winnerHistory = (countryTrophies[tournament.winnerId] ??= []);
     if (!winnerHistory.some((entry) => entry.year === tournament.year)) {
       winnerHistory.push({
@@ -3469,9 +3723,7 @@ export class Career {
         manager: winners?.manager?.name ?? null,
         squadIds: winners?.squadIds ?? [],
         opponent: runnersUp?.name ?? null,
-        score: tournament.fixtures.find(
-          (fixture) => fixture.round === "Final",
-        )
+        score: tournament.fixtures.find((fixture) => fixture.round === "Final")
           ? (() => {
               const final = tournament.fixtures.find(
                 (fixture) => fixture.round === "Final",
@@ -3483,7 +3735,7 @@ export class Career {
     }
     tournament.topScorers = byGoals.slice(0, 10);
     tournament.topRated = topRated.slice(0, 10);
-    const ratings = this.worldCup.nationalRatings ??= {};
+    const ratings = (this.worldCup.nationalRatings ??= {});
     for (const fixture of tournament.fixtures) {
       if (fixture.homeGoals == null) continue;
       const home = ratings[fixture.homeId] ?? 1500;
@@ -3495,8 +3747,12 @@ export class Career {
           : fixture.homeGoals === fixture.awayGoals
             ? 0.5
             : 0;
-      ratings[fixture.homeId] = Math.round(home + 18 * (actualHome - expectedHome));
-      ratings[fixture.awayId] = Math.round(away + 18 * ((1 - actualHome) - (1 - expectedHome)));
+      ratings[fixture.homeId] = Math.round(
+        home + 18 * (actualHome - expectedHome),
+      );
+      ratings[fixture.awayId] = Math.round(
+        away + 18 * (1 - actualHome - (1 - expectedHome)),
+      );
     }
     tournament.honoursAwarded = true;
   }
@@ -3608,14 +3864,8 @@ export class Career {
             booster: boosterFor(fixture.away),
           },
         );
-        const homeStartingXI = this.worldClubStartingXI(
-          state,
-          fixture.home,
-        );
-        const awayStartingXI = this.worldClubStartingXI(
-          state,
-          fixture.away,
-        );
+        const homeStartingXI = this.worldClubStartingXI(state, fixture.home);
+        const awayStartingXI = this.worldClubStartingXI(state, fixture.away);
         const matchSimulation = simulatePossessionEngine({
           home: {
             xi: homeStartingXI,
@@ -3928,22 +4178,17 @@ export class Career {
         for (const goal of matchSimulation.events.filter(
           (event) => event.side === side && event.type === "goal",
         )) {
-          let scorer = starting.find(
-            (player) => player.id === goal.scorerId,
-          );
+          let scorer = starting.find((player) => player.id === goal.scorerId);
           if (!scorer || Number(scorer.goals ?? 0) >= 50) {
             scorer =
-              starting.find((player) =>
-                player.position !== "GK" &&
-                Number(player.goals ?? 0) < 50
+              starting.find(
+                (player) =>
+                  player.position !== "GK" && Number(player.goals ?? 0) < 50,
               ) ?? null;
           }
           if (!scorer) continue;
           scorer.goals++;
-          goalsByPlayer.set(
-            scorer.id,
-            (goalsByPlayer.get(scorer.id) ?? 0) + 1,
-          );
+          goalsByPlayer.set(scorer.id, (goalsByPlayer.get(scorer.id) ?? 0) + 1);
           scorers.push(scorer);
           const assister = starting.find(
             (player) => player.id === goal.assistId,
@@ -3961,16 +4206,13 @@ export class Career {
         ).length;
         for (let goal = recordedGoals; goal < goals; goal++) {
           const scorer =
-            starting.find((player) =>
-              player.position !== "GK" &&
-              Number(player.goals ?? 0) < 50
+            starting.find(
+              (player) =>
+                player.position !== "GK" && Number(player.goals ?? 0) < 50,
             ) ?? null;
           if (!scorer) break;
           scorer.goals++;
-          goalsByPlayer.set(
-            scorer.id,
-            (goalsByPlayer.get(scorer.id) ?? 0) + 1,
-          );
+          goalsByPlayer.set(scorer.id, (goalsByPlayer.get(scorer.id) ?? 0) + 1);
           scorers.push(scorer);
         }
       } else {
@@ -3979,10 +4221,10 @@ export class Career {
             ? attackers
             : starting.filter((player) => player.position !== "GK");
           const eligibleScorers = scorerPool.filter(
-              (player) =>
-                (goalsByPlayer.get(player.id) ?? 0) < 2 &&
-                Number(player.goals ?? 0) < 50,
-            );
+            (player) =>
+              (goalsByPlayer.get(player.id) ?? 0) < 2 &&
+              Number(player.goals ?? 0) < 50,
+          );
           const scorer = rng.weightedPick(
             eligibleScorers.length ? eligibleScorers : scorerPool,
             (player) => {
@@ -4023,10 +4265,7 @@ export class Career {
           );
           if (!scorer) continue;
           scorer.goals++;
-          goalsByPlayer.set(
-            scorer.id,
-            (goalsByPlayer.get(scorer.id) ?? 0) + 1,
-          );
+          goalsByPlayer.set(scorer.id, (goalsByPlayer.get(scorer.id) ?? 0) + 1);
           scorers.push(scorer);
         }
 
@@ -4144,8 +4383,7 @@ export class Career {
         player.matchHistory ??= [];
         player.matchHistory.push({
           season: this.season,
-          dateIndex:
-            fixture?.scheduledDate ?? fixture?.matchday ?? this.week,
+          dateIndex: fixture?.scheduledDate ?? fixture?.matchday ?? this.week,
           competitionId: state.league.id,
           competition: state.league.name,
           club: this.worldClubName(state, clubId),
@@ -4265,15 +4503,20 @@ export class Career {
     if (this.seasonAwardHistory.at(-1)?.season === this.season) return;
     for (const club of this.clubs) {
       const manager = ensureCoachProfile(club);
-      const row = this.league.id === club.leagueId
-        ? this.league.table.row(club.id)
-        : this.worldLeagues
-            .find((state) => state.league.teamIds.includes(club.id))
-            ?.league.table.row(club.id);
+      const row =
+        this.league.id === club.leagueId
+          ? this.league.table.row(club.id)
+          : this.worldLeagues
+              .find((state) => state.league.teamIds.includes(club.id))
+              ?.league.table.row(club.id);
       const result = row?.won > row?.lost ? 1 : row?.won < row?.lost ? -1 : 0;
       developCoach(club, {
         result,
-        trophy: row?.points > 0 && row?.teamId === (this.league.table.sorted()[0]?.teamId ?? null) ? 1 : 0,
+        trophy:
+          row?.points > 0 &&
+          row?.teamId === (this.league.table.sorted()[0]?.teamId ?? null)
+            ? 1
+            : 0,
       });
       manager.salary = ensureCoachProfile(club).salary;
     }
@@ -4444,7 +4687,8 @@ export class Career {
           const manager = ensureCoachProfile(club);
           const row = league.table.row(teamId);
           if (!row) return null;
-          const position = league.table.positions().get(teamId) ?? league.teamIds.length;
+          const position =
+            league.table.positions().get(teamId) ?? league.teamIds.length;
           const winRate = row.played ? row.won / row.played : 0;
           return {
             club,
@@ -4600,7 +4844,9 @@ export class Career {
           domesticAchievements: entry.domesticAchievements,
           championsLeagueAchievements: entry.championsLeagueAchievements,
         })),
-        shortlist: evaluatedBallonRace.slice(0, 30).map((entry) => entry.playerId),
+        shortlist: evaluatedBallonRace
+          .slice(0, 30)
+          .map((entry) => entry.playerId),
       };
     } else if (ballonAward) {
       ballonAward.winners = [];
@@ -4713,9 +4959,9 @@ export class Career {
     ballonAward.displayValue = `${formatDecimal(winner.points)} / 1000 pts`;
     ballonAward.evaluation = {
       winner: snapshotEntry(winner, 1),
-      top10: race.slice(0, 10).map((entry, index) =>
-        snapshotEntry(entry, index + 1),
-      ),
+      top10: race
+        .slice(0, 10)
+        .map((entry, index) => snapshotEntry(entry, index + 1)),
       shortlist: eligibleRace.slice(0, 30).map((entry) => entry.playerId),
     };
 
@@ -4851,16 +5097,18 @@ export class Career {
     const clRows = Object.values(this.championsLeague?.stats ?? {});
     const findClRow = (player) => {
       if (!this.isChampionsLeagueClub(player.clubId)) return null;
-      return clRows.find(
-        (row) =>
-          row.clubId === player.clubId &&
-          (row.playerId === player.id ||
-            normalizedName(row) === normalizedName(player)),
-      ) ??
-      clRows.find(
-        (row) =>
-          row.clubId === player.clubId &&
-          normalizedName(row) === normalizedName(player),
+      return (
+        clRows.find(
+          (row) =>
+            row.clubId === player.clubId &&
+            (row.playerId === player.id ||
+              normalizedName(row) === normalizedName(player)),
+        ) ??
+        clRows.find(
+          (row) =>
+            row.clubId === player.clubId &&
+            normalizedName(row) === normalizedName(player),
+        )
       );
     };
     const positionStats = (player, stats, goals, assists) => {
@@ -4943,8 +5191,7 @@ export class Career {
         this.worldCup.tournament.status === "complete"
           ? this.worldCup.tournament
           : null;
-      const worldCupRow =
-        worldCupTournament?.playerStats?.[player.id] ?? null;
+      const worldCupRow = worldCupTournament?.playerStats?.[player.id] ?? null;
       const worldCupAverage = worldCupRow
         ? worldCupRow.ratingSum / Math.max(1, worldCupRow.apps)
         : 0;
@@ -4967,11 +5214,9 @@ export class Career {
           )
         : 0;
       const worldCupTeamAchievement =
-        worldCupRow &&
-        player.nationality === worldCupTournament?.winnerId
+        worldCupRow && player.nationality === worldCupTournament?.winnerId
           ? 15
-          : worldCupRow &&
-              player.nationality === worldCupTournament?.runnerUpId
+          : worldCupRow && player.nationality === worldCupTournament?.runnerUpId
             ? 10
             : worldCupRow &&
                 player.nationality === worldCupTournament?.thirdPlaceId
@@ -4982,7 +5227,9 @@ export class Career {
             10,
             (worldCupTournament?.goldenBoot?.playerId === player.id ? 4 : 0) +
               (worldCupTournament?.goldenBall?.playerId === player.id ? 5 : 0) +
-              (worldCupTournament?.goldenGlove?.playerId === player.id ? 4 : 0) +
+              (worldCupTournament?.goldenGlove?.playerId === player.id
+                ? 4
+                : 0) +
               (worldCupTournament?.bestYoungPlayer?.playerId === player.id
                 ? 3
                 : 0),
@@ -5037,15 +5284,11 @@ export class Career {
       const clKnockoutGoals = cl?.knockoutGoals ?? 0;
       const clKnockoutAssists = cl?.knockoutAssists ?? 0;
       const clGoalPoints = clamp(
-        clGoals * 5 +
-          clKnockoutGoals * 3 +
-          (cl?.finalGoals ?? 0) * 2,
+        clGoals * 5 + clKnockoutGoals * 3 + (cl?.finalGoals ?? 0) * 2,
         55,
       );
       const clAssistPoints = clamp(
-        clAssists * 4 +
-          clKnockoutAssists * 2 +
-          (cl?.finalAssists ?? 0),
+        clAssists * 4 + clKnockoutAssists * 2 + (cl?.finalAssists ?? 0),
         32,
       );
       const knockoutApps = cl?.knockoutApps ?? 0;
@@ -5054,32 +5297,28 @@ export class Career {
         : 0;
       const championsLeaguePerformance = clamp(
         (clApps
-          ?           clamp((clRating - 6) * 25, 38) +
-          clGoalPoints +
-          clAssistPoints +
-          diminishing(clStats, 14, 35) +
-          clamp(clApps * 1.5, 14) +
-          clamp(knockoutApps * 4, 20) +
-          clamp(Math.max(0, knockoutRating - 7) * 12, 12) +
-          clamp((cl?.playerOfMatch ?? 0) * 4, 12) +
-          clamp(clAwards.length * 5, 10)
+          ? clamp((clRating - 6) * 25, 38) +
+            clGoalPoints +
+            clAssistPoints +
+            diminishing(clStats, 14, 35) +
+            clamp(clApps * 1.5, 14) +
+            clamp(knockoutApps * 4, 20) +
+            clamp(Math.max(0, knockoutRating - 7) * 12, 12) +
+            clamp((cl?.playerOfMatch ?? 0) * 4, 12) +
+            clamp(clAwards.length * 5, 10)
           : 0) *
           Math.min(1, clApps / 4) *
           positionMultiplier,
         120,
       );
-      const combinedStats = positionStats(
-        player,
-        stats,
-        goals,
-        assists,
-      );
-      const individualStatistics = clamp(
-        diminishing(combinedStats, 250, 55) +
-          clamp((averageRating - 6) * 42, 65) +
-          clamp(Math.min(apps, 38) * 1.2, 45),
-        370,
-      ) * positionMultiplier;
+      const combinedStats = positionStats(player, stats, goals, assists);
+      const individualStatistics =
+        clamp(
+          diminishing(combinedStats, 250, 55) +
+            clamp((averageRating - 6) * 42, 65) +
+            clamp(Math.min(apps, 38) * 1.2, 45),
+          370,
+        ) * positionMultiplier;
       const cappedIndividualStatistics = clamp(individualStatistics, 370);
       const topFour = (league.table?.sorted?.() ?? [])
         .slice(0, 4)
@@ -5096,17 +5335,19 @@ export class Career {
               : 0),
         110,
       );
-      const consistencyBigMatches = clamp(
-        clamp(Math.min(apps + clApps, 50) * 1.5, 70) +
-          clamp((averageRating - 6.2) * 34, 45) +
-          clamp(knockoutRating > 0 ? (knockoutRating - 6) * 18 : 0, 25) +
-          clamp(
-            ((player.matchHistory ?? []).filter((match) => match.rating >= 7.5)
-              .length || 0) * 2,
-            30,
-          ),
-        170,
-      ) * positionMultiplier;
+      const consistencyBigMatches =
+        clamp(
+          clamp(Math.min(apps + clApps, 50) * 1.5, 70) +
+            clamp((averageRating - 6.2) * 34, 45) +
+            clamp(knockoutRating > 0 ? (knockoutRating - 6) * 18 : 0, 25) +
+            clamp(
+              ((player.matchHistory ?? []).filter(
+                (match) => match.rating >= 7.5,
+              ).length || 0) * 2,
+              30,
+            ),
+          170,
+        ) * positionMultiplier;
       const cappedConsistencyBigMatches = clamp(consistencyBigMatches, 170);
       const domesticGoalPoints = clamp(goals * 6, 0, 90);
       const domesticAssistPoints = clamp(assists * 4, 0, 50);
@@ -5135,10 +5376,7 @@ export class Career {
         averageRating,
         domesticGoalPoints: round(domesticGoalPoints, 2),
         domesticAssistPoints: round(domesticAssistPoints, 2),
-        domesticLeaguePerformance: round(
-          weightedDomesticLeaguePerformance,
-          2,
-        ),
+        domesticLeaguePerformance: round(weightedDomesticLeaguePerformance, 2),
         championsLeaguePerformance: round(championsLeaguePerformance, 2),
         individualStatistics: round(cappedIndividualStatistics, 2),
         teamAchievements: round(teamAchievements, 2),
@@ -5201,7 +5439,10 @@ export class Career {
         String(left.playerId).localeCompare(String(right.playerId)),
     );
     const previousRanks = new Map(
-      (this.ballonDorWatchlist ?? []).map((entry) => [entry.playerId, entry.rank]),
+      (this.ballonDorWatchlist ?? []).map((entry) => [
+        entry.playerId,
+        entry.rank,
+      ]),
     );
     this.ballonDorShortlist = rankedRace.slice(0, 30).map((entry, index) => ({
       ...entry,
@@ -5210,18 +5451,20 @@ export class Career {
         ? previousRanks.get(entry.playerId) - index - 1
         : null,
     }));
-    this.ballonDorWatchlist = this.ballonDorShortlist.slice(0, 20).map((entry) => ({
-      playerId: entry.playerId,
-      player: `${entry.player.first} ${entry.player.last}`,
-      clubId: entry.clubId,
-      overall: entry.overall,
-      goals: entry.goals,
-      assists: entry.assists,
-      averageRating: entry.averageRating,
-      points: entry.points,
-      rank: entry.rank,
-      rankChange: entry.rankChange,
-    }));
+    this.ballonDorWatchlist = this.ballonDorShortlist
+      .slice(0, 20)
+      .map((entry) => ({
+        playerId: entry.playerId,
+        player: `${entry.player.first} ${entry.player.last}`,
+        clubId: entry.clubId,
+        overall: entry.overall,
+        goals: entry.goals,
+        assists: entry.assists,
+        averageRating: entry.averageRating,
+        points: entry.points,
+        rank: entry.rank,
+        rankChange: entry.rankChange,
+      }));
     return rankedRace;
   }
 
@@ -5861,8 +6104,9 @@ export class Career {
         110,
       );
       const finance = ensureClubFinance(identity);
-      const isChampionsLeague =
-        trophy.competition.toLowerCase().includes("champions league");
+      const isChampionsLeague = trophy.competition
+        .toLowerCase()
+        .includes("champions league");
       const basePrize = isChampionsLeague
         ? 8_000_000
         : identity.tier === 2
@@ -5877,9 +6121,10 @@ export class Career {
         finance.investmentBudget += Math.round(prize * 0.15);
         recordClubTransaction(identity, {
           id: transactionId,
-          date: typeof this.currentDay === "function"
-            ? fromDayIndex(this.currentDay())
-            : { year: Number(this.season ?? 2026), month: 5, day: 30 },
+          date:
+            typeof this.currentDay === "function"
+              ? fromDayIndex(this.currentDay())
+              : { year: Number(this.season ?? 2026), month: 5, day: 30 },
           category: "prize-money",
           description: `${trophy.competition} winner prize`,
           income: prize,
@@ -5907,9 +6152,7 @@ export class Career {
         if (!row) continue;
         identity.seasonHistory ??= [];
         if (
-          !identity.seasonHistory.some(
-            (entry) => entry.season === this.season,
-          )
+          !identity.seasonHistory.some((entry) => entry.season === this.season)
         ) {
           identity.seasonHistory.push({
             season: this.season,
@@ -5990,7 +6233,8 @@ export class Career {
 
   validateCompetitionSchedule() {
     this.league.validateFixtures();
-    for (const state of this.worldLeagues ?? []) state.league.validateFixtures();
+    for (const state of this.worldLeagues ?? [])
+      state.league.validateFixtures();
     const occupied = new Map();
     const add = (clubId, date, fixtureId) => {
       if (!Number.isFinite(date)) {
@@ -6054,9 +6298,7 @@ export class Career {
     const runnerUp = result.runnerUpId;
     const allPlayers = [
       ...this.players,
-      ...(this.worldLeagues ?? []).flatMap(
-        (state) => state.performers ?? [],
-      ),
+      ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
     ];
     const byCategory = {
       "Champions League Player of the Season": statRows,
@@ -6086,8 +6328,8 @@ export class Career {
         competition: "UEFA Champions League",
         winners: championPlayers.map((player) => ({
           playerId: player.id,
-          player: `${player.first ?? ""} ${player.last ?? ""}`.trim() ||
-            player.name,
+          player:
+            `${player.first ?? ""} ${player.last ?? ""}`.trim() || player.name,
           club: championTeam?.name ?? player.clubName ?? player.clubId,
           clubId: player.clubId,
         })),
@@ -6221,8 +6463,8 @@ export class Career {
       competition: "UEFA Champions League",
       winners: championPlayers.map((player) => ({
         playerId: player.id,
-        player: `${player.first ?? ""} ${player.last ?? ""}`.trim() ||
-          player.name,
+        player:
+          `${player.first ?? ""} ${player.last ?? ""}`.trim() || player.name,
         club: championTeam?.name ?? player.clubName ?? player.clubId,
         clubId: player.clubId,
       })),
@@ -6283,9 +6525,7 @@ export class Career {
       this.calendar[firstWeek]?.matchday ??
       this.calendar[0]?.matchday ??
       this.currentDay();
-    return (league.fixtures ?? []).map(
-      (_, index) => firstMatchday + index * 4,
-    );
+    return (league.fixtures ?? []).map((_, index) => firstMatchday + index * 4);
   }
 
   scheduleDomesticLeague(league) {
@@ -6450,7 +6690,6 @@ export class Career {
       this.leagueHistories[entry.league.id] = entry.league.history ?? [];
     }
     this.season++;
-    this.trainingPointsEarnedSeason = 0;
     this.performanceDevelopmentProgress = 0;
     this.week = -1;
     this.seasonComplete = false;
@@ -6589,11 +6828,15 @@ export class Career {
 
   /** Create a board request from current table and financial conditions. */
   createOwnerRequest() {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can create board requests.");
     const position = this.league.table.positions().get(this.club.id) ?? null;
     return createOwnerRequest(this.club, position);
   }
 
   respondToOwnerRequest(requestId, response) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can respond to board requests.");
     const accepted = respondToOwnerRequest(this.club, requestId, response);
     if (accepted) {
       const request = this.club.hierarchy.inbox.find(
@@ -6607,7 +6850,12 @@ export class Career {
   }
 
   refreshCoachMarket() {
-    if (!this.coachAppointments || this.coachAppointments.season !== this.season) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can recruit a head coach.");
+    if (
+      !this.coachAppointments ||
+      this.coachAppointments.season !== this.season
+    ) {
       this.coachAppointments = { season: this.season, count: 0 };
     }
     this.coachMarket = generateCoachMarket(
@@ -6619,9 +6867,14 @@ export class Career {
   }
 
   fireCoach(reason = "The owner has decided to appoint a new head coach.") {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can manage club staff.");
     const dismissed = dismissClubManager(this.club, reason, this.currentDay());
-    if (!dismissed) throw new Error("The club has no active head coach to dismiss.");
-    const oldRating = Number(this.club.manager?.overall ?? this.club.manager?.rating ?? 60);
+    if (!dismissed)
+      throw new Error("The club has no active head coach to dismiss.");
+    const oldRating = Number(
+      this.club.manager?.overall ?? this.club.manager?.rating ?? 60,
+    );
     const finance = this.club.financials();
     const affordable = Number(finance.balance ?? 0);
     const candidates = generateCoachMarket(
@@ -6630,7 +6883,10 @@ export class Career {
       12,
     );
     const byRating = candidates
-      .filter((candidate) => Number(candidate.cost ?? 0) <= Math.max(0, affordable * 0.15))
+      .filter(
+        (candidate) =>
+          Number(candidate.cost ?? 0) <= Math.max(0, affordable * 0.15),
+      )
       .sort((left, right) =>
         affordable >= 50_000_000
           ? right.overall - left.overall
@@ -6644,7 +6900,10 @@ export class Career {
           : left.overall - right.overall,
       )[0];
     if (!replacement) throw new Error("No replacement coach is available.");
-    const replacementCost = Math.max(0, Math.round(Number(replacement.cost) || 0));
+    const replacementCost = Math.max(
+      0,
+      Math.round(Number(replacement.cost) || 0),
+    );
     const replacementFinance = ensureClubFinance(this.club);
     if (replacementCost > 0 && replacementFinance.balance >= replacementCost) {
       recordClubTransaction(this.club, {
@@ -6659,8 +6918,13 @@ export class Career {
       ...this.club,
       manager: { ...replacement, role: "Manager", careerHistory: [] },
     });
-    replacement.salary = Math.round(replacement.salary ?? replacement.rating ?? 0);
-    const hierarchy = ensureClubHierarchy(this.club, `${this.seed}-${this.club.id}`);
+    replacement.salary = Math.round(
+      replacement.salary ?? replacement.rating ?? 0,
+    );
+    const hierarchy = ensureClubHierarchy(
+      this.club,
+      `${this.seed}-${this.club.id}`,
+    );
     this.club.manager = { ...replacement, role: "Manager" };
     hierarchy.manager = { ...replacement, role: "Manager", careerHistory: [] };
     hierarchy.employment = {
@@ -6676,18 +6940,32 @@ export class Career {
   }
 
   appointCoach(coachId) {
-    if (!this.coachAppointments || this.coachAppointments.season !== this.season) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can appoint a head coach.");
+    if (
+      !this.coachAppointments ||
+      this.coachAppointments.season !== this.season
+    ) {
       this.coachAppointments = { season: this.season, count: 0 };
     }
     if (this.coachAppointments.count >= 2) {
-      throw new Error("The club cannot appoint more than two head coaches in one season.");
+      throw new Error(
+        "The club cannot appoint more than two head coaches in one season.",
+      );
     }
-    const candidate = (this.coachMarket ?? []).find((coach) => coach.id === coachId);
+    const candidate = (this.coachMarket ?? []).find(
+      (coach) => coach.id === coachId,
+    );
     if (!candidate) throw new Error("That coach is no longer available.");
     const finance = ensureClubFinance(this.club);
-    const appointmentCost = Math.max(0, Math.round(Number(candidate.cost) || 0));
+    const appointmentCost = Math.max(
+      0,
+      Math.round(Number(candidate.cost) || 0),
+    );
     if (finance.balance < appointmentCost) {
-      throw new Error(`You need €${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`);
+      throw new Error(
+        `You need €${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`,
+      );
     }
     recordClubTransaction(this.club, {
       id: `coach-appointment-${this.club.id}-${this.season}-${candidate.id}-${this.currentDay()}`,
@@ -6696,7 +6974,10 @@ export class Career {
       description: `Coach appointment fee: ${candidate.name}`,
       expense: appointmentCost,
     });
-    const hierarchy = ensureClubHierarchy(this.club, `${this.seed}-${this.club.id}`);
+    const hierarchy = ensureClubHierarchy(
+      this.club,
+      `${this.seed}-${this.club.id}`,
+    );
     const coach = ensureCoachProfile({
       ...this.club,
       manager: { ...candidate, role: "Manager", careerHistory: [] },
@@ -6721,8 +7002,12 @@ export class Career {
       status: "resolved",
     });
     this.coachAppointments.count += 1;
-    this.coachMarket = this.coachMarket.filter((coachEntry) => coachEntry.id !== coachId);
-    this.news.unshift(`${candidate.name} has been appointed as head coach of ${this.club.name}.`);
+    this.coachMarket = this.coachMarket.filter(
+      (coachEntry) => coachEntry.id !== coachId,
+    );
+    this.news.unshift(
+      `${candidate.name} has been appointed as head coach of ${this.club.name}.`,
+    );
     return candidate;
   }
 
@@ -6822,8 +7107,12 @@ export class Career {
     };
   }
 
-  buildCareerWorldLeagues() {
+  buildCareerWorldLeagues(selectedLeagueId = null) {
     const entries = [...(this.baseData.careerLeagues ?? [])];
+    if (selectedLeagueId && !entries.some((entry) => entry.league.id === selectedLeagueId)) {
+      const selected = this.data.careerLeagues?.find((entry) => entry.league.id === selectedLeagueId);
+      if (selected) entries.push(selected);
+    }
     const included = new Set(entries.map((entry) => entry.league.id));
     const clean = (name) =>
       name
@@ -7021,13 +7310,10 @@ export class Career {
       const generated = generateAttributes(
         rng,
         position,
-        this.season <= 1
-          ? rng.int(70, 84)
-          : rng.int(55, 75),
+        this.season <= 1 ? rng.int(70, 84) : rng.int(55, 75),
       );
       const { first, last } = this.nameForNationality(rng, entry.league.nation);
-      const age =
-        this.season <= 1 ? rng.int(16, 34) : rng.int(16, 21);
+      const age = this.season <= 1 ? rng.int(16, 34) : rng.int(16, 21);
       return createPlayer({
         id: `generated-${club.id}-${index + 1}`,
         first,
@@ -7118,14 +7404,24 @@ export class Career {
   }
 
   scoutingRegions() {
+    if (!this.isManagerCareer)
+      throw new Error(
+        "Scouting controls are restricted to manager-career mode.",
+      );
     return scoutingRegions();
   }
 
   scoutingFocuses() {
+    if (!this.isManagerCareer)
+      throw new Error(
+        "Scouting controls are restricted to manager-career mode.",
+      );
     return scoutingFocuses();
   }
 
   scoutingScouts(club = this.club) {
+    if (!this.isManagerCareer)
+      throw new Error("Scouting staff are restricted to manager-career mode.");
     return {
       employed: ensureClubScouting(club, this.seed).scouts,
       available: availableScouts(club),
@@ -7133,6 +7429,8 @@ export class Career {
   }
 
   searchScoutingPlayers(filters = {}) {
+    if (!this.isManagerCareer)
+      throw new Error("Scouting tools are restricted to manager-career mode.");
     return searchScoutingPlayers(this.players, this.clubs, filters);
   }
 
@@ -7161,7 +7459,9 @@ export class Career {
         "This player needs more academy development before promotion.",
       );
     if (this.club.squad.length >= 25)
-      throw new Error("The registered squad is full. Release a player before promotion.");
+      throw new Error(
+        "The registered squad is full. Release a player before promotion.",
+      );
     const generated = generateAttributes(
       this.rng.stream(`academy-${prospect.id}`),
       prospect.position,
@@ -7215,11 +7515,88 @@ export class Career {
   }
 
   shortlistScoutingPlayer(playerId) {
+    if (!this.isManagerCareer)
+      throw new Error(
+        "Scouting controls are restricted to manager-career mode.",
+      );
     return shortlistPlayer(this.club, playerId);
   }
 
   removeScoutingPlayer(playerId) {
+    if (!this.isManagerCareer)
+      throw new Error(
+        "Scouting controls are restricted to manager-career mode.",
+      );
     return removeFromShortlist(this.club, playerId);
+  }
+
+  trainingOverview(club = this.club) {
+    const training = ensureClubTraining(club, this.seed, this.season);
+    return {
+      ...training,
+      departments: Object.keys(TRAINING_DEPARTMENTS),
+      programmes: TRAINING_PROGRAMMES,
+      intensities: TRAINING_INTENSITIES,
+      expenditure: training.coaches.reduce(
+        (sum, coach) => sum + Number(coach.weeklySalary ?? 0),
+        0,
+      ),
+    };
+  }
+
+  refreshTrainingCoachMarket() {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can recruit training coaches.");
+    const training = ensureClubTraining(this.club, this.seed, this.season);
+    this.trainingMarketRefresh++;
+    training.market = generateTrainingCoachMarket(
+      this.seed + this.season * 97 + this.trainingMarketRefresh * 7919,
+      this.season,
+      18,
+    );
+    return training.market;
+  }
+
+  hireTrainingCoach(coachId) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can hire training coaches.");
+    return hireTrainingCoach(
+      this.club,
+      coachId,
+      this.currentDay(),
+      this.seed,
+      this.season,
+    );
+  }
+
+  dismissTrainingCoach(coachId) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can dismiss training coaches.");
+    return dismissTrainingCoach(this.club, coachId, this.seed, this.season);
+  }
+
+  assignTrainingCoach(department, coachId) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can assign training coaches.");
+    return assignTrainingCoach(
+      this.club,
+      department,
+      coachId,
+      this.seed,
+      this.season,
+    );
+  }
+
+  setClubTrainingPlan(details) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can set club training programmes.");
+    return setClubTrainingPlan(this.club, details, this.seed, this.season);
+  }
+
+  setClubInvestment(projectId) {
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can approve club investments.");
+    return this.startClubInvestment(projectId);
   }
 
   startClubInvestment(projectId) {
@@ -7304,8 +7681,7 @@ export class Career {
         : this.transferMarket({
             position: details.position || this.player.position,
           }).map(({ player }) => player);
-      const registrationLimit =
-        this.club.registrationLimit ?? 25;
+      const registrationLimit = this.club.registrationLimit ?? 25;
       const candidateSeller = (player) =>
         this.clubs.find(
           (club) =>
@@ -7313,11 +7689,7 @@ export class Career {
             club.id !== this.club.id &&
             club.squad.length > MIN_REGISTERED_SQUAD_SIZE,
         );
-      const affordableCandidate = (
-        player,
-        extraFunds = 0,
-        extraWage = 0,
-      ) => {
+      const affordableCandidate = (player, extraFunds = 0, extraWage = 0) => {
         const seller = candidateSeller(player);
         if (!seller) return false;
         const fee = marketValueForPlayer(player, seller, this.currentDay());
@@ -7330,7 +7702,7 @@ export class Career {
       };
       newTeammate =
         this.club.squad.length < registrationLimit
-          ? candidates.find((player) => affordableCandidate(player)) ?? null
+          ? (candidates.find((player) => affordableCandidate(player)) ?? null)
           : null;
 
       if (!newTeammate && this.club.squad.length > MIN_REGISTERED_SQUAD_SIZE) {
@@ -7358,10 +7730,7 @@ export class Career {
           saleBuyer =
             this.clubs.find((club) => {
               const limit = club.registrationLimit ?? 25;
-              if (
-                club.id === this.club.id ||
-                club.squad.length >= limit
-              )
+              if (club.id === this.club.id || club.squad.length >= limit)
                 return false;
               const buyerFinance = this.financialSummary(club);
               const weakWage =
@@ -7375,14 +7744,12 @@ export class Career {
             }) ?? null;
           const extraFunds = saleBuyer ? saleFee : 0;
           const extraWage =
-            salePlayer.contract?.wage ??
-            Math.round(salePlayer.overall * 900);
+            salePlayer.contract?.wage ?? Math.round(salePlayer.overall * 900);
           newTeammate =
             [...candidates]
               .sort(
                 (left, right) =>
-                  Number(right.overall ?? 0) -
-                  Number(left.overall ?? 0),
+                  Number(right.overall ?? 0) - Number(left.overall ?? 0),
               )
               .find((candidate) =>
                 affordableCandidate(candidate, extraFunds, extraWage),
@@ -7396,16 +7763,15 @@ export class Career {
       if (destination.squad.length >= registrationLimit) {
         destinationReleasePlayer =
           destination.squad.length > MIN_REGISTERED_SQUAD_SIZE
-            ? this.players
+            ? (this.players
                 .filter(
                   (player) =>
                     player.clubId === destination.id && !player.isLegend,
                 )
                 .sort(
                   (left, right) =>
-                    Number(left.overall ?? 0) -
-                    Number(right.overall ?? 0),
-                )[0] ?? null
+                    Number(left.overall ?? 0) - Number(right.overall ?? 0),
+                )[0] ?? null)
             : null;
       }
     }
@@ -7430,19 +7796,18 @@ export class Career {
                   ? `${destination.name} cannot currently cover the transfer.`
                   : destinationFinance.wageBudget < requestedWage
                     ? `${destination.name} cannot fit your wages.`
-                : this.club.squad.length <= MIN_REGISTERED_SQUAD_SIZE
-                  ? `${this.club.name} cannot release another registered player.`
-                  : !this.players.includes(this.player) ||
-                      !this.club.has(this.player.id)
-                    ? "Your player registration is unavailable."
-                    : null
+                    : this.club.squad.length <= MIN_REGISTERED_SQUAD_SIZE
+                      ? `${this.club.name} cannot release another registered player.`
+                      : !this.players.includes(this.player) ||
+                          !this.club.has(this.player.id)
+                        ? "Your player registration is unavailable."
+                        : null
         : type === "better-teammates" && !newTeammate
-            ? requestedPlayer
-              ? "That player cannot be signed within the squad and budget rules."
-              : "The club cannot currently afford or register a suitable signing."
+          ? requestedPlayer
+            ? "That player cannot be signed within the squad and budget rules."
+            : "The club cannot currently afford or register a suitable signing."
           : null;
-    request.approved =
-      !unavailableReason && chance >= threshold;
+    request.approved = !unavailableReason && chance >= threshold;
     request.status = request.approved ? "approved" : "declined";
     if (unavailableReason) {
       request.response = `${manager.name} cannot approve this request: ${unavailableReason}`;
@@ -7455,7 +7820,8 @@ export class Career {
       request.response = `${manager.name} agrees to give you ${amount} playing time.`;
     } else if (type === "better-teammates") {
       if (salePlayer && saleBuyer) {
-        const weakWage = salePlayer.contract?.wage ?? Math.round(salePlayer.overall * 900);
+        const weakWage =
+          salePlayer.contract?.wage ?? Math.round(salePlayer.overall * 900);
         transferPlayer({
           seller: this.club,
           buyer: saleBuyer,
@@ -7498,9 +7864,7 @@ export class Career {
           wage: 0,
         });
       }
-      const seller = this.clubs.find(
-        (club) => club.id === newTeammate.clubId,
-      );
+      const seller = this.clubs.find((club) => club.id === newTeammate.clubId);
       const fee = marketValueForPlayer(newTeammate, seller, this.currentDay());
       const wage =
         newTeammate.contract?.wage ?? Math.round(newTeammate.overall * 900);
@@ -7603,13 +7967,10 @@ export class Career {
   }
 
   canSignPlayerForPlayerCareer(player) {
-    if (!player || player.clubId === this.club.id || player.isLegend) return false;
+    if (!player || player.clubId === this.club.id || player.isLegend)
+      return false;
     const seller = this.clubs.find((club) => club.id === player.clubId);
-    if (
-      !seller ||
-      seller.squad.length <= 20 ||
-      this.club.squad.length >= 25
-    )
+    if (!seller || seller.squad.length <= 20 || this.club.squad.length >= 25)
       return false;
     const fee = marketValueForPlayer(player, seller, this.currentDay());
     const wage = player.contract?.wage ?? Math.round(player.overall * 900);
@@ -7685,7 +8046,10 @@ export class Career {
         response = `${manager.name} confirms you are part of the club's future and your morale improves.`;
       }
     } else if (topic === "betterTeammate") {
-      const request = this.requestBetterTeammates(details.position ?? "", details.playerId ?? null);
+      const request = this.requestBetterTeammates(
+        details.position ?? "",
+        details.playerId ?? null,
+      );
       approved = request.approved;
       response = request.response;
     } else if (topic === "formation") {
@@ -7784,8 +8148,7 @@ export class Career {
   }
 
   buyPlayer(playerId, { fee, wage, contractYears = 3 } = {}) {
-    if (!this.isManagerCareer)
-      throw new Error("Only the manager can approve club transfers.");
+    if (!this.isManagerCareer) throw new Error("Only the manager can approve club transfers.");
     const player = this.players.find((entry) => entry.id === playerId);
     if (!player) throw new Error("That player is not available.");
     const seller = this.clubs.find((club) => club.id === player.clubId);
@@ -8064,7 +8427,7 @@ export class Career {
             : (generated?.gkAttrs ?? null),
           potential: legend
             ? LEGEND_OVERALL
-            : clamp(Number(record.potential) || target, target, 99),
+            : clamp(Number(record.potential) || target, Math.min(target, Number(record.potential) || target), 99),
           clubId: club.id,
           squadStatus: "First Team",
           value: legend?.value ?? record.value,
@@ -8095,6 +8458,7 @@ export class Career {
           loanStatus: record.loanStatus,
           loanParentClub: record.loanParentClub,
           source: record.source ?? "real-world",
+          ...(hasCsvAttrs ? { overallAdjustment: Number(record.overall) - calculateOverall({ position: record.position, attrs: record.attrs, subAttrs: record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs), gkAttrs: record.gkAttrs ?? generated?.gkAttrs, overallAdjustment: 0 }) } : {}),
           dataSource: record.dataSource,
           dataStatus: record.dataStatus,
           lastVerified: record.lastVerified,
@@ -8115,6 +8479,8 @@ export class Career {
         if (hasCsvAttrs && !legend) {
           player.attrs = { ...record.attrs };
           player.overall = clamp(Number(record.overall), 48, 91);
+          player.baseOverall = player.overall;
+          player.overallAdjustment = player.overall - calculateOverall({ ...player, source: null, overallAdjustment: 0 });
           if (record.playerId) {
             player.overallAdjustment =
               player.overall -
@@ -8378,6 +8744,7 @@ export class Career {
       subAttrs: attributes.subAttrs,
       gkAttrs: attributes.gkAttrs,
       potential,
+      potentialTrajectory: this.rng.stream("player-creation").int(50, 100),
       traits,
       peakAge,
       developmentRate,
@@ -8440,6 +8807,21 @@ export class Career {
       }
     }
     updatePlayerOverall(created, "Career creation", { ceiling: potential });
+    const attributeHistory = {
+      ...(created.subAttrs ?? {}),
+      ...(created.gkAttrs ?? {}),
+    };
+    created.developmentHistory = [
+      {
+        season: this.season,
+        date: this.currentDay(),
+        overall: created.overall,
+        change: 0,
+        attributes: Object.fromEntries(
+          Object.keys(attributeHistory).map((key) => [key, 0]),
+        ),
+      },
+    ];
     return created;
   }
 
@@ -8578,11 +8960,11 @@ export class Career {
     );
     if (apps < 5) return 0;
     const averageRating =
-      Number(player.leaguePerformance?.ratingSum ?? player.stats?.ratingSum ?? 0) /
-      apps;
+      Number(
+        player.leaguePerformance?.ratingSum ?? player.stats?.ratingSum ?? 0,
+      ) / apps;
     const outputRate =
-      (Number(player.leagueGoals ?? 0) +
-        Number(player.leagueAssists ?? 0)) /
+      (Number(player.leagueGoals ?? 0) + Number(player.leagueAssists ?? 0)) /
       apps;
     return clamp(
       Math.round(
@@ -8708,16 +9090,13 @@ export class Career {
     this.transferOffers = [];
     const searchFee = Math.round(agent.fee * 0.08);
     const searchAvailable =
-      this.transferMarketState.searchCount <
-        agentSearchTerms(agent).searches &&
+      this.transferMarketState.searchCount < agentSearchTerms(agent).searches &&
       (this.transferMarketState.lastSearchDay == null ||
         this.currentDay() - this.transferMarketState.lastSearchDay >= 14);
     const offers =
-      this.isTransferWindowWeek() &&
-      searchAvailable &&
-      this.money >= searchFee
-      ? this.generateTransferOffers()
-      : [];
+      this.isTransferWindowWeek() && searchAvailable && this.money >= searchFee
+        ? this.generateTransferOffers()
+        : [];
     this.news.push(
       `${agent.name} is now your agent for contract and transfer talks.`,
     );
@@ -9034,9 +9413,10 @@ export class Career {
     const age = ageOn(this.player.dob, today);
     const candidates = this.evaluateTransferInterest(this.player, {
       agent,
-      threshold: this.player.overall >= 88
-        ? 38
-        : 48 + Math.max(0, 58 - terms.maxPrestige) * 0.15,
+      threshold:
+        this.player.overall >= 88
+          ? 38
+          : 48 + Math.max(0, 58 - terms.maxPrestige) * 0.15,
     }).filter(
       ({ club }) =>
         (!requestedClubIds.length || requestedClubIds.includes(club.id)) &&
@@ -9044,9 +9424,11 @@ export class Career {
           terms.maxPrestige + (this.player.overall >= 88 ? 24 : 0),
     );
     if ((this.player.overall ?? 0) >= 90) {
-      candidates.sort((left, right) =>
-        Number(right.club.prestige ?? 50) - Number(left.club.prestige ?? 50) ||
-        right.fit.score - left.fit.score,
+      candidates.sort(
+        (left, right) =>
+          Number(right.club.prestige ?? 50) -
+            Number(left.club.prestige ?? 50) ||
+          right.fit.score - left.fit.score,
       );
     }
     const ranked = candidates.slice(0, 3).map(({ club, league, fit }) => {
@@ -9551,8 +9933,7 @@ export class Career {
     }
     if (this.week + 1 >= this.calendar.length) {
       this.week++;
-      this.dayCursor =
-        this.calendar.at(-1)?.matchday ?? this.dayCursor;
+      this.dayCursor = this.calendar.at(-1)?.matchday ?? this.dayCursor;
       if (!this.areAllSeasonCompetitionsComplete()) {
         this.seasonComplete = false;
         throw new Error(
@@ -9573,8 +9954,7 @@ export class Career {
       return this.lastReport;
     }
     this.week++;
-    this.dayCursor =
-      this.calendar[this.week]?.matchday ?? this.dayCursor;
+    this.dayCursor = this.calendar[this.week]?.matchday ?? this.dayCursor;
     if (this.week >= this.calendar.length) {
       this.seasonComplete = this.areAllSeasonCompetitionsComplete();
       if (!this.seasonComplete) {
@@ -9602,6 +9982,23 @@ export class Career {
       );
       processWeeklyHierarchy(club, financeDay);
       processInvestmentWeek(club, financeDay);
+      const aiClub = club.id !== this.club.id;
+      ensureClubTraining(club, this.seed, this.season);
+      if (aiClub)
+        manageAITrainingStaff(
+          club,
+          financeDay,
+          this.seed + this.week,
+          this.season,
+        );
+      processClubTrainingWeek(
+        club,
+        this.players,
+        financeDay,
+        this.seed,
+        this.season,
+        { ai: aiClub },
+      );
       processScoutingWeek(
         club,
         this.players,
@@ -9609,7 +10006,6 @@ export class Career {
         this.rng.stream(`scouting-${club.id}`),
         { ai: club.id !== this.club.id },
       );
-      developAcademy(club, this.rng.stream(`academy-${club.id}`), financeDay);
       if (club.id !== this.club.id) {
         const prospect = (club.scouting?.youthProspects ?? []).find(
           (item) => item.status === "available" && item.age >= 16,
@@ -9637,13 +10033,7 @@ export class Career {
       ensureStamina(player);
     }
     this.creditMoney(this.player.contract?.wage ?? 0, "Weekly salary");
-    this.creditTrainingPoints(
-      Math.round(
-        progression.weeklyPoints *
-          hierarchyTrainingModifier(this.club, "coach") *
-          investmentModifiers(this.club).training,
-      ),
-    );
+    this.player.trainingFocus = this.trainingFocus;
     this.player.fatigue = Math.max(
       0,
       this.player.fatigue - progression.weeklyFatigueRecovery,
@@ -9659,8 +10049,7 @@ export class Career {
         );
       }
     }
-    const medicalFactor =
-      investmentModifiers(this.club)?.recovery ?? 1;
+    const medicalFactor = investmentModifiers(this.club)?.recovery ?? 1;
     for (const squadPlayer of this.players) {
       applyStaminaRecovery(squadPlayer, 7, 1, medicalFactor);
     }
@@ -9682,7 +10071,9 @@ export class Career {
     // Training-week injuries. Every squad member can break down in training, and the
     // risk is driven by his physical attribute, his fatigue and his traits.
     this.rollTrainingInjuries();
-    this.applyCoachFormations(this.calendar[this.week]?.matchday ?? this.currentDay());
+    this.applyCoachFormations(
+      this.calendar[this.week]?.matchday ?? this.currentDay(),
+    );
     const internationalReport = this.processWorldCupCalendar();
 
     const fixtures = [];
@@ -9927,7 +10318,7 @@ export class Career {
     );
     const completedLeagueFixtures = fixtures.filter(
       (fixture) =>
-          !fixture.pending && fixture.competitionId !== "fifa-world-cup",
+        !fixture.pending && fixture.competitionId !== "fifa-world-cup",
     ).length;
     const allHeadlines = [
       ...(internationalReport?.qualificationFixtures?.length
@@ -9941,7 +10332,9 @@ export class Career {
           ]
         : []),
       ...(internationalReport?.tournamentStarted
-        ? [`The ${internationalReport.tournament.year} FIFA World Cup has begun.`]
+        ? [
+            `The ${internationalReport.tournament.year} FIFA World Cup has begun.`,
+          ]
         : []),
       ...(internationalReport?.tournament?.status === "complete"
         ? [
@@ -10033,15 +10426,6 @@ export class Career {
     this.player.careerStats.goalsConceded += opponentGoals;
   }
 
-  creditTrainingPoints(amount) {
-    const remaining = Math.max(0, 19 - (this.trainingPointsEarnedSeason ?? 0));
-    const credited = Math.min(remaining, Math.max(0, Math.round(amount)));
-    this.trainingPoints += credited;
-    this.trainingPointsEarnedSeason =
-      (this.trainingPointsEarnedSeason ?? 0) + credited;
-    return credited;
-  }
-
   applyPerformanceDevelopment(rating) {
     if (this.player.isLegend || !Number.isFinite(rating)) return;
     ensurePlayStyles(this.player);
@@ -10076,47 +10460,37 @@ export class Career {
       },
       { season: this.season, age: this.player.age ?? 25 },
     );
-    const potential = this.player.potential ?? 99;
-    const coach = ensureCoachProfile(this.club);
-    const coachDevelopmentModifier =
-      1 + (coach.coachingAttributes.playerDevelopment - 50) * 0.003;
-    this.performanceDevelopmentProgress =
-      (this.performanceDevelopmentProgress ?? 0) +
-      clamp(
-        (rating - 6.5) * 0.08 * coachDevelopmentModifier,
-        -0.12,
-        0.12,
+    this.player.lastMatchRating = rating;
+    this.player.performanceDevelopmentProgress =
+      this.performanceDevelopmentProgress;
+    const performanceProgress =
+      Number(this.player.performanceDevelopmentProgress ?? 0) +
+      clamp((rating - 6.4) * 0.025, -0.04, 0.04);
+    this.player.performanceDevelopmentProgress = performanceProgress;
+    if (Math.abs(performanceProgress) >= 1) {
+      const attributes =
+        this.player.position === "GK"
+          ? this.player.gkAttrs
+          : this.player.subAttrs;
+      const attribute = normalizedTrainingFocus(
+        this.trainingFocus,
+        this.player.position,
       );
-    const attribute = normalizedTrainingFocus(
-      this.trainingFocus,
-      this.player.position,
-    );
-    const attributes =
-      normalizePosition(this.player.position) === "GK"
-        ? this.player.gkAttrs
-        : this.player.subAttrs;
-    while (this.performanceDevelopmentProgress >= 1) {
-      if (calculateOverall(this.player) >= potential) {
-        this.performanceDevelopmentProgress = 0;
-        break;
+      const direction = Math.sign(performanceProgress);
+      if (
+        attributes?.[attribute] != null &&
+        (direction < 0 ||
+          calculateOverall(this.player) < (this.player.potential ?? 99))
+      ) {
+        attributes[attribute] = clamp(attributes[attribute] + direction, 1, 99);
+        if (this.player.position !== "GK")
+          syncGroupsFromSubAttrs(this.player, [SUB_ATTRIBUTE_GROUP[attribute]]);
+        updatePlayerOverall(this.player, "Match performance development", {
+          season: this.season,
+        });
+        this.player.performanceDevelopmentProgress -= direction;
       }
-      attributes[attribute] = clamp((attributes[attribute] ?? 50) + 1, 1, 99);
-      if (normalizePosition(this.player.position) !== "GK") {
-        syncGroupsFromSubAttrs(this.player, [SUB_ATTRIBUTE_GROUP[attribute]]);
-      }
-      this.performanceDevelopmentProgress -= 1;
     }
-    while (this.performanceDevelopmentProgress <= -1) {
-      attributes[attribute] = clamp((attributes[attribute] ?? 50) - 1, 1, 99);
-      if (normalizePosition(this.player.position) !== "GK") {
-        syncGroupsFromSubAttrs(this.player, [SUB_ATTRIBUTE_GROUP[attribute]]);
-      }
-      this.performanceDevelopmentProgress += 1;
-    }
-    updatePlayerOverall(this.player, "Match performance development", {
-      season: this.season,
-      ceiling: potential,
-    });
   }
 
   recordPlayerMatchHistory(match, performance) {
@@ -10155,7 +10529,9 @@ export class Career {
             ]),
           ),
           this.championsLeague?.knockout?.final,
-        ].filter(Boolean).find((fixture) => fixture.id === match.uefaFixtureId)
+        ]
+          .filter(Boolean)
+          .find((fixture) => fixture.id === match.uefaFixtureId)
       : null;
     history.push({
       season: this.season,
@@ -10352,12 +10728,9 @@ export class Career {
     const squad = this.players.filter((player) =>
       this.club.squad.includes(player.id),
     );
-    const lineup = selectLineup(
-      squad,
-      this.club.formation,
-      dayIndex,
-      { customXI: this.club.customXI ?? [] },
-    );
+    const lineup = selectLineup(squad, this.club.formation, dayIndex, {
+      customXI: this.club.customXI ?? [],
+    });
     const starter = lineup.xi.find(
       (entry) => entry.player.id === this.player.id,
     );
@@ -10373,8 +10746,8 @@ export class Career {
     return {
       dayIndex,
       lineup,
-      starter: unavailable ? null : starter ?? null,
-      substitute: unavailable ? null : substitute ?? null,
+      starter: unavailable ? null : (starter ?? null),
+      substitute: unavailable ? null : (substitute ?? null),
       status: unavailable
         ? "not-selected"
         : starter
@@ -10431,11 +10804,9 @@ export class Career {
     const userRating = effectiveRating(this.player, naturalPosition, {
       dayIndex,
     });
-    const alternativeRating = effectiveRating(
-      alternative,
-      naturalPosition,
-      { dayIndex },
-    );
+    const alternativeRating = effectiveRating(alternative, naturalPosition, {
+      dayIndex,
+    });
     const isBetterOption = userRating >= alternativeRating - 3;
     const cameoCandidate = userRating >= alternativeRating - 30;
     if (this.player.requestedPlayingTime === "more") {
@@ -10895,9 +11266,7 @@ export class Career {
     const knockout = fixture.stage !== "group";
     if (match.homeGoals === match.awayGoals && match.penalties?.winner) {
       match.winnerId =
-        match.penalties.winner === "home"
-          ? homeTeam.club.id
-          : awayTeam.club.id;
+        match.penalties.winner === "home" ? homeTeam.club.id : awayTeam.club.id;
     }
     this.recordInternationalMatch(match, homeTeam, awayTeam, {
       worldCup: true,
@@ -11008,18 +11377,8 @@ export class Career {
         : false;
     match.objectiveAwarded = match.objectiveAwarded && result.played;
     if (match.objectiveComplete && !match.objectiveAwarded) {
-      // Completing objectives pays a base bonus, plus an escalating reward for every
-      // completed objective in the season: the more consistent you are, the more
-      // upgrade points each completed objective earns.
       this.objectivesCompletedSeason =
         (this.objectivesCompletedSeason ?? 0) + 1;
-      const streakBonus = Math.min(
-        5,
-        Math.floor((this.objectivesCompletedSeason - 1) / 2),
-      );
-      this.creditTrainingPoints(
-        this.data.careerSettings.training.objectiveBonus + streakBonus,
-      );
       this.player.trusting.manager = clamp(
         this.player.trusting.manager + 3,
         0,
@@ -11046,10 +11405,6 @@ export class Career {
     });
     if (result.played) {
       const progression = this.data.careerSettings.training;
-      this.creditTrainingPoints(
-        progression.appearancePoints +
-          (result.rating >= 7 ? progression.strongPerformanceBonus : 0),
-      );
       this.player.trusting.manager = clamp(
         this.player.trusting.manager + (result.rating >= 7 ? 2 : -1),
         0,
@@ -11092,7 +11447,14 @@ export class Career {
           competition: "league",
           importance: 1,
           resultKey: `matchday-${this.season}-${this.week}-${homeClub.id}-${awayClub.id}`,
-          outcome: (result.homeGoals ?? result.home?.goals ?? 0) > (result.awayGoals ?? result.away?.goals ?? 0) ? "W" : (result.homeGoals ?? result.home?.goals ?? 0) === (result.awayGoals ?? result.away?.goals ?? 0) ? "D" : "L",
+          outcome:
+            (result.homeGoals ?? result.home?.goals ?? 0) >
+            (result.awayGoals ?? result.away?.goals ?? 0)
+              ? "W"
+              : (result.homeGoals ?? result.home?.goals ?? 0) ===
+                  (result.awayGoals ?? result.away?.goals ?? 0)
+                ? "D"
+                : "L",
         });
       }
     }
@@ -11112,13 +11474,16 @@ export class Career {
       const uefaFixture = uefaFixtures.find(
         (fixture) => fixture.id === match.uefaFixtureId,
       );
-      const isLeaguePhase = (this.championsLeague?.leaguePhase?.fixtures ?? []).includes(
-        uefaFixture,
-      );
+      const isLeaguePhase = (
+        this.championsLeague?.leaguePhase?.fixtures ?? []
+      ).includes(uefaFixture);
       const isKnockout = !!uefaFixture && !isLeaguePhase;
       const participated =
         result.played &&
-        (result.minutes ?? match.playerResult?.minutes ?? this.matchSimulation?.minute ?? 0) > 0;
+        (result.minutes ??
+          match.playerResult?.minutes ??
+          this.matchSimulation?.minute ??
+          0) > 0;
       recordChampionsLeagueFixture(this.championsLeague, match.uefaFixtureId, {
         homeGoals: match.homeGoals,
         awayGoals: match.awayGoals,
@@ -11414,7 +11779,8 @@ export class Career {
     const events = match.events ?? [];
     for (const player of this.players) {
       if (player && !player.stats) player.stats = emptyStats();
-      if (player && !player.careerStats) player.careerStats = { ...player.stats };
+      if (player && !player.careerStats)
+        player.careerStats = { ...player.stats };
     }
     const knownPlayers = [
       ...this.players,
@@ -11901,8 +12267,7 @@ export class Career {
     )
       return this.matchSimulation;
 
-    const fullTimeMinute =
-      90 + Math.max(0, Number(match.addedTime) || 0);
+    const fullTimeMinute = 90 + Math.max(0, Number(match.addedTime) || 0);
     const nextMinute = Math.min(
       fullTimeMinute,
       this.matchSimulation.minute + 1,
@@ -11957,7 +12322,11 @@ export class Career {
     return this.matchSimulation;
   }
 
-  train(attribute = this.trainingFocus) {
+  setTrainingFocus(attribute = this.trainingFocus) {
+    if (this.isManagerCareer)
+      throw new Error(
+        "Only player-career mode can set an individual player focus.",
+      );
     const isGoalkeeperAttribute =
       normalizePosition(this.player.position) === "GK" &&
       TRAINABLE_GK_ATTRIBUTES.has(attribute);
@@ -11967,102 +12336,17 @@ export class Career {
     if (!isGoalkeeperAttribute && !isSubAttribute)
       throw new Error(`Unsupported training attribute: ${attribute}`);
     this.trainingFocus = attribute;
-    const cost = this.data.careerSettings.training.attributePointCost;
-    // A player's potential is set when he is built and is a hard ceiling: training and
-    // matches can close the gap to it, but nothing a player does on the training ground
-    // lets his base overall climb through it. Only the temporary form bonus may exceed
-    // the ceiling, and that is applied when the overall is displayed.
-    const baseOverall = calculateOverall(this.player);
-    const potential = this.player.potential ?? 99;
-    if (baseOverall >= potential) {
-      return {
-        trained: false,
-        reason: `Your base overall has reached your potential of ${potential}. You cannot train past it.`,
-      };
-    }
-    if (this.trainingPoints < cost)
-      return { trained: false, reason: `You need ${cost} training points.` };
-    const attributes = isGoalkeeperAttribute
-      ? this.player.gkAttrs
-      : this.player.subAttrs;
-    const current = attributes[attribute] ?? 1;
-    if (current >= 99) {
-      return {
-        trained: false,
-        reason: "This attribute has reached its maximum of 99.",
-      };
-    }
-    this.trainingPoints -= cost;
-    const trainingIncrease = this.player.managerTrainingBonus ? 2 : 1;
-    attributes[attribute] = clamp(current + trainingIncrease, 1, 99);
-    this.player.managerTrainingBonus = false;
-    if (isSubAttribute) {
-      const group = SUB_ATTRIBUTE_GROUP[attribute];
-      const beforeGroup = this.player.attrs[group] ?? 1;
-      syncGroupsFromSubAttrs(this.player, [group]);
-      if ((this.player.attrs[group] ?? 1) <= beforeGroup) {
-        const supporting = (SUB_ATTRIBUTES[group] ?? []).find(
-          (key) => key !== attribute && (this.player.subAttrs[key] ?? 99) < 99,
-        );
-        if (supporting) {
-          for (
-            let attempt = 0;
-            attempt < 12 && (this.player.attrs[group] ?? 1) <= beforeGroup;
-            attempt++
-          ) {
-            this.player.subAttrs[supporting] = clamp(
-              (this.player.subAttrs[supporting] ?? 50) + 1,
-              1,
-              99,
-            );
-            syncGroupsFromSubAttrs(this.player, [group]);
-          }
-        }
-      }
-    }
-    const trained = updatePlayerOverall(this.player, "Training development", {
-      season: this.season,
-      attributes: { [attribute]: attributes[attribute] },
-      ceiling: potential,
-    }).current;
-    // The ceiling wins even when one attribute point would push the overall past it:
-    // the attribute improves, but the base overall is pinned to the potential.
-    this.player.overall = trained;
-    const focus = String(attribute).toLowerCase();
-    const category = isGoalkeeperAttribute
-      ? "goalkeeping"
-      : focus.includes("pass") ||
-          focus.includes("vision") ||
-          focus.includes("cross")
-        ? "passing"
-        : focus.includes("drib") ||
-            focus.includes("ball") ||
-            focus.includes("agility")
-          ? "dribbling"
-          : focus.includes("tackle") ||
-              focus.includes("intercept") ||
-              focus.includes("defend")
-            ? "defending"
-            : focus.includes("shot") ||
-                focus.includes("finish") ||
-                focus.includes("curve")
-              ? "shooting"
-              : "physical";
-    this.player.playStyles.trainingProgress ??= {};
-    this.player.playStyles.trainingProgress[category] =
-      (this.player.playStyles.trainingProgress[category] ?? 0) + 0.8;
-    awardPlayStyleEvidence(
-      this.player,
-      { [category]: this.player.playStyles.trainingProgress[category] },
-      {
-        season: this.season,
-        age: ageOn(
-          this.player.dob,
-          this.calendar[Math.max(0, this.week)]?.day ?? this.calendar[0]?.day,
-        ),
-      },
-    );
-    return { trained: true, attribute, overall: this.player.overall };
+    this.player.trainingFocus = attribute;
+    const training = ensureClubTraining(this.club, this.seed, this.season);
+    training.playerPlans[this.player.id] = {
+      ...(training.playerPlans[this.player.id] ?? {}),
+      focus: attribute,
+    };
+    return {
+      selected: true,
+      attribute,
+      overall: calculateOverall(this.player),
+    };
   }
 
   setDeveloperMode(enabled) {
@@ -12071,6 +12355,10 @@ export class Career {
   }
 
   setPlayerAttribute(attribute, value) {
+    if (!this.developerMode)
+      throw new Error(
+        "Enable developer mode before editing player attributes.",
+      );
     const supportedAttributes =
       this.player.position === "GK"
         ? [...ATTRIBUTES, ...GK_ATTRIBUTES]
@@ -12116,34 +12404,6 @@ export class Career {
     return number;
   }
 
-  upgradeSkill(skill) {
-    if (!["weakFoot", "skillMoves"].includes(skill)) {
-      throw new Error(`Unsupported player skill: ${skill}`);
-    }
-    const current = Number(this.player[skill]) || 0;
-    if (current >= 5)
-      return {
-        upgraded: false,
-        reason: "This skill is already at its maximum.",
-      };
-    const cost = this.skillUpgradeCost(skill);
-    if (this.trainingPoints < cost)
-      return { upgraded: false, reason: `You need ${cost} training points.` };
-    this.trainingPoints = 0;
-    this.player[skill] = current + 1;
-    return { upgraded: true, skill, value: this.player[skill] };
-  }
-
-  skillUpgradeCost(skill) {
-    if (!["weakFoot", "skillMoves"].includes(skill)) {
-      throw new Error(`Unsupported player skill: ${skill}`);
-    }
-    const nextLevel = (Number(this.player[skill]) || 0) + 1;
-    if (nextLevel <= 2)
-      return this.data.careerSettings.training.attributePointCost;
-    return 15 * nextLevel - 15;
-  }
-
   /**
    * Retire the oldest players in the user's league and promote a generated youngster in
    * each vacated squad slot, so squads never empty out and the world keeps refreshing.
@@ -12172,7 +12432,10 @@ export class Career {
         this.players.push(
           this.generateReplacementPlayer(club, player.position),
         );
-      const tracking = this.populationTracking ??= { seasonIntroduced: {}, retired: {} };
+      const tracking = (this.populationTracking ??= {
+        seasonIntroduced: {},
+        retired: {},
+      });
       tracking.retired[this.season] = (tracking.retired[this.season] ?? 0) + 1;
       this.news.push(
         `${player.first} ${player.last} has retired at ${ageOn(player.dob, finalDay)}.`,
@@ -12241,7 +12504,10 @@ export class Career {
       value: target >= 76 ? target * 250000 : target * 120000,
     });
     club.addPlayer(player.id);
-    const tracking = this.populationTracking ??= { seasonIntroduced: {}, retired: {} };
+    const tracking = (this.populationTracking ??= {
+      seasonIntroduced: {},
+      retired: {},
+    });
     tracking.seasonIntroduced[this.season] =
       (tracking.seasonIntroduced[this.season] ?? 0) + 1;
     return player;
@@ -12250,7 +12516,7 @@ export class Career {
   playerPopulationStats() {
     const players = [
       ...(this.players ?? []),
-      ...((this.worldLeagues ?? []).flatMap((state) => state.performers ?? [])),
+      ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
     ];
     const unique = new Map();
     for (const player of players) unique.set(player.id, player);
@@ -12263,13 +12529,18 @@ export class Career {
         player.source === "npc"
       )
         generated++;
-      else if (player.source === "real-world" || player.source?.startsWith?.("fc26"))
+      else if (
+        player.source === "real-world" ||
+        player.source?.startsWith?.("fc26")
+      )
         real++;
-      else
-        real++;
+      else real++;
     }
     const total = unique.size;
-    const tracking = this.populationTracking ??= { seasonIntroduced: {}, retired: {} };
+    const tracking = (this.populationTracking ??= {
+      seasonIntroduced: {},
+      retired: {},
+    });
     return {
       total,
       real,
@@ -12283,159 +12554,91 @@ export class Career {
   developLeaguePlayers() {
     const finalDay =
       this.calendar.at(-1)?.matchday ?? toDayIndex(this.season, 12, 31);
-    const leagueTier =
-      this.data.careerLeagues?.find((entry) => entry.id === this.league.id)
-        ?.league.tier ?? 1;
-    for (const player of this.players) {
-      if (player.isUser || player.isLegend) continue;
-      const age = ageOn(player.dob, finalDay);
-      player.previousAttributes = {
-        ...(player.attrs ?? {}),
-        ...(player.gkAttrs ?? {}),
-      };
-      const club = this.clubs.find((entry) => entry.id === player.clubId);
-      const coach = club ? ensureCoachProfile(club) : null;
-      const overall = calculateOverall(player);
-      const potentialGap = Math.max(0, (player.potential ?? overall) - overall);
-      const appearances = player.stats.apps ?? 0;
-      const gameTime = clamp(appearances / 30, 0, 1);
-      const averageRating =
-        appearances > 0
-          ? (player.stats.ratingSum ?? 0) / appearances
-          : 6.2;
-      const performanceFactor = clamp((averageRating - 6.2) * 0.18, -0.22, 0.28);
-      const coachFactor = coach
-        ? 1 + (coach.coachingAttributes.playerDevelopment - 50) * 0.0025
-        : 1;
-      const clubEnvironment = clamp(
-        ((club?.prestige ?? 55) - 60) * 0.004,
-        -0.1,
-        0.14,
+    for (const club of this.clubs) {
+      const clubPlayers = this.players.filter(
+        (player) => player.clubId === club.id,
       );
-      const leagueEnvironment =
-        leagueTier === 1 ? 0.08 : leagueTier === 2 ? 0.03 : -0.06;
-      let seasonalChange =
-        age <= 20
-          ? 1.05 + potentialGap * 0.035
-          : age <= 24
-            ? 0.62 + potentialGap * 0.02
-            : age <= 28
-              ? 0.18 + potentialGap * 0.008
-              : -0.22 - (age - 29) * 0.075;
-      seasonalChange += clubEnvironment + leagueEnvironment + gameTime * 0.32;
-      seasonalChange += performanceFactor;
-      seasonalChange *= coachFactor;
-      seasonalChange *= player.developmentRate ?? 1;
-      const attributes =
-        player.position === "GK"
-          ? [
-              "reflexes",
-              "positioning",
-              "handling",
-              "diving",
-              "kicking",
-              "speed",
-            ]
-          : [
-              "shooting",
-              "passing",
-              "defending",
-              "physical",
-              "dribbling",
-              "pace",
-            ];
-      const traitRate = player.traits?.includes("Late Bloomer (Physical)")
-        ? attributes.includes("physical")
-          ? 1.12
-          : 0.82
-        : 1;
-      seasonalChange *= traitRate;
-      if (age > (player.peakAge ?? 27))
-        seasonalChange -= (age - (player.peakAge ?? 27)) * 0.015;
-      seasonalChange += this.rng.stream("player-development").normal(0, 0.28);
-      // Personality bends the growth curve: a Determined player pushes a little
-      // harder, a Lazy one coasts, and a Nervous one is erratic week to week.
-      const personalityMod = personalityGrowthMod(player.personality);
-      seasonalChange *= personalityMod.rate;
-      seasonalChange += personalityMod.offset;
-      player.developmentProgress =
-        (player.developmentProgress ?? 0) + seasonalChange;
-
-      if (player.developmentProgress >= 1) {
-        let points = Math.min(3, Math.floor(player.developmentProgress));
-        while (points > 0) {
-          const currentOverall = calculateOverall(player);
-          if (currentOverall >= (player.potential ?? currentOverall)) break;
-          const attribute = this.rng
-            .stream("player-development")
-            .weightedPick(attributes, (key) =>
-              Math.max(
-                1,
-                105 - (player.attrs[key] ?? player.gkAttrs[key] ?? 50),
-              ),
-            );
-          if (player.position === "GK") {
-            player.gkAttrs[attribute] = clamp(
-              (player.gkAttrs[attribute] ?? 50) + 1,
-              1,
-              99,
-            );
-          } else {
-            player.attrs[attribute] = clamp(
-              (player.attrs[attribute] ?? 50) + 1,
-              1,
-              99,
-            );
-            // The detailed layer grows with the group, and one sub-attribute in it
-            // takes the point, so the profile sharpens rather than just inflating.
-            if (player.subAttrs && SUB_ATTRIBUTES[attribute]) {
-              const sub = this.rng
-                .stream("player-development")
-                .pick(SUB_ATTRIBUTES[attribute]);
-              player.subAttrs[sub] = clamp(
-                (player.subAttrs[sub] ?? player.attrs[attribute]) + 1,
-                1,
-                99,
-              );
-            }
-          }
-          points--;
-          player.developmentProgress--;
+      for (const player of clubPlayers) {
+        if (player.isLegend) continue;
+        player.age = ageOn(player.dob, finalDay);
+        const report = developPlayer(
+          player,
+          club,
+          this.rng.stream(`development-${this.season}-${player.id}`),
+          this.season,
+          {
+            appearances: player.stats?.apps ?? 0,
+            minutes: player.stats?.minutes ?? 0,
+            ratingSum: player.stats?.ratingSum ?? 0,
+            date: finalDay,
+          },
+        );
+        player.seasonDevelopmentReport = report;
+        if (report?.change >= 1 && report.change <= 7) this.news.unshift(`${player.first} ${player.last} advanced ${report.change} OVR this season (${report.reasons.join(", ")}).`);
+        else if (report?.change <= -1) this.news.unshift(`${player.first} ${player.last} declined ${Math.abs(report.change)} OVR this season (${report.reasons.join(", ")}).`);
+        if (report?.change >= 4 && ageOn(player.dob, finalDay) <= 21) this.news.unshift(`${player.first} ${player.last} is showing exceptional potential with ${report.change} OVR growth.`);
+        if (report && !player.isUser) {
+          const headCoach = ensureCoachProfile(club);
+          developCoach(club, {
+            playerGrowth: report.change > 0 ? 1 : report.change < 0 ? -1 : 0,
+          });
+          headCoach.statistics.playersDeveloped += report.change > 0 ? 1 : 0;
         }
-      } else if (player.developmentProgress <= -1 && age >= 29) {
-        const attribute = this.rng
-          .stream("player-development")
-          .pick(attributes);
-        if (player.position === "GK") {
-          player.gkAttrs[attribute] = Math.max(
-            1,
-            (player.gkAttrs[attribute] ?? 50) - 1,
-          );
-        } else {
-          player.attrs[attribute] = Math.max(
-            1,
-            (player.attrs[attribute] ?? 50) - 1,
-          );
-          if (player.subAttrs && SUB_ATTRIBUTES[attribute]) {
-            const sub = this.rng
-              .stream("player-development")
-              .pick(SUB_ATTRIBUTES[attribute]);
-            player.subAttrs[sub] = Math.max(
-              1,
-              (player.subAttrs[sub] ?? player.attrs[attribute]) - 1,
-            );
-          }
-        }
-        player.developmentProgress++;
       }
-      updatePlayerOverall(player, "Season development", {
-        season: this.season,
-        ceiling: player.potential ?? 99,
-      });
-      if (coach) {
-        developCoach(club, {
-          playerGrowth: seasonalChange > 0 ? 1 : seasonalChange < 0 ? -1 : 0,
-        });
+      const training = ensureClubTraining(club, this.seed, this.season);
+      const youthCoach = training.coaches.find((coach) => coach.department === "youth");
+      for (const prospect of club.academy?.players ?? []) {
+        if (prospect.status === "academy") {
+          const focusDepartment = prospect.position === "GK" ? "goalkeeper" : prospect.position === "ST" || prospect.position === "LW" || prospect.position === "RW" ? "attacking" : prospect.position === "CB" || prospect.position === "LB" || prospect.position === "RB" ? "defensive" : "midfield";
+          const assigned = training.coaches.find((coach) => coach.department === focusDepartment);
+          prospect.academyCoachQuality = Math.max(Number(youthCoach?.youthAbility ?? 50), Number(assigned?.overall ?? 45));
+          prospect.potentialTrajectory = clamp(((Number(prospect.potentialRange?.max ?? prospect.potential ?? 50) - Number(prospect.overall ?? 40)) * 4) + prospect.academyCoachQuality * 0.2, 0, 100);
+          prospect.trainingFocus = (TRAINING_DEPARTMENTS[focusDepartment] ?? [])[0] ?? (prospect.position === "GK" ? "reflexes" : "finishing");
+          prospect.morale = prospect.morale ?? prospect.confidence ?? 65;
+          developAcademyPlayer(
+            club,
+            prospect,
+            this.rng.stream(`academy-season-${this.season}-${prospect.id}`),
+            finalDay,
+          );
+        }
+      }
+    }
+    for (const state of this.worldLeagues) {
+      const entry = this.worldCareerLeagues.find(
+        (candidate) => candidate.league.id === state.league.id,
+      );
+      for (const performer of state.performers ?? []) {
+        if (performer.isLegend) continue;
+        const club = this.clubs.find((item) => item.id === performer.clubId);
+        if (!club) continue;
+        performer.age = Number(performer.age ?? 25) + 1;
+        this.ensureWorldPlayerModel(performer);
+        const result = developPlayer(
+          performer,
+          club,
+          this.rng.stream(`development-${this.season}-${performer.id}`),
+          this.season,
+          {
+            appearances: performer.apps ?? 0,
+            minutes: (performer.apps ?? 0) * 75,
+            ratingSum: performer.ratingSum ?? (performer.apps ?? 0) * 6.5,
+            date: finalDay,
+          },
+        );
+        const snapshot = this.worldPlayerDevelopment[performer.id] ?? {};
+        this.worldPlayerDevelopment[performer.id] = {
+          ...snapshot,
+          overall: performer.overall,
+          age: performer.age,
+          potential: performer.potential,
+          developmentProgress: performer.developmentProgress,
+          lastDevelopmentSeason: this.season,
+        };
+        if (result)
+          developCoach(club, {
+            playerGrowth: result.change > 0 ? 1 : result.change < 0 ? -1 : 0,
+          });
       }
     }
     this.enforceGeneratedOverallLimit();
@@ -12503,9 +12706,11 @@ export class Career {
       throw new Error("The season is already complete.");
     }
     this.finishLiveMatchForSimulation();
-    if (this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-      (moment) => !moment.resolved,
-    )) {
+    if (
+      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+        (moment) => !moment.resolved,
+      )
+    ) {
       throw new Error(
         "Resolve your outstanding key moments before simulating.",
       );
@@ -12705,6 +12910,10 @@ export class Career {
   }
 
   hireManager(managerId) {
+    if (this.isManagerCareer)
+      throw new Error(
+        "Manager-career club staff are controlled through the Club Office.",
+      );
     const candidate = this.managerCandidates.find(
       (manager) => manager.id === managerId,
     );
@@ -12864,9 +13073,7 @@ export class Career {
         ...plannedOutgoingId,
       ],
       benchOnlyPlayerIds:
-        involvement.namedOnBench && !involvement.starts
-          ? [this.player.id]
-          : [],
+        involvement.namedOnBench && !involvement.starts ? [this.player.id] : [],
       excludedPlayerIds:
         !involvement.starts && !involvement.namedOnBench
           ? [this.player.id]
@@ -12991,7 +13198,11 @@ export class Career {
         matchNumber: index + 1,
         date:
           fixture.scheduledDate ??
-          this.fixtureDayFor(this.league, index, this.league.fixtureWeeks[index]),
+          this.fixtureDayFor(
+            this.league,
+            index,
+            this.league.fixtureWeeks[index],
+          ),
         home: home.name,
         homeShortName: home.shortName,
         homeId: home.id,
@@ -13138,13 +13349,9 @@ export class Career {
             roundLabel:
               fixture.stage === "group"
                 ? `Group stage · ${fixture.groupId ?? "Group"} · Matchday ${Number(fixture.round ?? 0) + 1}`
-                : fixture.knockoutStage ??
-                  fixture.round ??
-                  fixture.stage,
+                : (fixture.knockoutStage ?? fixture.round ?? fixture.stage),
             matchNumber:
-              fixture.stage === "group"
-                ? Number(fixture.round ?? 0) + 1
-                : null,
+              fixture.stage === "group" ? Number(fixture.round ?? 0) + 1 : null,
             date: fixture.scheduledDay,
             home: home.name,
             homeShortName: home.code,
@@ -13164,9 +13371,8 @@ export class Career {
       }
     }
     const leagueDays = new Set(
-      this.league.fixtureWeeks.map(
-        (weekIndex, index) =>
-          this.fixtureDayFor(this.league, index, weekIndex),
+      this.league.fixtureWeeks.map((weekIndex, index) =>
+        this.fixtureDayFor(this.league, index, weekIndex),
       ),
     );
     const sorted = fixtures.sort(
@@ -13254,6 +13460,7 @@ export class Career {
 
   toJSON() {
     return {
+      saveVersion: 2,
       activeLeagueId: this.league.id,
       seed: this.seed,
       difficulty: this.difficulty,
@@ -13267,9 +13474,8 @@ export class Career {
       trainingFocus: this.trainingFocus,
       matchRole: this.matchRole,
       generatedEliteIds: this.generatedEliteIds,
-      trainingPoints: this.trainingPoints,
-      trainingPointsEarnedSeason: this.trainingPointsEarnedSeason ?? 0,
       performanceDevelopmentProgress: this.performanceDevelopmentProgress ?? 0,
+      trainingMarketRefresh: this.trainingMarketRefresh ?? 0,
       money: this.money,
       financialHistory: this.financialHistory,
       scoutingVersion: 1,
@@ -13307,15 +13513,24 @@ export class Career {
       worldCupNpcPlayers: this.worldCupNpcPlayers,
       leagueHistories: this.leagueHistories,
       worldLeagues: this.worldLeagues.map(
-        ({ league, clubRatings, clubFormations, clubTactics, performers }) => ({
+        ({
+          league,
+          clubRatings,
+          clubFormations,
+          clubTactics,
+          trainingClubs,
+          performers,
+        }) => ({
           league: serializeLeague(league),
           clubRatings,
           clubFormations: clubFormations ?? {},
           clubTactics: clubTactics ?? {},
+          trainingClubs: trainingClubs ?? {},
           performers: performers ?? [],
         }),
       ),
       worldPlayerDevelopment: this.worldPlayerDevelopment,
+      trainingMarketRefresh: this.trainingMarketRefresh ?? 0,
       currentSeasonAwards: this.currentSeasonAwards,
       ballonDorCeremonies: this.ballonDorCeremonies,
       ballonDorWatchlist: this.ballonDorWatchlist ?? [],
@@ -13326,7 +13541,10 @@ export class Career {
 
       hiredManagerId: this.hiredManagerId,
       coachMarket: this.coachMarket ?? [],
-      coachAppointments: this.coachAppointments ?? { season: this.season, count: 0 },
+      coachAppointments: this.coachAppointments ?? {
+        season: this.season,
+        count: 0,
+      },
       league: {
         id: this.league.id,
         name: this.league.name,
@@ -13361,9 +13579,7 @@ export class Career {
     save.transferRumours = Array.isArray(save.transferRumours)
       ? save.transferRumours.slice(0, 100)
       : [];
-    save.results = Array.isArray(save.results)
-      ? save.results.slice(-500)
-      : [];
+    save.results = Array.isArray(save.results) ? save.results.slice(-500) : [];
     save.usedSituationIds = Array.isArray(save.usedSituationIds)
       ? save.usedSituationIds.slice(-250)
       : [];
@@ -13389,7 +13605,7 @@ export class Career {
       ? save.worldLeagues.map((state) => ({
           ...state,
           performers: Array.isArray(state.performers)
-            ? state.performers.slice(0, 100)
+            ? state.performers.map((player) => ({ ...player, developmentHistory: (player.developmentHistory ?? []).slice(-40), developmentReportHistory: (player.developmentReportHistory ?? []).slice(-20) })).slice(0, 100)
             : [],
         }))
       : [];
@@ -13440,13 +13656,9 @@ export class Career {
     this.developerMode = false;
     this.matchRole = saved.matchRole;
     this.generatedEliteIds = saved.generatedEliteIds ?? [];
-    this.trainingPoints = saved.trainingPoints;
-    this.trainingPointsEarnedSeason = Math.min(
-      19,
-      Math.max(0, saved.trainingPointsEarnedSeason ?? 0),
-    );
     this.performanceDevelopmentProgress =
       saved.performanceDevelopmentProgress ?? 0;
+    this.trainingMarketRefresh = saved.trainingMarketRefresh ?? 0;
     this.money =
       saved.money ?? this.data.careerSettings.finance.startingBalance;
     this.financialHistory = saved.financialHistory ?? [];
@@ -13500,9 +13712,16 @@ export class Career {
     this.seasonHistory = saved.seasonHistory ?? [];
 
     this.hiredManagerId = saved.hiredManagerId ?? null;
-    this.coachMarket = Array.isArray(saved.coachMarket) ? saved.coachMarket : generateCoachMarket(this.seed, this.season, 12);
-    this.coachAppointments = saved.coachAppointments ?? { season: this.season, count: 0 };
+    this.coachMarket = Array.isArray(saved.coachMarket)
+      ? saved.coachMarket
+      : generateCoachMarket(this.seed, this.season, 12);
+    this.coachAppointments = saved.coachAppointments ?? {
+      season: this.season,
+      count: 0,
+    };
     this.rng = RngBundle.fromJSON(saved.rng);
+    for (const club of saved.clubs ?? [])
+      ensureClubTraining(club, this.seed, this.season);
     this.calendar = saved.calendar;
     if (
       this.championsLeague?.season === this.season &&
@@ -13513,6 +13732,15 @@ export class Career {
     this.players = saved.players.map((spec) => {
       const player = createPlayer(spec);
       Object.assign(player, spec);
+      if (
+        !Number.isFinite(player.overallAdjustment) &&
+        player.source === "real-world" &&
+        Number.isFinite(player.overall)
+      ) {
+        player.overallAdjustment =
+          player.overall -
+          calculateOverall({ ...player, source: null, overallAdjustment: 0 });
+      }
       if (player.first === "Lionel" && player.last === "Messi") {
         player.position = "AM";
         player.altPositions = ["ST", "RW", "LW"];
@@ -13527,32 +13755,35 @@ export class Career {
             )
           : normalizePlayerNationality(player.nationality);
       player.matchHistory ??= [];
+      player.developmentHistory ??= [];
+      player.developmentReportHistory ??= [];
       player.careerStats ??= { ...player.stats };
       player.leaguePerformance ??= {
         apps: player.stats.apps,
         ratingSum: player.stats.ratingSum,
       };
-      // Potential is a hard ceiling for the base overall in every save, old or new.
-      player.overall = Math.min(
-        calculateOverall(player),
-        player.potential ?? 99,
-      );
+      player.overall = calculateOverall(player);
+      player.baseOverall = player.overall;
       return player;
     });
     this.player = this.players.find((player) => player.id === saved.playerId);
     if (!this.player) throw new Error("Save is missing its career player.");
     this.trainingFocus = normalizedTrainingFocus(
-      saved.trainingFocus,
+      saved.trainingFocus ?? this.player.trainingFocus,
       this.player.position,
     );
+    this.player.trainingFocus = this.trainingFocus;
     this.player.honours ??= [];
     this.clubs = saved.clubs.map((spec) => {
       const configuredIdentity = Object.values(this.baseData.clubs ?? {})
         .flatMap((group) => Object.values(group ?? {}))
-        .find((identity) =>
-          normalizeClubName(identity?.name) === normalizeClubName(spec.name) ||
-          normalizeClubName(identity?.name) === normalizeClubName(spec.id) ||
-          normalizeClubName(identity?.fictionalName) === normalizeClubName(spec.name),
+        .find(
+          (identity) =>
+            normalizeClubName(identity?.name) ===
+              normalizeClubName(spec.name) ||
+            normalizeClubName(identity?.name) === normalizeClubName(spec.id) ||
+            normalizeClubName(identity?.fictionalName) ===
+              normalizeClubName(spec.name),
         );
       const realVenue = stadiumIdentityForClub(
         configuredIdentity?.name ?? spec.name ?? spec.id,
@@ -13563,7 +13794,10 @@ export class Career {
         ...spec,
         ...(configuredIdentity
           ? {
-              stadium: configuredIdentity.stadium ?? spec.stadium ?? realVenue?.stadium,
+              stadium:
+                configuredIdentity.stadium ??
+                spec.stadium ??
+                realVenue?.stadium,
               founded: configuredIdentity.founded ?? spec.founded,
               city: configuredIdentity.city ?? spec.city ?? realVenue?.city,
               capacity:
@@ -13580,11 +13814,16 @@ export class Career {
             }),
       });
       Object.assign(club, spec, {
-        stadium: spec.stadium || configuredIdentity?.stadium || realVenue?.stadium || "",
+        stadium:
+          spec.stadium ||
+          configuredIdentity?.stadium ||
+          realVenue?.stadium ||
+          "",
         city: spec.city || configuredIdentity?.city || realVenue?.city || "",
-        capacity: Number(spec.capacity) > 0
-          ? Number(spec.capacity)
-          : (configuredIdentity?.capacity ?? realVenue?.capacity ?? 20000),
+        capacity:
+          Number(spec.capacity) > 0
+            ? Number(spec.capacity)
+            : (configuredIdentity?.capacity ?? realVenue?.capacity ?? 20000),
       });
       ensureClubFinance(club);
       ensureClubScouting(club, this.seed);
@@ -13599,12 +13838,12 @@ export class Career {
       ensureClubHierarchy(club, `${this.seed}-${club.id}`);
       ensureClubScouting(club, this.seed);
       ensureCoachProfile(club);
+      ensureClubTraining(club, this.seed, this.season);
       academyState(club);
       ensureSquadRegistration(club, this.players);
     }
     this.reconcileSquadMembership();
-    for (const club of this.clubs)
-      ensureSquadRegistration(club, this.players);
+    for (const club of this.clubs) ensureSquadRegistration(club, this.players);
     this.ensureSquadSizes();
     this.club = this.clubs.find((club) => club.id === this.player.clubId);
     for (const club of this.clubs) assignShirtNumbers(this.players, club, true);
@@ -13648,6 +13887,7 @@ export class Career {
         clubRatings,
         clubFormations,
         clubTactics,
+        trainingClubs,
         performers,
       }) => {
         const league = new League(leagueSpec);
@@ -13665,6 +13905,7 @@ export class Career {
           clubRatings,
           clubFormations: clubFormations ?? {},
           clubTactics: clubTactics ?? {},
+          trainingClubs: trainingClubs ?? {},
           performers: performers ?? [],
         };
       },
@@ -13674,19 +13915,18 @@ export class Career {
         this.ensureWorldPlayerModel(performer);
         performer.overall = performer.isLegend
           ? LEGEND_OVERALL
-          : Math.min(
-              calculateOverall(performer),
-              performer.potential ?? performer.overall ?? 99,
-            );
+          : calculateOverall(performer);
+        performer.baseOverall = performer.overall;
         seedPlayStyles(performer, this.rng.stream("playstyle-seed"));
         performer.playStyles ??= { unlocked: [], progress: {}, history: [] };
         performer.ratingHistory ??= [];
+        performer.developmentHistory ??= [];
+        performer.developmentReportHistory ??= [];
         performer.matchHistory ??= [];
       }
     }
     this.clearLegacyLegendFlags(freshLegendPlayers);
-    this.worldCup =
-      saved.worldCup ?? worldCupSchedule(this.careerStartYear);
+    this.worldCup = saved.worldCup ?? worldCupSchedule(this.careerStartYear);
     this.worldCup.startYear ??= this.careerStartYear;
     this.worldCup.firstYear =
       this.careerStartYear + WORLD_CUP_START_YEAR_OFFSET;
@@ -13715,7 +13955,8 @@ export class Career {
     }
     this.initializeWorldCupQualification();
     this.scheduleDomesticLeague(this.league);
-    for (const state of this.worldLeagues) this.scheduleDomesticLeague(state.league);
+    for (const state of this.worldLeagues)
+      this.scheduleDomesticLeague(state.league);
     if (this.championsLeague?.season === this.season) {
       this.validateCompetitionSchedule();
     }

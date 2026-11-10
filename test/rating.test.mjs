@@ -150,13 +150,13 @@ test("secondary positions receive a small suitability adjustment", () => {
   assert.equal(primary - secondary, 1);
 });
 
-test("career-player form can reach 99 without changing the potential ceiling", () => {
+test("career-player form remains a temporary boost within the same ceiling", () => {
   const candidate = player("ST", { potential: 92 });
   candidate.isUser = true;
-  candidate.overall = 94;
+  candidate.overall = 88;
   candidate.form = 100;
   assert.equal(candidate.potential, 92);
-  assert.equal(formAdjustedOverall(candidate), 99);
+  assert.equal(formAdjustedOverall(candidate), 92);
 });
 
 test("non-career players remain capped by potential when in excellent form", () => {

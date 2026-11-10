@@ -2239,7 +2239,7 @@ function renderGame() {
               ["player", "Player Hub", "◎"],
               ["conversation", "Talk to Coach", "✦"],
             ]),
-        ...(!career.isManagerCareer ? [["training", "Training", "↗"]] : []),
+        ["training", "Training & Development", "↗"],
         ["transfers-list", "Transfers List", "⇄"],
         ...(!career.isManagerCareer ? [["agent", "Agent", "♙"]] : []),
       ],
@@ -2465,7 +2465,16 @@ function renderGame() {
   const focus = $app.querySelector("#training-focus");
   if (focus)
     focus.addEventListener("change", () => {
-      career.trainingFocus = focus.value;
+      try {
+        if (career.isManagerCareer) {
+          career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value });
+        } else career.setTrainingFocus(focus.value);
+        persistAutosave();
+        notice = `Individual focus set to ${focus.value}.`;
+      } catch (error) {
+        notice = error.message;
+      }
+      renderGame();
     });
   $app.querySelectorAll(".developer-attribute").forEach((input) =>
     input.addEventListener("change", () => {
@@ -3067,11 +3076,11 @@ function renderScreen() {
   if (screen === "transfers-list") return renderTransfersList();
   if (screen === "agent") return renderAgent();
   if (screen === "history") return renderHistory();
-  if (screen === "investments") return renderInvestments();
-  if (screen === "scouting") return renderScouting();
-  if (screen === "office") return renderClubOffice();
-  if (screen === "coaching") return renderCoaching();
-  if (screen === "academy") return renderAcademy();
+  if (screen === "investments") return career.isManagerCareer ? renderInvestments() : renderTraining();
+  if (screen === "scouting") return career.isManagerCareer ? renderScouting() : renderTraining();
+  if (screen === "office") return career.isManagerCareer ? renderClubOffice() : renderTraining();
+  if (screen === "coaching") return career.isManagerCareer ? renderCoaching() : renderTraining();
+  if (screen === "academy") return career.isManagerCareer ? renderAcademy() : renderTraining();
   if (screen === "world") return renderWorld();
   return renderTraining();
 }
@@ -3093,12 +3102,12 @@ function renderGameInfo() {
     <div class="stat-grid">
       <article class="stat-card"><div class="card-label">YOUR CAREER</div><div class="big-number">${esc(career.club.name)}</div><div class="muted">${esc(career.league.name)} · ${leaguePosition ? `${ordinal(leaguePosition)} place` : "Position pending"}</div></article>
       <article class="stat-card"><div class="card-label">CALENDAR</div><div class="big-number">${esc(currentWeek)}</div><div class="muted">${career.seasonComplete ? "Season complete" : `${remainingWeeks} weeks remain in the calendar`}</div></article>
-      <article class="stat-card"><div class="card-label">MATCH RECORD</div><div class="big-number">${completedMatches}</div><div class="muted">completed matches · ${career.trainingPoints} training points available</div></article>
+      <article class="stat-card"><div class="card-label">MATCH RECORD</div><div class="big-number">${completedMatches}</div><div class="muted">completed matches · natural player progression</div></article>
     </div>
     <div class="dashboard-grid">
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CAREER LOOP</div><h2>Advance your season</h2></div></div><p>Use <b>Advance one week</b> to progress training, recovery, and the league calendar while keeping your own match playable. Choose <b>Simulate one day</b> to automatically finish the current simulation step and complete any fixtures scheduled for it. You can also simulate the rest of the season from the Career hub.</p></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">MATCH DAY</div><h2>Review match results</h2></div></div><p>Results and player performances are recorded as the season advances. Open Fixtures and select <b>Game stats</b> on a completed match to review both teams' match statistics.</p></section>
-      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">PLAYER DEVELOPMENT</div><h2>Train your player</h2></div></div><p>Weekly training and match performances earn training points. Spend points in Training to improve attributes, weak foot, and skill moves. Attributes can be trained up to 99; match selection and performance also depend on position, fitness, sharpness, form, and fatigue.</p></section>
+      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">PLAYER DEVELOPMENT</div><h2>Train your player</h2></div></div><p>Select an individual focus in Training. Attributes develop gradually from age, potential, minutes and performance, training quality, staff specialisation, facilities, fitness, morale and recovery. No training-point purchases or club spending are available in player-career mode.</p></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">LEAGUES</div><h2>Follow your competition</h2></div></div><p>Use League table, Fixtures, Stats, and Award race to follow your club and players. Your scheduled league matches can be played live or simulated from the Career hub.</p></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">SAVES</div><h2>Keep your career</h2></div></div><p>Use Save and Load in the top bar to manage one of three browser save slots. Saves include your player, match and competition progress, fixtures, and career history. Use New career to start over.</p></section>
     </div>`;
@@ -3785,7 +3794,7 @@ function renderOverview() {
           )}</select><small id="match-role-description">${esc(ROLE_DESCRIPTIONS[career.matchRole] ?? ROLE_DESCRIPTIONS.Balanced)}</small></label><button class="button-quiet" data-screen="simulation">Open MATCH SIM →</button></div></section>
       <section class="panel inbox-panel"><div class="panel-heading"><div><div class="eyebrow">CLUBHOUSE</div><h2>Latest update</h2></div><span class="inbox-count">${career.news.length.toString().padStart(2, "0")}</span></div>
         <div class="news-list">${(career.news.slice(-4).reverse().length ? career.news.slice(-4).reverse() : ["The manager is watching your progress closely.", "The new season is underway. Make every session count."]).map((item, i) => `<div class="news-item"><span class="news-indicator ${i === 0 ? "is-new" : ""}"></span><span>${esc(item)}</span></div>`).join("")}</div>
-        <div class="panel-foot dashboard-balances"><span class="points-pill">${career.trainingPoints} TP</span><b class="points-pill">€${formatDecimal(career.money)}</b></div></section>
+        <div class="panel-foot dashboard-balances"><span class="live-tag">${esc(career.player.developmentTrajectory ?? "Stable")}</span><b class="points-pill">€${formatDecimal(career.money)}</b></div></section>
     </div>
     ${renderFanApproval(fanExpectation)}
     ${report ? renderMatchReport(report) : `<div class="empty-report"><span class="eyebrow">MATCH CENTRE</span><p>Your match performance and key moments will appear here after your debut.</p></div>`}
@@ -5195,6 +5204,7 @@ function renderFinances() {
 }
 
 function renderInvestments() {
+  if (!career.isManagerCareer) return '<section class="panel"><div class="eyebrow lime">CLUB FACILITIES</div><h1>Investment management</h1><p class="muted">Facility investment, club budgets and spending are restricted to manager-career mode. Training facility levels and their development effects remain visible in Training & Development.</p></section>';
   const finance = career.financialSummary(career.club);
   const options = career.investmentOptions();
   const investment = career.club.investment;
@@ -5217,6 +5227,7 @@ function renderInvestments() {
 }
 
 function renderScouting() {
+  if (!career.isManagerCareer) return '<section class="panel"><div class="eyebrow lime">SCOUTING</div><h1>Scouting management</h1><p class="muted">Scouting assignments, budgets and recruitment are club management features available only in manager-career mode.</p></section>';
   const state = career.club.scouting ?? {};
   const summary = career.scoutingSummary();
   const scouts = career.scoutingScouts();
@@ -5263,6 +5274,7 @@ function renderClubOffice() {
 }
 
 function renderCoaching() {
+  if (!career.isManagerCareer) return `<section class="panel"><div class="eyebrow lime">CLUB COACHING</div><h1>${esc(career.club.manager?.name ?? "Club coach")}</h1><p class="muted">You can review the coaching staff and training specialists, but tactical control, staff appointments, and club spending are reserved for manager-career mode.</p>${renderTraining()}</section>`;
   const manager = career.club.hierarchy?.manager ?? career.club.manager;
   const squad = career.players.filter(
     (player) => player.clubId === career.club.id,
@@ -5341,11 +5353,12 @@ function renderAcademy() {
     academy.players
       .map(
         (player) =>
-          `<tr><td>${esc(`${player.first} ${player.last}`)}</td><td>${esc(player.position)}</td><td>${player.age}</td><td>${player.overall}</td><td>${player.potentialRange ? `${player.potentialRange.min}–${player.potentialRange.max}` : player.potential}</td><td>${esc(player.plan ?? "Balanced Development")}</td><td>${player.overall >= 55 ? `<button class="button-quiet" data-action="promote-academy-player" data-player-id="${esc(player.id)}">Promote</button>` : `<button class="button-quiet" data-action="release-academy-player" data-player-id="${esc(player.id)}">Release</button>`}</td></tr>`,
+          `<tr><td>${esc(`${player.first} ${player.last}`)}</td><td>${esc(player.position)}</td><td>${player.age}</td><td>${player.overall}</td><td>${player.potentialRange ? `${player.potentialRange.min}–${player.potentialRange.max}` : player.potential}</td><td>${esc(player.developmentTrajectory ?? "Stable")}</td><td>${career.isManagerCareer ? (player.overall >= 55 ? `<button class="button-quiet" data-action="promote-academy-player" data-player-id="${esc(player.id)}">Promote</button>` : `<button class="button-quiet" data-action="release-academy-player" data-player-id="${esc(player.id)}">Release</button>`) : "Manager only"}</td></tr>`,
       )
       .join("") ||
     '<tr><td colspan="7">No accepted academy players yet. Review youth scouting reports in the Scouting Hub.</td></tr>';
-  return `<div class="page-heading"><div><div class="eyebrow lime">YOUTH DEVELOPMENT</div><h1>Academy</h1><p>Accepted prospects develop gradually through the club's coaching and facility conditions.</p></div><span class="live-tag">${academy.players.length} PLAYERS</span></div><section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY SQUAD</div><h2>Development pathway</h2></div><span class="live-tag">STYLE ${esc(academy.playstyle ?? "Balanced")}</span></div><table class="history-table"><thead><tr><th>PLAYER</th><th>POS</th><th>AGE</th><th>OVR</th><th>POTENTIAL</th><th>PLAN</th><th>ACTION</th></tr></thead><tbody>${rows}</tbody></table></section><section class="panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY COACHING</div><h2>Development history</h2></div></div><p class="muted">${academy.developmentHistory?.length ?? 0} recorded development updates. Training effectiveness is influenced by the head coach's youth ability and the Youth Academy facility level.</p></section>`;
+  const promotionReports = career.isManagerCareer ? academy.players.filter((player) => player.age >= 16 && player.overall >= 55).map((player) => `${esc(player.first)} ${esc(player.last)} is ready for senior consideration`).join(" · ") : "Promotions and releases are restricted to the club manager.";
+  return `<div class="page-heading"><div><div class="eyebrow lime">YOUTH DEVELOPMENT</div><h1>Academy</h1><p>Accepted prospects develop gradually through the shared player-development engine, youth coaches and academy facilities.</p></div><span class="live-tag">${academy.players.length} PLAYERS</span></div><section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY SQUAD</div><h2>Development pathway</h2></div><span class="live-tag">STYLE ${esc(academy.playstyle ?? "Balanced")}</span></div><table class="history-table"><thead><tr><th>PLAYER</th><th>POS</th><th>AGE</th><th>OVR</th><th>POTENTIAL</th><th>PLAN</th><th>ACTION</th></tr></thead><tbody>${rows}</tbody></table></section><section class="panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY COACHING</div><h2>Development history</h2></div></div><p class="muted">${academy.developmentHistory?.length ?? 0} recorded development updates. Specialist youth coaches and the Youth Academy facility improve opportunity but do not guarantee progression.</p><p class="muted">${promotionReports}</p></section>`;
 }
 
 function renderConversation() {
@@ -5494,6 +5507,7 @@ function renderPlayer() {
   return `<div class="page-heading player-hub-heading"><div><div class="eyebrow lime">PLAYER HUB · SEASON ${seasonLabel(career.season)}</div><h1>${esc(player.first)} ${esc(player.last)}</h1><p>${esc(player.archetype)} · ${esc(player.position)} · ${ageOn(player.dob, currentDay())} years old · ${esc(career.club.name)}</p></div><div class="rating-badge">${overallNow}<small>OVR</small>${formTag}</div></div>
     <nav class="player-hub-menu" aria-label="Player sections">${[
       ["player-overview", "Overview"],
+      ["player-development", "Development"],
       ["player-statistics", "Statistics"],
       ["player-attributes", "Attributes"],
       ["player-playstyles", "PlayStyles"],
@@ -5509,14 +5523,15 @@ function renderPlayer() {
     <section class="player-hub-section" id="player-overview"><div class="section-heading"><div><div class="eyebrow">PLAYER OVERVIEW</div><h2>Player details</h2></div><span class="live-tag">${esc(countryName(player.nationality))} · #${player.shirtNumber}</span></div>
       <div class="profile-grid"><section class="panel profile-panel">
         <div class="profile-details"><div><small>SHIRT NUMBER</small><label class="position-select"><input id="player-shirt-number" type="number" min="1" max="99" step="1" value="${player.shirtNumber}" aria-label="Shirt number"><small>Choose an unused squad number from 1 to 99.</small></label></div><div><small>NATIONALITY</small><b>${esc(countryName(player.nationality))}</b></div><div><small>HEIGHT / WEIGHT</small><b>${player.height} cm / ${player.weight} kg</b></div><div><small>PLAYING POSITION</small><label class="position-select"><select id="player-position" aria-label="Playing position">${POSITIONS.map((position) => `<option value="${position}" ${position === player.position ? "selected" : ""}>${position}</option>`).join("")}</select><small>Overall recalculates for the selected position.</small></label></div><div><small>STRONG FOOT</small><b>${esc(player.foot)} · ${player.weakFoot}★ weak foot</b></div><div><small>SKILL MOVES</small><b>${player.skillMoves} ★</b></div><div><small>PERSONALITY</small><b>${esc(player.personality.join(", "))}</b></div><div><small>ARCHETYPE</small><b>${esc(player.archetype ?? "—")}</b></div><div><small>DEVELOPMENT TRAIT</small><b>${esc(player.traits.join(", ") || "None")}</b></div><div><small>BASE OVERALL / POTENTIAL</small><b>${calculateOverall(player)} / ${player.potential ?? "?"}</b></div><div><small>STATUS</small><b>${injuryTag}</b></div><div><small>INJURY RESISTANCE</small><b>${career.injuryResistance(player)}% · physical ${player.attrs?.physical ?? "—"}</b></div><div><small>CONTRACT / WAGE</small><b>€${formatDecimal(player.contract?.wage ?? 0)} per week</b></div><div><small>CAREER BALANCE</small><b>€${formatDecimal(career.money)}</b></div></div>
-      </section><section class="player-condition-grid"><article class="stat-card"><div class="card-label">FORM</div><div class="big-number">${Math.round(player.form)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">MORALE</div><div class="big-number">${Math.round(player.morale)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">STAMINA</div><div class="big-number">${ensureStamina(player)}<span>/100</span></div>${staminaMarkup(player)}</article><article class="stat-card"><div class="card-label">TRAINING POINTS</div><div class="big-number">${career.trainingPoints}</div></article></section></div>
+      </section><section class="player-condition-grid"><article class="stat-card"><div class="card-label">FORM</div><div class="big-number">${Math.round(player.form)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">MORALE</div><div class="big-number">${Math.round(player.morale)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">STAMINA</div><div class="big-number">${ensureStamina(player)}<span>/100</span></div>${staminaMarkup(player)}</article><article class="stat-card"><div class="card-label">DEVELOPMENT</div><div class="big-number">${esc(player.developmentTrajectory ?? "Stable")}</div></article></section></div>
     </section>
+    <section class="player-hub-section" id="player-development"><div class="section-heading"><div><div class="eyebrow">CAREER DEVELOPMENT</div><h2>${esc(player.developmentTrajectory ?? "Stable")}</h2></div><span class="live-tag">BASE ${calculateOverall(player)} · POT ${player.potential ?? "—"}</span></div><div class="development-sparkline">${(player.developmentHistory ?? []).slice(-16).map((point) => `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`).join("") || '<small class="muted">Development history will populate as seasons advance.</small>'}</div><table class="history-table"><thead><tr><th>SEASON</th><th>PREVIOUS</th><th>CURRENT</th><th>CHANGE</th><th>REASONS</th></tr></thead><tbody>${(player.developmentReportHistory ?? []).slice(-8).reverse().map((report) => `<tr><td>${report.season}</td><td>${report.previousOverall}</td><td>${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(report.reasons?.join(" · ") ?? "—")}</td></tr>`).join("") || '<tr><td colspan="5" class="scorer-empty">No seasonal development reports yet.</td></tr>'}</tbody></table></section>
     <section class="player-hub-section" id="player-statistics"><div class="section-heading"><div><div class="eyebrow">PLAYER STATISTICS</div><h2>Season and career record</h2></div></div>
       <div class="player-stat-panels"><section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT SEASON · ALL COMPETITIONS</div><h2>Season totals</h2></div></div><div class="player-stat-grid"><div><b>${player.stats.apps}</b><small>APPS</small></div><div><b>${player.stats.starts}</b><small>STARTS</small></div><div><b>${player.stats.goals}</b><small>GOALS</small></div><div><b>${player.stats.assists}</b><small>ASSISTS</small></div><div><b>${player.stats.minutes}</b><small>MINUTES</small></div>      <div><b>${averageRating(player.stats) == null ? "—" : formatDecimal(averageRating(player.stats))}</b><small>AVG RATING</small></div><div><b>${player.stats.yellowCards}</b><small>YELLOW CARDS</small></div><div><b>${player.stats.redCards}</b><small>RED CARDS</small></div></div></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CAREER TOTALS</div><h2>Lifetime record</h2></div></div><div class="player-stat-grid"><div><b>${careerStats.apps}</b><small>APPS</small></div><div><b>${careerStats.starts}</b><small>STARTS</small></div><div><b>${careerStats.goals}</b><small>GOALS</small></div><div><b>${careerStats.assists}</b><small>ASSISTS</small></div><div><b>${careerStats.minutes}</b><small>MINUTES</small></div>      <div><b>${averageRating(careerStats) == null ? "—" : formatDecimal(averageRating(careerStats))}</b><small>AVG RATING</small></div><div><b>${careerStats.cleanSheets}</b><small>CLEAN SHEETS</small></div><div><b>${careerStats.yellowCards}</b><small>YELLOW CARDS</small></div></div></section></div>
       <div class="stat-grid lower-stats"><article class="stat-card"><div class="card-label">CURRENT LEAGUE</div><div class="big-number">${player.leaguePerformance?.apps ?? 0}<span> apps</span></div><div class="muted">${player.leagueGoals ?? 0} goals · ${player.leagueAssists ?? 0} assists · avg ${player.leaguePerformance?.apps ? formatDecimal(player.leaguePerformance.ratingSum / player.leaguePerformance.apps) : "—"}</div></article><article class="stat-card"><div class="card-label">WORLD CUP / INTERNATIONAL</div><div class="big-number">${international.apps}<span> apps</span></div><div class="muted">${international.goals} goals · ${international.assists} assists · avg ${international.apps ? formatDecimal(international.ratingSum / international.apps) : "—"}</div></article></div>
     </section>
-    <section class="player-hub-section" id="player-attributes"><div class="section-heading"><div><div class="eyebrow">PLAYER ATTRIBUTES</div><h2>Technical profile</h2></div><span class="points-pill">${career.trainingPoints} TP</span></div>
+    <section class="player-hub-section" id="player-attributes"><div class="section-heading"><div><div class="eyebrow">PLAYER ATTRIBUTES</div><h2>Technical profile</h2></div><span class="live-tag">${esc(player.developmentTrajectory ?? "Stable")}</span></div>
       <div class="profile-grid"><section class="panel attributes-panel"><div class="panel-heading"><div><div class="eyebrow">CORE ATTRIBUTES</div><h2>Overall skill profile</h2></div><span class="live-tag">${overallNow} OVR${formDelta ? ` (${formDelta > 0 ? "+" : ""}${formDelta} form)` : ""}</span></div><div class="attribute-list">${ATTRIBUTES.map((attr) => `<div class="attribute-row"><span>${attr.toUpperCase()}</span><div class="attribute-bar"><i style="width:${player.attrs[attr]}%"></i></div><b>${player.attrs[attr]}</b></div>`).join("")}${player.position === "GK" ? GK_ATTRIBUTES.map((attr) => `<div class="attribute-row"><span>${attr.toUpperCase()}</span><div class="attribute-bar"><i style="width:${player.gkAttrs?.[attr] ?? 50}%"></i></div><b>${player.gkAttrs?.[attr] ?? 50}</b></div>`).join("") : ""}</div></section>
       <section class="panel attributes-panel detailed"><div class="panel-heading"><div><div class="eyebrow">DETAILED ATTRIBUTES</div><h2>Sub-attributes</h2></div><span class="muted">Mean of group</span></div><div class="attribute-list detailed-list">${
         player.position === "GK"
@@ -5564,7 +5579,8 @@ function renderPlayer() {
 }
 
 function renderTraining() {
-  const upgradeCost = data.careerSettings.training.attributePointCost;
+  const overview = career.trainingOverview();
+  const isManager = career.isManagerCareer;
   const isGoalkeeper = career.player.position === "GK";
   const trainingGroups = isGoalkeeper
     ? [["Goalkeeping", GK_ATTRIBUTES]]
@@ -5583,28 +5599,23 @@ function renderTraining() {
           .join("")}</optgroup>`,
     )
     .join("");
-  const developerAttributes = isGoalkeeper
-    ? [...ATTRIBUTES, ...GK_ATTRIBUTES]
-    : ATTRIBUTES;
-  return `<div class="page-heading"><div><div class="eyebrow lime">DEVELOPMENT CENTRE</div><h1>Training</h1><p>Focused sessions turn potential into performance.</p></div><span class="points-pill large-points">${career.trainingPoints} TRAINING POINTS</span></div>
-    <div class="training-grid"><section class="panel training-session"><div class="eyebrow">INDIVIDUAL DEVELOPMENT</div><h2>Choose your focus</h2><p>Each session costs ${upgradeCost} training points and raises one detailed attribute by one point. Outfield sessions also recalculate its parent group. Train any available detail up to 99.</p>
-      <label class="focus-select">DETAILED TRAINING ATTRIBUTE<select id="training-focus">${trainingOptions}</select></label>
-      <div class="training-progress"><div><span>Base overall</span><b>${calculateOverall(career.player)}</b></div><div><span>In form</span><b>${career.displayOverall(career.player)}</b></div><div><span>Potential</span><b class="hidden-potential">? <small>HIDDEN</small></b></div><div><span>Sessions available</span><b>${Math.floor(career.trainingPoints / data.careerSettings.training.attributePointCost)}</b></div></div>
-      <p class="muted">Your potential is fixed when your player is created. Training raises your base overall towards it, but never past it — good form can add a few points on top, and poor form can take them away.</p>
-      <button class="button-primary" type="button" data-action="train">Complete training session <span>−${upgradeCost} TP</span></button>
-      <div class="training-tip"><span>✦</span> Weekly training earns ${data.careerSettings.training.weeklyPoints} TP. Appearances, strong ratings and objectives earn bonus points.</div>
-      <div class="skill-upgrades"><div class="eyebrow">SKILL DEVELOPMENT</div><p>Improve your weak foot and skill moves one star at a time.</p>${[
-        ["weakFoot", "Weak foot", career.player.weakFoot],
-        ["skillMoves", "Skill moves", career.player.skillMoves],
-      ]
-        .map(([skill, label, value]) => {
-          const cost = career.skillUpgradeCost(skill);
-          return `<div class="skill-upgrade-row"><div><b>${label}</b><small>${value} / 5 stars</small></div><button class="button-quiet" type="button" data-action="upgrade-skill" data-skill="${skill}" ${value >= 5 || career.trainingPoints < cost ? "disabled" : ""}>Improve · ${cost} TP</button></div>`;
-        })
-        .join("")}</div>
-      </section>
-      <section class="panel training-log"><div class="panel-heading"><div><div class="eyebrow">WEEKLY ROUTINE</div><h2>Match preparation</h2></div></div><div class="routine-row"><span class="routine-icon">01</span><div><b>Team training</b><small>Every week · +${data.careerSettings.training.weeklyPoints} TP</small></div><span class="routine-state">ACTIVE</span></div><div class="routine-row"><span class="routine-icon">02</span><div><b>Match performance</b><small>Appearance, rating & objectives · up to +${data.careerSettings.training.appearancePoints + data.careerSettings.training.strongPerformanceBonus + data.careerSettings.training.objectiveBonus} TP</small></div><span class="routine-state">ACTIVE</span></div><div class="routine-row"><span class="routine-icon">03</span><div><b>Recovery</b><small>Fatigue and sharpness rebalance weekly</small></div><span class="routine-state">ACTIVE</span></div></section>
-      <section class="panel developer-panel"><div class="panel-heading"><div><div class="eyebrow">ADVANCED OPTIONS</div><h2>Developer mode</h2></div><button class="button-quiet" data-action="toggle-developer-mode">${career.developerMode ? "Disable" : "Enable"}</button></div><p class="muted">Adjust player attributes directly without spending training points.</p>${career.developerMode ? `<div class="developer-attributes">${developerAttributes.map((attribute) => `<label><span>${attribute.toUpperCase()}</span><input class="developer-attribute" type="number" min="1" max="99" step="1" value="${career.player.gkAttrs?.[attribute] ?? career.player.attrs[attribute]}" data-attribute="${attribute}" aria-label="${attribute} attribute"></label>`).join("")}</div>` : developerModePromptOpen ? `<form class="developer-password-form" id="developer-password-form"><label for="developer-password">DEVELOPER PASSWORD</label><input id="developer-password" type="password" autocomplete="current-password" required><div><button class="button-primary" type="submit">Unlock developer mode</button><button class="button-quiet" type="button" data-action="cancel-developer-auth">Cancel</button></div></form>` : ""}</section></div>`;
+  const player = career.player;
+  const attributesForFocus = isGoalkeeper ? GK_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
+  const development = player.developmentReportHistory ?? [];
+  const history = (player.developmentHistory ?? []).slice(-8);
+  const reports = development.slice(-5).reverse().map((report) => `<tr><td>${report.season}</td><td>${report.previousOverall} → ${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(Object.entries(report.attributes ?? {}).map(([name, change]) => `${name} ${change > 0 ? "+" : ""}${change}`).join(", ") || report.reasons?.join(" · ") || "No attribute change")}</td></tr>`).join("");
+  const coaches = overview.coaches.map((coach) => `<article class="training-coach-card"><div class="coach-grade">${esc(coach.grade)}</div><div class="coach-card-main"><b>${esc(coach.name)}</b><small>${esc(coach.department)} specialist · ${coach.overall}/99 · €${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk</small></div>${isManager ? `<button class="button-quiet" data-action="dismiss-training-coach" data-coach-id="${esc(coach.id)}">Dismiss</button>` : ""}</article>`).join("") || '<p class="muted">No specialist coaches are currently employed.</p>';
+  const departmentPanels = overview.departments.map((department) => {
+    const assigned = overview.assignments[department];
+    return `<div class="training-department"><b>${esc(department)}</b><small>${(overview.coaches.find((coach) => coach.id === assigned) ?? overview.coaches.find((coach) => coach.department === department))?.name ?? "Unassigned"}</small>${isManager ? `<select id="coach-assignment-${department}" aria-label="Assign ${department} coach"><option value="">Select coach</option>${overview.coaches.map((coach) => `<option value="${esc(coach.id)}" ${coach.id === assigned ? "selected" : ""}>${esc(coach.name)} · ${coach.overall} · ${esc(coach.department)}</option>`).join("")}</select><button class="button-quiet" data-action="assign-training-coach" data-department="${department}">Assign</button>` : ""}</div>`;
+  }).join("");
+  const market = isManager ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">RECRUITMENT MARKET</div><h2>Available training coaches</h2></div><button class="button-quiet" data-action="refresh-training-market">Refresh market</button></div><div class="training-coach-grid">${overview.market.slice(0, 8).map((coach) => `<article class="training-market-card"><span class="coach-grade">${esc(coach.grade)}</span><b>${esc(coach.name)}</b><small>${coach.age} · ${esc(coach.nationality)} · ${esc(coach.department)} specialist</small><small>Technical ${coach.technicalAbility} · Physical ${coach.physicalAbility} · Tactical ${coach.tacticalAbility} · Youth ${coach.youthAbility}</small><small>€${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk · €${Number(coach.recruitmentCost).toLocaleString("en-GB")} recruitment · ${coach.contractWeeks} weeks</small><button class="button-primary" data-action="hire-training-coach" data-coach-id="${esc(coach.id)}">Hire coach</button></article>`).join("")}</div></section>` : "";
+  const managerSettings = isManager ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING PLAN</div><h2>Programmes & intensity</h2></div><span class="live-tag">€${overview.expenditure.toLocaleString("en-GB")} / WEEK · STAFF PAYROLL</span></div><div class="manager-actions-buttons"><label class="position-select">Programme<select id="club-training-programme">${overview.programmes.map((programme) => `<option ${programme === overview.programme ? "selected" : ""}>${esc(programme)}</option>`).join("")}</select></label><label class="position-select">Intensity<select id="club-training-intensity">${overview.intensities.map((intensity) => `<option ${intensity === overview.intensity ? "selected" : ""}>${esc(intensity)}</option>`).join("")}</select></label><button class="button-primary" data-action="set-club-training">Save training plan</button></div>${departmentPanels}</section>` : `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING STAFF</div><h2>${esc(career.club.name)} coaches</h2></div><span class="live-tag">VIEW ONLY</span></div><p class="muted">Your club staff and specialisations influence your natural attribute development. Hiring, assignments, contracts, wages and club budgets are managed by the club manager.</p><div class="training-department-grid">${departmentPanels}</div></section>`;
+  return `<div class="page-heading"><div><div class="eyebrow lime">DEVELOPMENT CENTRE</div><h1>${isManager ? "Club Training & Development" : "Training & Development"}</h1><p>${isManager ? "Manage club programmes, staff assignments, intensity, recruitment, expenditure and academy progression." : "Base OVR follows your attributes. Training focus guides gradual progression; potential, form, fitness and sharpness remain separate."}</p></div><span class="live-tag">${esc(player.developmentTrajectory ?? "Stable")}</span></div>
+  <div class="stat-grid lower-stats"><article class="stat-card"><div class="card-label">BASE OVR</div><div class="big-number">${calculateOverall(player)}</div></article><article class="stat-card"><div class="card-label">POTENTIAL</div><div class="big-number">${player.potential ?? "—"}</div></article><article class="stat-card"><div class="card-label">MATCH FORM</div><div class="big-number">${Math.round(player.form ?? 50)}</div></article><article class="stat-card"><div class="card-label">FITNESS</div><div class="big-number">${Math.round(player.fitness ?? 100)}%</div></article></div>
+    <div class="training-grid"><section class="panel training-session"><div class="eyebrow">${isManager ? "SQUAD DEVELOPMENT" : "INDIVIDUAL PLAYER FOCUS"}</div><h2>${isManager ? "Club training programme" : "Development plan"}</h2><p>${isManager ? "Set a club-wide training plan and intensity. Individual player development remains gradual and attribute-based." : "Select a detailed attribute as a focus. It improves the probability of that attribute developing over time, but never buys an immediate upgrade."}</p>${isManager ? "" : `<label class="focus-select">INDIVIDUAL FOCUS<select id="training-focus">${attributesForFocus.map((attribute) => `<option value="${attribute}" ${career.trainingFocus === attribute ? "selected" : ""}>${esc(attribute.replace(/[A-Z]/g, " $&"))} · ${isGoalkeeper ? player.gkAttrs?.[attribute] ?? 50 : player.subAttrs?.[attribute] ?? 50}</option>`).join("")}</select></label>`}<div class="training-progress"><div><span>Trajectory</span><b>${esc(player.developmentTrajectory ?? "Stable")}</b></div><div><span>Appearances</span><b>${player.stats.apps}</b></div><div><span>Minutes</span><b>${player.stats.minutes}</b></div><div><span>Average rating</span><b>${player.stats.apps ? formatDecimal(player.stats.ratingSum / player.stats.apps) : "—"}</b></div></div><p class="muted">${isManager ? "Training coaches, facilities, and intensity shape the entire squad." : `Current individual focus: ${esc(player.trainingFocus ?? career.trainingFocus)}. Form, morale and temporary match boosts do not alter base attributes.`}</p>${isManager ? "" : '<button class="button-primary" data-action="train">Save individual focus</button>'}</section><section class="panel training-log"><div class="panel-heading"><div><div class="eyebrow">DEVELOPMENT SNAPSHOT</div><h2>Recent OVR history</h2></div></div><div class="development-sparkline">${history.map((point) => `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`).join("") || '<small class="muted">Progress history will appear as your career advances.</small>'}</div><p class="muted">${esc(player.developmentTrajectory ?? "Stable")} · reports are generated once per season.</p></section></div>
+    ${managerSettings}<section class="panel"><div class="panel-heading"><div><div class="eyebrow">SPECIALIST STAFF</div><h2>Training coaches</h2></div><span class="live-tag">${overview.coaches.length} EMPLOYED</span></div><div class="training-coach-grid">${coaches}</div></section>${market}<section class="panel"><div class="panel-heading"><div><div class="eyebrow">FACILITIES</div><h2>Training environment</h2></div></div><p class="muted">Training ground level ${career.club.investment?.facilities?.trainingGround ?? 1} · Youth academy level ${career.club.investment?.facilities?.youthAcademy ?? 1}. Better facilities improve training efficiency and young-player development. Facility investment remains available only to the manager.</p></section>
+    <section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">PLAYER DEVELOPMENT REPORTS</div><h2>Season progression</h2></div><span class="live-tag">${development.length} REPORTS</span></div><table class="history-table"><thead><tr><th>SEASON</th><th>OVR</th><th>CHANGE</th><th>ATTRIBUTE / REASON</th></tr></thead><tbody>${reports || '<tr><td colspan="4" class="scorer-empty">Season development reports will appear here.</td></tr>'}</tbody></table></section>`;
 }
 
 function currentDay() {
@@ -5975,9 +5986,13 @@ function handleAction(action, details = {}) {
     renderGame();
     return;
   }
+  if (action === "owner-request" && !career?.isManagerCareer) { notice = "Club management actions are only available in manager-career mode."; }
   if (action === "owner-request" && career?.isManagerCareer) {
     const request = career.createOwnerRequest();
     notice = `${request.label}: ${request.detail}`;
+  }
+  if (["owner-response", "start-investment", "recruit-scout", "create-scout-assignment", "sign-youth-prospect", "promote-academy-player", "release-academy-player", "hire-training-coach", "dismiss-training-coach", "assign-training-coach", "set-club-training", "refresh-training-market", "owner-fire-coach", "owner-appoint-coach", "refresh-coach-market"].includes(action) && career && !career.isManagerCareer) {
+    notice = "This action is reserved for manager-career mode.";
   }
   if (action === "owner-response" && career?.isManagerCareer) {
     const accepted = career.respondToOwnerRequest(
@@ -6079,7 +6094,7 @@ function handleAction(action, details = {}) {
       notice = `Could not start conversation: ${error.message}`;
     }
   }
-  if ((action === "owner-fire-coach" || action === "owner-appoint-coach" || action === "refresh-coach-market") && career) {
+  if ((action === "owner-fire-coach" || action === "owner-appoint-coach" || action === "refresh-coach-market") && career?.isManagerCareer) {
     try {
       if (action === "refresh-coach-market") {
         const coaches = career.refreshCoachMarket();
@@ -6230,7 +6245,7 @@ function handleAction(action, details = {}) {
           screen = "fixtures";
           notice = `${completedMatches.length} match results recorded. View the fixtures list for scores.`;
         } else {
-          notice = `Week ${career.week + 1} complete. +${data.careerSettings.training.weeklyPoints} training points.`;
+          notice = `Week ${career.week + 1} complete. Training and recovery processed.`;
         }
       }
     } catch (error) {
@@ -6305,12 +6320,35 @@ function handleAction(action, details = {}) {
     }
   }
   if (action === "train") {
-    const result = career.train(
-      $app.querySelector("#training-focus")?.value ?? career.trainingFocus,
-    );
-    notice = result.trained
-      ? `${result.attribute} improved. Overall: ${result.overall}.`
-      : result.reason;
+    try {
+      if (career.isManagerCareer) {
+        career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value });
+        notice = "Club training programme saved.";
+      } else {
+        const result = career.setTrainingFocus($app.querySelector("#training-focus")?.value ?? career.trainingFocus);
+        notice = `Individual focus set to ${result.attribute}. Development happens gradually as the season advances.`;
+      }
+    } catch (error) { notice = error.message; }
+  }
+  if (action === "hire-training-coach") {
+    try { const coach = career.hireTrainingCoach(details.coachId); notice = `${coach.name} hired for the ${coach.department} department.`; }
+    catch (error) { notice = error.message; }
+  }
+  if (action === "dismiss-training-coach") {
+    try { const coach = career.dismissTrainingCoach(details.coachId); notice = `${coach.name} dismissed.`; }
+    catch (error) { notice = error.message; }
+  }
+  if (action === "refresh-training-market") {
+    try { notice = `${career.refreshTrainingCoachMarket().length} coaches are available for recruitment.`; }
+    catch (error) { notice = error.message; }
+  }
+  if (action === "assign-training-coach") {
+    try { career.assignTrainingCoach(details.department, $app.querySelector(`#coach-assignment-${details.department}`)?.value); notice = `Training coach assigned to ${details.department}.`; }
+    catch (error) { notice = error.message; }
+  }
+  if (action === "set-club-training") {
+    try { career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value }); notice = "Club training programme updated."; }
+    catch (error) { notice = error.message; }
   }
   if (action === "toggle-developer-mode") {
     if (career.developerMode) {
@@ -6327,14 +6365,7 @@ function handleAction(action, details = {}) {
     notice = "";
   }
   if (action === "upgrade-skill") {
-    try {
-      const result = career.upgradeSkill(details.skill);
-      notice = result.upgraded
-        ? `${details.skill === "weakFoot" ? "Weak foot" : "Skill moves"} improved to ${result.value} stars.`
-        : result.reason;
-    } catch (error) {
-      notice = error.message;
-    }
+    notice = "Weak foot and skill moves are not purchased with points.";
   }
   if (action === "hire-manager") {
     try {

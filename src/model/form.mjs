@@ -42,11 +42,7 @@ export function formAdjustedOverall(player, base = player?.overall) {
   if (!player) return 0;
   if (player.isLegend) return base ?? 0;
   const baseOverall = Number.isFinite(base) ? base : (player.overall ?? 0);
-  const potential = player.isUser && Number(player.potential) >= 91
-    ? 99
-    : Number.isFinite(player.potential)
-      ? player.potential
-      : baseOverall;
+  const potential = Number.isFinite(player.potential) ? player.potential : baseOverall;
   const adjusted = baseOverall + formOverallDelta(player);
   // A purple patch can lift a player to his ceiling, never through it.
   return Math.max(1, Math.min(potential, adjusted));
