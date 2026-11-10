@@ -20,7 +20,7 @@ import {
   normalizePosition,
   SIMILAR_POSITIONS,
 } from "./core/constants.mjs";
-import { RngBundle, hashString } from "./core/rng.mjs";
+import { Rng, RngBundle, hashString } from "./core/rng.mjs";
 
 import { clamp, round, formatDecimal } from "./core/util.mjs";
 import {
@@ -46,6 +46,7 @@ import {
   FORMATIONS,
   FORMATION_NAMES,
   COACH_STYLE_FORMATIONS,
+  MIN_REGISTERED_SQUAD_SIZE,
   ensureSquadRegistration,
   realFormationFor,
   selectLineup,
@@ -373,6 +374,28 @@ function assignShirtNumbers(players, club, preserveExisting = false) {
       player.shirtNumber = 99;
     }
   }
+}
+
+function releaseSquadPlayer(club, player, date) {
+  if (
+    !player ||
+    player.isLegend ||
+    player.clubId !== club.id ||
+    !club.has(player.id)
+  )
+    throw new Error("That player cannot be released from this club.");
+  if (club.squad.length <= MIN_REGISTERED_SQUAD_SIZE)
+    throw new Error("The club must retain at least 20 registered players.");
+  club.removePlayer(player.id);
+  player.releasedFromClubId = club.id;
+  player.clubId = null;
+  player.squadStatus = "Free Agent";
+  player.contract = {
+    ...(player.contract ?? {}),
+    wage: 0,
+    expires: Number(date ?? 0),
+  };
+  return player;
 }
 
 export class Career {
@@ -7281,67 +7304,115 @@ export class Career {
         : this.transferMarket({
             position: details.position || this.player.position,
           }).map(({ player }) => player);
-      newTeammate = candidates.find((player) => {
-        const seller = this.clubs.find((club) => club.id === player.clubId);
+      const registrationLimit =
+        this.club.registrationLimit ?? 25;
+      const candidateSeller = (player) =>
+        this.clubs.find(
+          (club) =>
+            club.id === player.clubId &&
+            club.id !== this.club.id &&
+            club.squad.length > MIN_REGISTERED_SQUAD_SIZE,
+        );
+      const affordableCandidate = (
+        player,
+        extraFunds = 0,
+        extraWage = 0,
+      ) => {
+        const seller = candidateSeller(player);
+        if (!seller) return false;
         const fee = marketValueForPlayer(player, seller, this.currentDay());
         const wage = player.contract?.wage ?? Math.round(player.overall * 900);
-        return fee <= finances.transferBudget &&
-          fee <= finances.balance &&
-          wage <= finances.remainingWageBudget;
-      });
+        return (
+          fee <= finances.transferBudget + extraFunds &&
+          fee <= finances.balance + extraFunds &&
+          wage <= finances.remainingWageBudget + extraWage
+        );
+      };
+      newTeammate =
+        this.club.squad.length < registrationLimit
+          ? candidates.find((player) => affordableCandidate(player)) ?? null
+          : null;
 
-      if (!newTeammate) {
-        const weakSquad = this.players
-          .filter((player) =>
-            player.clubId === this.club.id &&
-            player.id !== this.player.id &&
-            !player.isLegend &&
-            (!details.position ||
-              normalizePosition(player.position) === normalizePosition(details.position))
-          )
-          .sort((left, right) =>
-            Number(left.overall ?? 0) - Number(right.overall ?? 0)
-          );
-        if (weakSquad.length && this.club.squad.length > 20) {
-          salePlayer = weakSquad.find((player) => {
-            const value = marketValueForPlayer(player, this.club, this.currentDay());
-            const weakWage = player.contract?.wage ?? Math.round(player.overall * 900);
-            return candidates.some((candidate) => {
-              const seller = this.clubs.find((club) => club.id === candidate.clubId);
-              const fee = marketValueForPlayer(candidate, seller, this.currentDay());
-              const wage = candidate.contract?.wage ?? Math.round(candidate.overall * 900);
-              return fee <= finances.transferBudget + value &&
-                fee <= finances.balance + value &&
-                wage <= finances.remainingWageBudget + weakWage;
-            });
-          }) ?? null;
-        }
+      if (!newTeammate && this.club.squad.length > MIN_REGISTERED_SQUAD_SIZE) {
+        salePlayer =
+          this.players
+            .filter(
+              (player) =>
+                player.clubId === this.club.id &&
+                player.id !== this.player.id &&
+                !player.isLegend &&
+                (!details.position ||
+                  normalizePosition(player.position) ===
+                    normalizePosition(details.position)),
+            )
+            .sort(
+              (left, right) =>
+                Number(left.overall ?? 0) - Number(right.overall ?? 0),
+            )[0] ?? null;
         if (salePlayer) {
-          saleFee = marketValueForPlayer(salePlayer, this.club, this.currentDay());
+          saleFee = marketValueForPlayer(
+            salePlayer,
+            this.club,
+            this.currentDay(),
+          );
           saleBuyer =
             this.clubs.find((club) => {
-              if (club.id === this.club.id || (club.squad?.length ?? 0) >= 25) return false;
+              const limit = club.registrationLimit ?? 25;
+              if (
+                club.id === this.club.id ||
+                club.squad.length >= limit
+              )
+                return false;
               const buyerFinance = this.financialSummary(club);
-              const weakWage = salePlayer.contract?.wage ?? Math.round(salePlayer.overall * 900);
-              return saleFee <= buyerFinance.transferBudget &&
+              const weakWage =
+                salePlayer.contract?.wage ??
+                Math.round(salePlayer.overall * 900);
+              return (
+                saleFee <= buyerFinance.transferBudget &&
                 saleFee <= buyerFinance.balance &&
-                weakWage <= buyerFinance.remainingWageBudget;
+                weakWage <= buyerFinance.remainingWageBudget
+              );
             }) ?? null;
+          const extraFunds = saleBuyer ? saleFee : 0;
+          const extraWage =
+            salePlayer.contract?.wage ??
+            Math.round(salePlayer.overall * 900);
           newTeammate =
-            candidates
-              .sort((left, right) => Number(right.overall ?? 0) - Number(left.overall ?? 0))
-              .find((candidate) => {
-                const seller = this.clubs.find((club) => club.id === candidate.clubId);
-                const fee = marketValueForPlayer(candidate, seller, this.currentDay());
-                const wage = candidate.contract?.wage ?? Math.round(candidate.overall * 900);
-                const weakWage = salePlayer.contract?.wage ?? Math.round(salePlayer.overall * 900);
-                return fee <= finances.transferBudget + saleFee &&
-                  fee <= finances.balance + saleFee &&
-                  wage <= finances.remainingWageBudget + weakWage;
-              }) ?? null;
+            [...candidates]
+              .sort(
+                (left, right) =>
+                  Number(right.overall ?? 0) -
+                  Number(left.overall ?? 0),
+              )
+              .find((candidate) =>
+                affordableCandidate(candidate, extraFunds, extraWage),
+              ) ?? null;
         }
       }
     }
+    let destinationReleasePlayer = null;
+    if (type === "transfer" && destination) {
+      const registrationLimit = destination.registrationLimit ?? 25;
+      if (destination.squad.length >= registrationLimit) {
+        destinationReleasePlayer =
+          destination.squad.length > MIN_REGISTERED_SQUAD_SIZE
+            ? this.players
+                .filter(
+                  (player) =>
+                    player.clubId === destination.id && !player.isLegend,
+                )
+                .sort(
+                  (left, right) =>
+                    Number(left.overall ?? 0) -
+                    Number(right.overall ?? 0),
+                )[0] ?? null
+            : null;
+      }
+    }
+    const destinationFinance = destination
+      ? this.financialSummary(destination)
+      : null;
+    const requestedWage = this.player.contract?.wage ?? 0;
     const unavailableReason =
       type === "transfer"
         ? !destination || destination.id === this.club.id
@@ -7350,19 +7421,25 @@ export class Career {
             ? "Finish your current match before completing a transfer."
             : this.player.isLegend
               ? "Protected legends cannot transfer."
-              : destination.squad.length >= 25
+              : destination.squad.length >=
+                    (destination.registrationLimit ?? 25) &&
+                  !destinationReleasePlayer
                 ? `${destination.name} has no open squad places.`
-                : this.club.squad.length <= 20
+                : destinationFinance.transferBudget < 0 ||
+                    destinationFinance.balance < 0
+                  ? `${destination.name} cannot currently cover the transfer.`
+                  : destinationFinance.wageBudget < requestedWage
+                    ? `${destination.name} cannot fit your wages.`
+                : this.club.squad.length <= MIN_REGISTERED_SQUAD_SIZE
                   ? `${this.club.name} cannot release another registered player.`
-                  : !this.players.includes(this.player)
+                  : !this.players.includes(this.player) ||
+                      !this.club.has(this.player.id)
                     ? "Your player registration is unavailable."
                     : null
         : type === "better-teammates" && !newTeammate
-          ? requestedPlayer
-            ? "That player cannot be signed within the squad and budget rules."
-            : "The club cannot currently afford or register a suitable signing."
-          : type === "better-teammates" && salePlayer && !saleBuyer
-            ? "There is no club available to sell the weaker player to."
+            ? requestedPlayer
+              ? "That player cannot be signed within the squad and budget rules."
+              : "The club cannot currently afford or register a suitable signing."
           : null;
     request.approved =
       !unavailableReason && chance >= threshold;
@@ -7403,6 +7480,23 @@ export class Career {
           type: "player-request-sale",
           wage: weakWage,
         });
+      } else if (salePlayer) {
+        releaseSquadPlayer(this.club, salePlayer, this.currentDay());
+        assignShirtNumbers(this.players, this.club, true);
+        this.transferHistory ??= [];
+        this.transferHistory.unshift({
+          id: `${request.id}-weak-player-release`,
+          playerId: salePlayer.id,
+          playerName: `${salePlayer.first} ${salePlayer.last}`,
+          fromClubId: this.club.id,
+          fromClub: this.club.name,
+          toClubId: null,
+          toClub: "Free agent",
+          fee: 0,
+          date: this.currentDay(),
+          type: "player-request-release",
+          wage: 0,
+        });
       }
       const seller = this.clubs.find(
         (club) => club.id === newTeammate.clubId,
@@ -7437,12 +7531,34 @@ export class Career {
         type: "player-request",
         wage,
       });
-      request.response = salePlayer && saleBuyer
-        ? `${manager.name} agrees. ${salePlayer.first} ${salePlayer.last} was sold and ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate within the available budget.`
+      request.response = salePlayer
+        ? `${manager.name} agrees. ${salePlayer.first} ${salePlayer.last} was ${saleBuyer ? "sold" : "released as a free agent"}, and ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`
         : `${manager.name} agrees. ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`;
     } else {
       const fromClub = this.club;
       const wage = this.player.contract?.wage ?? 0;
+      if (destinationReleasePlayer) {
+        releaseSquadPlayer(
+          destination,
+          destinationReleasePlayer,
+          this.currentDay(),
+        );
+        assignShirtNumbers(this.players, destination, true);
+        this.transferHistory ??= [];
+        this.transferHistory.unshift({
+          id: `${request.id}-destination-release`,
+          playerId: destinationReleasePlayer.id,
+          playerName: `${destinationReleasePlayer.first} ${destinationReleasePlayer.last}`,
+          fromClubId: destination.id,
+          fromClub: destination.name,
+          toClubId: null,
+          toClub: "Free agent",
+          fee: 0,
+          date: this.currentDay(),
+          type: "player-request-release",
+          wage: 0,
+        });
+      }
       transferPlayer({
         seller: fromClub,
         buyer: destination,
@@ -7477,7 +7593,9 @@ export class Career {
       });
       this.pendingPlayerTransfer = null;
       request.destinationClubId = destination.id;
-      request.response = `${manager.name} agrees. Your transfer to ${destination.name} is complete.`;
+      request.response = destinationReleasePlayer
+        ? `${manager.name} agrees. ${destinationReleasePlayer.first} ${destinationReleasePlayer.last} was released to make room, and your transfer to ${destination.name} is complete.`
+        : `${manager.name} agrees. Your transfer to ${destination.name} is complete.`;
     }
 
     this.news.push(`${manager.name}: ${request.response}`);
@@ -8653,7 +8771,7 @@ export class Career {
     }
   }
 
-  moveToLeague(leagueId, clubId) {
+  moveToLeague(leagueId, clubId, { preservePreviousClub = false } = {}) {
     if (this.player?.isLegend)
       throw new Error(
         `${this.player.first} ${this.player.last} must remain at their protected club.`,
@@ -8729,7 +8847,11 @@ export class Career {
           (entry) => entry.league.id === currentLeagueEntry.league.id,
         )
       : null;
-    if (demotedLeague && demotedLeague.league.id !== targetEntry.league.id) {
+    if (
+      !preservePreviousClub &&
+      demotedLeague &&
+      demotedLeague.league.id !== targetEntry.league.id
+    ) {
       demotedLeague.league.teamIds = demotedLeague.league.teamIds.filter(
         (id) => id !== previousClubId,
       );
@@ -9218,7 +9340,7 @@ export class Career {
     return this.ensureAgent();
   }
 
-  resolveTransferOffer(offerId, decision = "reject") {
+  resolveTransferOffer(offerId, decision = "reject", details = {}) {
     this.ensureAgent();
     if (this.player?.isLegend)
       throw new Error(
@@ -9227,12 +9349,40 @@ export class Career {
     const offer = this.transferOffers.find((item) => item.id === offerId);
     if (!offer) throw new Error("That transfer offer is no longer available.");
     if (decision === "negotiate-wage") {
-      offer.wage = Math.round(offer.wage * 1.08);
-      offer.negotiated = true;
-      this.news.unshift(
-        `Your agent requested improved wages from ${offer.clubName}.`,
+      const requestedWage = Number(details.wage);
+      if (!Number.isSafeInteger(requestedWage) || requestedWage <= 0)
+        throw new Error("Enter a valid weekly wage.");
+      const baseWage = Number(offer.negotiationBaseWage ?? offer.wage);
+      offer.negotiationBaseWage ??= baseWage;
+      const premium = Math.max(0, requestedWage / baseWage - 1);
+      const willingness = clamp(
+        0.9 +
+          (Number(this.agent.rating ?? 50) - 50) / 250 +
+          (Number(offer.interest ?? 50) - 60) / 250 -
+          premium * 1.6,
+        0,
+        0.98,
       );
-      return { accepted: false, negotiated: true, offer };
+      const wageResponse = new Rng(
+        hashString(`wage-response-${this.seed}-${offer.id}-${requestedWage}`),
+        `wage-response-${offer.id}`,
+      );
+      const accepted =
+        requestedWage <= baseWage || wageResponse.chance(willingness);
+      offer.lastRequestedWage = requestedWage;
+      offer.wageRequestAccepted = accepted;
+      if (accepted) {
+        offer.wage = requestedWage;
+        offer.negotiated = true;
+        this.news.unshift(
+          `${offer.clubName} accepted your request for €${requestedWage.toLocaleString()} weekly wages.`,
+        );
+      } else {
+        this.news.unshift(
+          `${offer.clubName} rejected your request for €${requestedWage.toLocaleString()} weekly wages; the original terms remain available.`,
+        );
+      }
+      return { accepted, negotiated: true, offer, requestedWage };
     }
     if (decision === "request-role") {
       const roles = [
@@ -9261,13 +9411,15 @@ export class Career {
         throw new Error(
           "This offer can only be completed during the next transfer window.",
         );
-      const sameLeague = offer.leagueName === this.league.name;
+      const sameLeague = offer.leagueId
+        ? offer.leagueId === this.league.id
+        : offer.leagueName === this.league.name;
       const currentClubBeforeMove = this.club;
       const targetClubBeforeMove = sameLeague
         ? this.clubs.find((club) => club.id === offer.clubId)
         : null;
       if (!sameLeague) {
-        const destinationEntry = this.baseData.careerLeagues?.find(
+        const destinationEntry = this.worldCareerLeagues?.find(
           (entry) => entry.id === offer.leagueId,
         );
         const destinationIdentity =
@@ -9287,7 +9439,7 @@ export class Career {
           transferId: `career-transfer-${offer.id}`,
         });
       }
-      if (offer.leagueName !== this.league.name) {
+      if (!sameLeague) {
         const sellerFinance = ensureClubFinance(currentClubBeforeMove);
         sellerFinance.transferBudget += offer.fee;
         recordClubTransaction(currentClubBeforeMove, {
@@ -9297,7 +9449,9 @@ export class Career {
           description: `Transfer income for ${this.player.first} ${this.player.last}`,
           income: offer.fee,
         });
-        this.moveToLeague(offer.leagueId, offer.clubId);
+        this.moveToLeague(offer.leagueId, offer.clubId, {
+          preservePreviousClub: true,
+        });
       }
       const targetClub = this.clubs.find((club) => club.id === offer.clubId);
       if (!targetClub)
@@ -9350,16 +9504,6 @@ export class Career {
         `${this.player.first} ${this.player.last} joins ${targetClub.name} for €${offer.fee.toLocaleString()} and €${offer.wage.toLocaleString()} weekly wages.`,
       );
       return { accepted: true, offer };
-    }
-    if (decision === "negotiate-wage") {
-      const requested = Math.round(offer.wage * 1.12);
-      offer.wage = requested;
-      offer.negotiated = true;
-      offer.reason = `${offer.reason} Your agent requested improved wages.`;
-      this.news.unshift(
-        `Your agent requested a 12% wage improvement from ${offer.clubName}.`,
-      );
-      return { accepted: false, negotiated: true, offer };
     }
     if (decision === "request-role") {
       if (offer.expectedPlayingTime < 35)

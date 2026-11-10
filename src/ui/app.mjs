@@ -128,6 +128,7 @@ let isBackNavigation = false;
 let screenScrollPositions = new Map();
 let scrollRestoreFrame = 0;
 let notice = "";
+let wageNegotiationOfferId = null;
 let worldLeagueName = "";
 let refreshBodyPanel = null;
 let worldClubName = "";
@@ -2377,6 +2378,16 @@ function renderGame() {
       !destinationClubSelect.value ||
       Number(searchSelectedClubButton.dataset.searchesRemaining) <= 0;
   });
+  $app
+    .querySelector("#wage-negotiation-form")
+    ?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      handleAction("submit-wage-request", {
+        offerId: form.dataset.offerId,
+        wage: form.elements.wage.value,
+      });
+    });
   // On a phone the sidebar becomes a horizontal icon strip that can overflow; keep
   // the active screen visible rather than hidden off the right-hand edge.
   $app
@@ -3065,6 +3076,12 @@ function renderScreen() {
   return renderTraining();
 }
 
+function showCurrentClubAfterTransfer() {
+  screen = "team";
+  screenScrollPositions.delete("team");
+  expandedNavGroups.add("club");
+}
+
 function renderGameInfo() {
   const leaguePosition = career.league.table.positions().get(career.club.id);
   const completedMatches = career.results.filter(
@@ -3566,6 +3583,9 @@ function renderAgent() {
         .join("")
     : "<div class='empty-report'><p>No offers to review. Choose a destination or let your agent search for suitable clubs.</p></div>";
   const latestHistory = (career.transferHistory ?? []).slice(0, 8);
+  const wageNegotiationOffer = career.transferOffers.find(
+    (offer) => offer.id === wageNegotiationOfferId,
+  );
 
   return `
     <div class="page-heading">
@@ -3630,6 +3650,24 @@ function renderAgent() {
     ${
       latestHistory.length
         ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">TRANSFER CENTRE</div><h2>Latest completed deals</h2></div><span class="live-tag">${career.transferHistory.length} RECORDED</span></div><div class="transfer-list">${latestHistory.map((item) => `<article class="transfer-agent"><div><b>${esc(item.playerName)}</b><small>${esc(item.fromClub)} → ${esc(item.toClub)} · ${item.type} · ${item.date != null ? esc(formatDate(item.date)) : "Date pending"} · ${item.contractYears ?? 3}-year deal</small></div><span>€${formatDecimal(item.fee)}</span></article>`).join("")}</div></section>`
+        : ""
+    }
+    ${
+      wageNegotiationOffer
+        ? `<div class="wage-dialog-backdrop"><section class="wage-dialog" role="dialog" aria-modal="true" aria-labelledby="wage-dialog-title">
+            <form id="wage-negotiation-form" data-offer-id="${esc(wageNegotiationOffer.id)}">
+              <div class="eyebrow lime">CONTRACT NEGOTIATION</div>
+              <h2 id="wage-dialog-title">Negotiate with ${esc(wageNegotiationOffer.clubName)}</h2>
+              <p class="muted">Current offer: €${formatDecimal(wageNegotiationOffer.wage)} weekly. The club will decide whether to accept your request.</p>
+              <label class="position-select" for="wage-request-input">Requested weekly wage (€)
+                <input id="wage-request-input" name="wage" type="number" min="1" step="1" value="${Math.max(1, Math.round(wageNegotiationOffer.wage ?? 1))}" required autofocus>
+              </label>
+              <div class="wage-dialog-actions">
+                <button class="button-primary" type="submit">Send wage request</button>
+                <button class="button-quiet" type="button" data-action="cancel-wage-negotiation">Cancel</button>
+              </div>
+            </form>
+          </section></div>`
         : ""
     }
   `;
@@ -5083,7 +5121,7 @@ function renderTeam() {
         Number(right.honour.season ?? 0) - Number(left.honour.season ?? 0) ||
         right.index - left.index,
     )[0]?.honour;
-  const clubFinance = career.financialSummary(club);
+  const clubFinance = career.financialSummary(career.club);
   const totalRevenue = Object.values(clubFinance.revenue).reduce(
     (sum, value) => sum + Number(value ?? 0),
     0,
@@ -6023,6 +6061,8 @@ function handleAction(action, details = {}) {
                 $app.querySelector("#player-transfer-target")?.value,
               );
       notice = result.response;
+      if (type === "transfer" && result.approved)
+        showCurrentClubAfterTransfer();
     } catch (error) {
       notice = `Could not complete the conversation: ${error.message}`;
     }
@@ -6407,22 +6447,41 @@ function handleAction(action, details = {}) {
       notice = result.accepted
         ? `Transfer accepted: ${result.offer.clubName}.`
         : "Transfer rejected.";
+      if (result.accepted) showCurrentClubAfterTransfer();
     } catch (error) {
       notice = `Could not process transfer: ${error.message}`;
     }
   }
+  if (action === "negotiate-offer") {
+    wageNegotiationOfferId = details.offerId;
+  }
+  if (action === "cancel-wage-negotiation") {
+    wageNegotiationOfferId = null;
+  }
+  if (action === "submit-wage-request") {
+    try {
+      const result = career.resolveTransferOffer(
+        details.offerId,
+        "negotiate-wage",
+        { wage: details.wage },
+      );
+      wageNegotiationOfferId = null;
+      notice = result.accepted
+        ? `${result.offer.clubName} accepted your requested wage of €${formatDecimal(result.offer.wage)} per week. You can now accept the offer.`
+        : `${result.offer.clubName} rejected your wage request. The original offer remains available.`;
+    } catch (error) {
+      notice = `Could not submit wage request: ${error.message}`;
+    }
+  }
   if (
     action === "reject-offer" ||
-    action === "negotiate-offer" ||
     action === "request-offer-role"
   ) {
     try {
       const decision =
         action === "reject-offer"
           ? "reject"
-          : action === "negotiate-offer"
-            ? "negotiate-wage"
-            : "request-role";
+          : "request-role";
       const result = career.resolveTransferOffer(details.offerId, decision);
       notice = result.negotiated
         ? `Your agent has negotiated with ${result.offer.clubName}.`

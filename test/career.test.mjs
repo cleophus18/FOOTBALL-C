@@ -982,6 +982,148 @@ test("an approved request for a better teammate signs the requested player", asy
   assert.equal(career.transferHistory[0].toClubId, originalClub.id);
 });
 
+test("the coach can release a low-rated player when no club can buy him", async () => {
+  const career = createCareer(await loadData(), options(7025));
+  const originalClub = career.club;
+  const limit = originalClub.registrationLimit ?? 25;
+  while (originalClub.squad.length < limit) {
+    const reserve = createPlayer({
+      id: `release-test-reserve-${originalClub.squad.length}`,
+      first: "Reserve",
+      last: `Player${originalClub.squad.length}`,
+      position: "ST",
+      clubId: originalClub.id,
+      attrs: {
+        pace: 10,
+        shooting: 10,
+        passing: 10,
+        dribbling: 10,
+        defending: 10,
+        physical: 10,
+      },
+    });
+    reserve.overall = 10;
+    reserve.contract = { wage: 0 };
+    career.players.push(reserve);
+    originalClub.addPlayer(reserve.id);
+  }
+  const releaseCandidate = career.players
+    .filter(
+      (player) =>
+        player.clubId === originalClub.id &&
+        player.id !== career.player.id &&
+        !player.isLegend,
+    )
+    .sort((left, right) => left.overall - right.overall)[0];
+  assert.ok(releaseCandidate);
+  releaseCandidate.overall = 1;
+  const seller = career.clubs.find(
+    (club) => club.id !== originalClub.id,
+  );
+  const sellerReserve = createPlayer({
+    id: "manager-request-seller-reserve",
+    first: "Seller",
+    last: "Reserve",
+    position: "ST",
+    clubId: seller.id,
+    attrs: {
+      pace: 10,
+      shooting: 10,
+      passing: 10,
+      dribbling: 10,
+      defending: 10,
+      physical: 10,
+    },
+  });
+  sellerReserve.contract = { wage: 0 };
+  career.players.push(sellerReserve);
+  seller.addPlayer(sellerReserve.id);
+  const playerToSign = career.players.find(
+    (player) =>
+      player.clubId !== originalClub.id &&
+      !player.isLegend &&
+      career.clubs.find((club) => club.id === player.clubId)?.squad.length >
+        20,
+  );
+  assert.ok(playerToSign);
+  playerToSign.overall = 50;
+  playerToSign.contract = { wage: 0 };
+  originalClub.finances.transferBudget = 1_000_000_000;
+  originalClub.finances.balance = 1_000_000_000;
+  originalClub.finances.wageBudget = 1_000_000_000;
+  for (const club of career.clubs) {
+    if (club === originalClub) continue;
+    club.finances.transferBudget = 0;
+    club.finances.balance = 0;
+    club.finances.wageBudget = 0;
+  }
+  career.player.trusting.manager = 100;
+  career.player.lastMatchRating = 10;
+
+  const request = career.requestBetterTeammates("", playerToSign.id);
+
+  assert.equal(request.approved, true);
+  assert.equal(releaseCandidate.clubId, null);
+  assert.equal(originalClub.has(releaseCandidate.id), false);
+  assert.equal(originalClub.squad.length, limit);
+  assert.equal(playerToSign.clubId, originalClub.id);
+  assert.equal(request.signedPlayerId, playerToSign.id);
+  assert.equal(career.transferHistory[1].type, "player-request-release");
+});
+
+test("a full destination club can release its weakest player to accept the user", async () => {
+  const career = createCareer(await loadData(), options(7026));
+  const sourceClub = career.club;
+  const destination = career.clubs.find(
+    (club) => club.id !== sourceClub.id,
+  );
+  const limit = Math.max(25, destination.squad.length);
+  destination.registrationLimit = limit;
+  while (destination.squad.length < limit) {
+    const reserve = createPlayer({
+      id: `destination-release-test-${destination.squad.length}`,
+      first: "Destination",
+      last: `Reserve${destination.squad.length}`,
+      position: "ST",
+      clubId: destination.id,
+      attrs: {
+        pace: 10,
+        shooting: 10,
+        passing: 10,
+        dribbling: 10,
+        defending: 10,
+        physical: 10,
+      },
+    });
+    reserve.overall = 10;
+    reserve.contract = { wage: 0 };
+    career.players.push(reserve);
+    destination.addPlayer(reserve.id);
+  }
+  const releasedPlayer = career.players
+    .filter(
+      (player) => player.clubId === destination.id && !player.isLegend,
+    )
+    .sort((left, right) => left.overall - right.overall)[0];
+  assert.ok(releasedPlayer);
+  releasedPlayer.overall = 1;
+  destination.finances.balance = 1_000_000_000;
+  destination.finances.transferBudget = 1_000_000_000;
+  destination.finances.wageBudget = 1_000_000_000;
+  career.player.trusting.manager = 100;
+  career.player.lastMatchRating = 10;
+
+  const request = career.requestTransfer(destination.id);
+
+  assert.equal(request.approved, true);
+  assert.equal(career.club, destination);
+  assert.equal(releasedPlayer.clubId, null);
+  assert.equal(destination.has(releasedPlayer.id), false);
+  assert.equal(destination.has(career.player.id), true);
+  assert.equal(destination.squad.length, limit);
+  assert.match(request.response, /released to make room/);
+});
+
 test("approved playing-time and development requests affect selection and training", async () => {
   const career = createCareer(await loadData(), options(7023));
   career.player.trusting.manager = 100;
@@ -1579,6 +1721,24 @@ test("the agent gate enables transfer offers and a transfer acceptance path", as
   });
   assert.ok(requestedOffers.length > 0);
   assert.ok(requestedOffers.every((offer) => offer.clubId === requestedClubId));
+
+  const negotiationOffer = requestedOffers[0];
+  const originalWage = negotiationOffer.wage;
+  const rejectedRequest = career.resolveTransferOffer(
+    negotiationOffer.id,
+    "negotiate-wage",
+    { wage: originalWage * 100 },
+  );
+  assert.equal(rejectedRequest.accepted, false);
+  assert.equal(negotiationOffer.wage, originalWage);
+  const acceptedWage = Math.max(1, Math.floor(originalWage * 0.9));
+  const acceptedRequest = career.resolveTransferOffer(
+    negotiationOffer.id,
+    "negotiate-wage",
+    { wage: acceptedWage },
+  );
+  assert.equal(acceptedRequest.accepted, true);
+  assert.equal(negotiationOffer.wage, acceptedWage);
 });
 
 test("hiring an agent requires enough money and charges the user", async () => {
@@ -1635,6 +1795,7 @@ test("limited destination searches accept a move into another playable league", 
     return;
   }
   const formerClub = career.club;
+  const formerLeagueId = career.league.id;
   const result = career.resolveTransferOffer(crossLeagueOffer.id, "accept");
   const destinationClub = career.clubs.find(
     (club) => club.id === crossLeagueOffer.clubId,
@@ -1642,6 +1803,13 @@ test("limited destination searches accept a move into another playable league", 
   assert.equal(result.accepted, true);
   assert.equal(career.agentPerformance[career.agent.id].deals, 1);
   assert.equal(career.league.name, crossLeagueOffer.leagueName);
+  assert.equal(career.data.league.id, crossLeagueOffer.leagueId);
+  assert.ok(
+    career.worldCareerLeagues
+      .find((entry) => entry.id === formerLeagueId)
+      .league.teamIds.includes(formerClub.id),
+    "a player's former club stays in its league after the player transfers",
+  );
   assert.equal(career.club.id, crossLeagueOffer.clubId);
   assert.equal(career.player.clubId, crossLeagueOffer.clubId);
   assert.ok(destinationClub.squad.includes(career.player.id));
