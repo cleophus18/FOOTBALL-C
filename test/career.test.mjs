@@ -1634,12 +1634,18 @@ test("limited destination searches accept a move into another playable league", 
     );
     return;
   }
+  const formerClub = career.club;
   const result = career.resolveTransferOffer(crossLeagueOffer.id, "accept");
+  const destinationClub = career.clubs.find(
+    (club) => club.id === crossLeagueOffer.clubId,
+  );
   assert.equal(result.accepted, true);
   assert.equal(career.agentPerformance[career.agent.id].deals, 1);
   assert.equal(career.league.name, crossLeagueOffer.leagueName);
   assert.equal(career.club.id, crossLeagueOffer.clubId);
   assert.equal(career.player.clubId, crossLeagueOffer.clubId);
+  assert.ok(destinationClub.squad.includes(career.player.id));
+  assert.ok(!formerClub?.squad.includes(career.player.id));
   assert.equal(career.player.leagueGoals, 0);
   assert.equal(career.player.leagueAssists, 0);
   assert.deepEqual(career.player.leaguePerformance, { apps: 0, ratingSum: 0 });
@@ -1648,12 +1654,65 @@ test("limited destination searches accept a move into another playable league", 
   const restored = createCareer(data, saved.creation, saved);
   assert.equal(restored.league.name, crossLeagueOffer.leagueName);
   assert.equal(restored.club.id, crossLeagueOffer.clubId);
+  assert.ok(restored.club.squad.includes(restored.player.id));
+  assert.ok(
+    !restored.clubs.some(
+      (club) =>
+        club.id !== restored.club.id && club.squad.includes(restored.player.id),
+    ),
+  );
   assert.deepEqual(restored.agentPerformance, career.agentPerformance);
   assert.deepEqual(restored.player.leaguePerformance, {
     apps: 0,
     ratingSum: 0,
   });
   assert.equal(restored.worldLeagues.length, 5);
+});
+
+test("manager transfers reconcile the destination squad and survive save restoration", async () => {
+  const data = await loadData();
+  const career = createCareer(data, {
+    ...options(55118),
+    managerMode: true,
+    manager: {
+      first: "Alex",
+      last: "Manager",
+      clubId: "hull",
+      nationality: "ENG",
+    },
+  });
+  const destination = career.club;
+  destination.finances.transferBudget = 1_000_000_000;
+  destination.finances.balance = 1_000_000_000;
+  destination.finances.wageBudget = 1_000_000_000;
+  const formerClub = career.clubs.find((club) => club.id !== destination.id);
+  const target = career.players.find(
+    (player) => player.clubId === formerClub.id && !player.isLegend,
+  );
+  const extraPlayer = career.players.find(
+    (player) => player.clubId === destination.id && !player.isLegend,
+  );
+  assert.ok(target && extraPlayer, "a transferable player should be available");
+  destination.removePlayer(extraPlayer.id);
+  extraPlayer.clubId = formerClub.id;
+  formerClub.addPlayer(extraPlayer.id);
+  assert.ok(formerClub.squad.length > 20);
+  career.buyPlayer(target.id, { fee: 1, wage: 0 });
+
+  assert.equal(target.clubId, destination.id);
+  assert.ok(destination.squad.includes(target.id));
+  assert.ok(!formerClub.squad.includes(target.id));
+  const saved = JSON.parse(JSON.stringify(career.toJSON()));
+  const restored = createCareer(data, saved.creation, saved);
+  const restoredPlayer = restored.players.find((player) => player.id === target.id);
+  assert.equal(restoredPlayer.clubId, restored.club.id);
+  assert.ok(restored.club.squad.includes(target.id));
+  assert.ok(
+    !restored.clubs.some(
+      (club) =>
+        club.id !== restored.club.id && club.squad.includes(target.id),
+    ),
+  );
 });
 
 test("background leagues record player scoring and rating stats for cross-league browsing", async () => {
@@ -3419,16 +3478,54 @@ test("selected World Cup players see only their nation's tournament matches in t
         status: "scheduled",
         scheduledDay: toDayIndex(2030, 6, 19),
       },
+      {
+        id: "world-cup-user-completed",
+        stage: "group",
+        round: 2,
+        homeId: "rival-b",
+        awayId: "user-nation",
+        status: "completed",
+        homeGoals: 1,
+        awayGoals: 2,
+        scheduledDay: toDayIndex(2030, 6, 26),
+      },
+      {
+        id: "world-cup-unrelated",
+        stage: "group",
+        round: 2,
+        homeId: "rival-a",
+        awayId: "rival-b",
+        status: "scheduled",
+        scheduledDay: toDayIndex(2030, 6, 26),
+      },
     ],
   };
 
   const worldCupFixtures = career
     .getFixtureList()
     .filter((fixture) => fixture.competitionId === "fifa-world-cup");
-  assert.equal(worldCupFixtures.length, 1);
+  assert.equal(worldCupFixtures.length, 2);
   assert.equal(worldCupFixtures[0].id, "world-cup-user-group");
   assert.equal(worldCupFixtures[0].season, 2029);
   assert.equal(worldCupFixtures[0].date, toDayIndex(2030, 6, 19));
+  assert.equal(worldCupFixtures[0].away, "Brazil");
+  assert.equal(worldCupFixtures[0].userIsHome, true);
+  assert.match(worldCupFixtures[0].roundLabel, /Group stage.*Matchday 2/);
+  assert.equal(worldCupFixtures[0].matchNumber, 2);
+  assert.equal(worldCupFixtures[1].result, "1 – 2");
+  assert.equal(worldCupFixtures[1].userIsHome, false);
+  assert.equal(worldCupFixtures[1].played, true);
+  assert.equal(
+    worldCupFixtures.some((fixture) => fixture.id === "world-cup-unrelated"),
+    false,
+  );
+  career.worldCup.userSelection.selected = false;
+  assert.equal(
+    career
+      .getFixtureList()
+      .filter((fixture) => fixture.competitionId === "fifa-world-cup").length,
+    2,
+  );
 });
 
 test("a full Premier League season completes with 38 matches per club", async () => {
@@ -4153,6 +4250,152 @@ test("the World Cup fixture calendar is unique, scheduled, and save-persistent",
   const restored = createCareer(data, saved.creation, saved);
   assert.deepEqual(restored.worldCup.tournament.calendar, tournament.calendar);
   assert.deepEqual(restored.worldCup.tournament.fixtureIds, fixtureIds);
+});
+
+test("selected World Cup group fixtures run in Match Sim and record only international results", async () => {
+  const data = await loadData();
+  const career = createCareer(data, options(55119));
+  const tournament = career.startWorldCupTournament();
+  const userTeam = tournament.qualified.find(
+    (team) => team.code === career.player.nationality,
+  );
+  assert.ok(userTeam, "the player's national team should qualify");
+  if (!userTeam.squadIds.includes(career.player.id))
+    userTeam.squadIds.push(career.player.id);
+  career.worldCup.userSelection = {
+    year: tournament.year,
+    nation: career.player.nationality,
+    selected: true,
+    qualified: true,
+  };
+  const fixture = tournament.fixtures
+    .filter(
+      (entry) =>
+        entry.stage === "group" &&
+        (entry.homeId === userTeam.id || entry.awayId === userTeam.id),
+    )
+    .sort((left, right) => left.scheduledDay - right.scheduledDay)[0];
+  const listedFixture = career
+    .getFixtureList()
+    .find((entry) => entry.id === fixture.id);
+  assert.equal(listedFixture.date, fixture.scheduledDay);
+  assert.equal(listedFixture.competitionId, "fifa-world-cup");
+  assert.equal(
+    listedFixture.home,
+    tournament.qualified.find((team) => team.id === fixture.homeId).name,
+  );
+  assert.equal(
+    listedFixture.away,
+    tournament.qualified.find((team) => team.id === fixture.awayId).name,
+  );
+  const leaguePlayedBefore = career.league.table.row(career.club.id).played;
+  career.season = tournament.year - 1;
+  career.week = 31;
+  career.calendar[32].matchday = fixture.scheduledDay;
+  career.league.fixtureWeeks = career.league.fixtureWeeks.filter(
+    (week) => week !== 32,
+  );
+  const report = career.advanceWeek();
+  assert.equal(report.userMatch.worldCupFixtureId, fixture.id);
+  assert.equal(report.userMatch.competitionName, "FIFA World Cup");
+  assert.equal(
+    report.userMatch[report.userMatch.side].name,
+    userTeam.name,
+  );
+  assert.equal(fixture.status, "scheduled");
+  career.lastReport = {
+    week: career.week,
+    ...report,
+  };
+  career.finishMatchSimulation();
+
+  assert.equal(fixture.status, "completed");
+  assert.equal(fixture.homeGoals >= 0, true);
+  assert.equal(fixture.awayGoals >= 0, true);
+  assert.equal(career.league.table.row(career.club.id).played, leaguePlayedBefore);
+  assert.ok(career.player.internationalStats.worldCupApps > 0);
+  assert.ok(
+    career.player.internationalHistory.some(
+      (entry) => entry.id === `${fixture.id}:${career.player.id}`,
+    ),
+  );
+  assert.ok(tournament.playerStats[career.player.id].apps > 0);
+  assert.ok(career.getFixtureList().find((entry) => entry.id === fixture.id).stats);
+  assert.ok(!career.results.some((entry) => entry.id === fixture.id));
+
+  const saved = JSON.parse(JSON.stringify(career.toJSON()));
+  const restored = createCareer(data, saved.creation, saved);
+  const internationalApps = restored.player.internationalStats.worldCupApps;
+  const replay = restored.progressWorldCupFixtures(
+    restored.worldCup.tournament,
+    fixture.scheduledDay,
+  );
+  assert.deepEqual(replay.completed, []);
+  assert.equal(restored.player.internationalStats.worldCupApps, internationalApps);
+});
+
+test("selected World Cup knockout fixtures use Match Sim and advance the bracket", async () => {
+  const career = createCareer(await loadData(), options(55120));
+  const tournament = career.startWorldCupTournament();
+  const userTeam = tournament.qualified.find(
+    (team) => team.code === career.player.nationality,
+  );
+  assert.ok(userTeam);
+  if (!userTeam.squadIds.includes(career.player.id))
+    userTeam.squadIds.push(career.player.id);
+  career.worldCup.userSelection = {
+    year: tournament.year,
+    nation: career.player.nationality,
+    selected: true,
+    qualified: true,
+  };
+  const bracketTeams = [
+    userTeam,
+    ...tournament.qualified.filter((team) => team.id !== userTeam.id).slice(0, 7),
+  ];
+  const day = toDayIndex(tournament.year, 7, 5);
+  tournament.fixtures = [];
+  tournament.groupsAdvanced = true;
+  tournament.knockoutTeams = bracketTeams.map((team) => team.id);
+  tournament.knockoutStage = "Quarter-finals";
+  tournament.stage = "Quarter-finals";
+  for (let index = 0; index < bracketTeams.length / 2; index++) {
+    const home = bracketTeams[index];
+    const away = bracketTeams[bracketTeams.length - 1 - index];
+    tournament.fixtures.push({
+      id: `test-quarter-final-${index}`,
+      stage: "knockout",
+      knockoutStage: "Quarter-finals",
+      round: "Quarter-finals",
+      homeId: home.id,
+      awayId: away.id,
+      status: "scheduled",
+      scheduledDay: day,
+    });
+  }
+  const fixture = tournament.fixtures.find(
+    (entry) => entry.homeId === userTeam.id || entry.awayId === userTeam.id,
+  );
+  const progress = career.progressWorldCupFixtures(tournament, day);
+  assert.equal(progress.userMatch.worldCupFixtureId, fixture.id);
+  career.lastReport = {
+    week: career.week,
+    fixtures: [progress.userMatch.worldCupFixtureRecord],
+    userMatch: progress.userMatch,
+    headlines: [],
+  };
+  career.finishMatchSimulation();
+  assert.equal(fixture.status, "completed");
+  assert.ok(fixture.winnerId);
+  assert.equal(tournament.knockoutStage, "Semi-finals");
+  assert.equal(
+    tournament.fixtures.filter(
+      (entry) =>
+        entry.stage === "knockout" &&
+        entry.knockoutStage === "Semi-finals",
+    ).length,
+    2,
+  );
 });
 
 test("World Cup fixtures progress by date and completed matches do not replay after loading", async () => {

@@ -44,6 +44,14 @@ both clubs. Destination searches include all playable leagues, and strong recent
 improves a player's chance of drawing club interest. Older saves migrate missing
 finance fields when loaded.
 
+Player transfers now reconcile squad registration from each player's saved `clubId`
+when a career is restored, keeping player profiles, team pages, and squad views aligned
+with the active career state. FIFA World Cup fixtures for the player's nationality
+appear in the main chronological Fixtures list whether or not the player is selected
+for the national squad. A selected player enters their scheduled group or knockout
+match through the existing Match Sim; full-time records the international appearance,
+tournament score, and progression once, without adding a domestic league result.
+
 The History tab records and displays the winning team for each completed league or
 competition trophy, alongside the existing individual award winners. Older season
 records without the new trophy list fall back to their saved league standings.

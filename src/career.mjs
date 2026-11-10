@@ -1942,6 +1942,90 @@ export class Career {
     return match;
   }
 
+  createWorldCupUserMatch(tournament, fixture, homeInfo, awayInfo) {
+    const home = this.buildInternationalTeam(homeInfo, { refresh: false });
+    const away = this.buildInternationalTeam(awayInfo, { refresh: false });
+    const side = home.code === this.player.nationality ? "home" : "away";
+    const opponent = side === "home" ? away : home;
+    const isKnockout = fixture.stage !== "group";
+    const match = simulateMatch({
+      home,
+      away,
+      rng: this.rng.stream(`international-match-${fixture.id}`),
+      dayIndex: fixture.scheduledDay,
+      competition: { id: "fifa-world-cup", name: "FIFA World Cup" },
+      mustHaveWinner: isKnockout,
+      neutralVenue: true,
+      importance: isKnockout ? 1.25 : 1,
+      detailedPlayerIds: [this.player.id],
+      forcedPlayerIds: [this.player.id],
+    });
+    const playerResult = simulatePlayerMatch({
+      player: this.player,
+      match,
+      side,
+      opponents: opponent.roster,
+      rng: this.rng.stream("world-cup-player-moments"),
+      position: this.player.position,
+      minutes: 90,
+      role: this.matchRole,
+      catalog: this.data.keyMomentOptions,
+      season: this.season,
+      teamStyle: (side === "home" ? home : away).manager?.style,
+    });
+    const scheduledGoalEvents = match.events;
+    const record = {
+      id: fixture.id,
+      competitionId: "fifa-world-cup",
+      competition: "FIFA World Cup",
+      season: tournament.year - 1,
+      matchday: fixture.round,
+      scheduledDate: fixture.scheduledDay,
+      homeClubId: home.club.id,
+      awayClubId: away.club.id,
+      home: home.name,
+      away: away.name,
+      homeGoals: 0,
+      awayGoals: 0,
+      stats: match.stats,
+      userMatch: true,
+      pending: true,
+      worldCupFixtureId: fixture.id,
+    };
+    match.id = fixture.id;
+    match.season = tournament.year - 1;
+    match.competitionName = "FIFA World Cup";
+    match.worldCupFixtureId = fixture.id;
+    match.worldCupFixtureRecord = record;
+    match.events = [];
+    match.scheduledGoalEvents = scheduledGoalEvents;
+    match.plannedHomeGoals = match.homeGoals;
+    match.plannedAwayGoals = match.awayGoals;
+    match.homeGoals = 0;
+    match.awayGoals = 0;
+    const userMatch = {
+      ...match,
+      playerResult,
+      opponent: opponent.name,
+      side,
+      competitionId: "fifa-world-cup",
+      objective: "International tournament",
+      objectiveComplete: false,
+      objectiveAwarded: false,
+    };
+    const role = this.playerMatchRole(userMatch, side);
+    this.matchSimulation = {
+      minute: 0,
+      outgoingPlayerId: null,
+      activeMomentIndex: null,
+      status: "ready",
+      releasedGoalCount: 0,
+      finalized: false,
+      ...role,
+    };
+    return userMatch;
+  }
+
   recordInternationalMatch(match, home, away, { worldCup, knockout }) {
     const goals = new Map();
     const assists = new Map();
@@ -1960,8 +2044,32 @@ export class Career {
     for (const { team, side, opponent } of teams) {
       const teamGoals = side === "home" ? match.homeGoals : match.awayGoals;
       const opponentGoals = side === "home" ? match.awayGoals : match.homeGoals;
-      const starters = match[side].xi ?? [];
-      for (const playerId of starters) {
+      const participation = new Map(
+        (match[side].xi ?? []).map((playerId) => {
+          const minutes = Number(match.playerStats?.[playerId]?.minutes);
+          return [playerId, minutes > 0 ? minutes : 90];
+        }),
+      );
+      for (const event of match.misc ?? []) {
+        if (event.type !== "sub" || event.side !== side) continue;
+        if (event.off && event.playerId)
+          participation.set(event.playerId, event.minute);
+        if (event.replacementId)
+          participation.set(
+            event.replacementId,
+            Math.max(0, 90 - event.minute),
+          );
+        if (event.on && event.playerId) {
+          participation.set(
+            event.playerId,
+            Math.max(0, 90 - event.minute),
+          );
+          if (event.replacedId)
+            participation.set(event.replacedId, event.minute);
+        }
+      }
+      for (const [playerId, minutes] of participation) {
+        if (minutes <= 0) continue;
         const player = team.roster.find((entry) => entry.id === playerId);
         if (!player) continue;
         participants.add(player.id);
@@ -2042,7 +2150,7 @@ export class Career {
           awayGoals: match.awayGoals,
           goals: playerGoals,
           assists: playerAssists,
-          minutes: match.playerStats?.[player.id]?.minutes ?? 90,
+          minutes,
           rating,
           knockout,
           result:
@@ -2453,8 +2561,9 @@ export class Career {
 
   progressWorldCupFixtures(tournament, today) {
     const completed = [];
+    let userMatch = null;
     while (true) {
-      const due = tournament.fixtures
+      let due = tournament.fixtures
         .filter(
           (fixture) =>
             fixture.status !== "completed" &&
@@ -2465,15 +2574,81 @@ export class Career {
             left.scheduledDay - right.scheduledDay ||
             left.id.localeCompare(right.id),
         );
-      if (!due.length) break;
+      let stageOnly = false;
+      if (!due.length) {
+        const completedGroup = tournament.fixtures.find(
+          (fixture) => fixture.stage === "group",
+        );
+        const completedKnockout = tournament.fixtures.find(
+          (fixture) =>
+            fixture.stage === "knockout" &&
+            fixture.knockoutStage === tournament.knockoutStage,
+        );
+        if (
+          completedGroup &&
+          !tournament.groupsAdvanced &&
+          tournament.fixtures
+            .filter((fixture) => fixture.stage === "group")
+            .every((fixture) => fixture.status === "completed")
+        ) {
+          due = [completedGroup];
+          stageOnly = true;
+        } else if (
+          completedKnockout &&
+          tournament.fixtures
+            .filter(
+              (fixture) =>
+                fixture.stage === "knockout" &&
+                fixture.knockoutStage === tournament.knockoutStage,
+            )
+            .every((fixture) => fixture.status === "completed")
+        ) {
+          due = [completedKnockout];
+          stageOnly = true;
+        } else {
+          break;
+        }
+      }
       const first = due[0];
-      const sameMatchday = due.filter(
+      const sameMatchday = stageOnly ? [] : due.filter(
         (fixture) =>
           fixture.scheduledDay === first.scheduledDay &&
           fixture.stage === first.stage &&
           fixture.knockoutStage === first.knockoutStage,
       );
       for (const fixture of sameMatchday) {
+        const selectedNation =
+          this.worldCup.userSelection?.selected &&
+          this.worldCup.userSelection?.nation === this.player.nationality;
+        const userTeamId = tournament.qualified.find(
+          (team) => team.code === this.player.nationality,
+        )?.id;
+        if (
+          selectedNation &&
+          userTeamId &&
+          (fixture.homeId === userTeamId || fixture.awayId === userTeamId)
+        ) {
+          const home = tournament.qualified.find(
+            (team) => team.id === fixture.homeId,
+          );
+          const away = tournament.qualified.find(
+            (team) => team.id === fixture.awayId,
+          );
+          if (!home || !away)
+            throw new Error(`Missing World Cup team in fixture ${fixture.id}.`);
+          const playerSelected =
+            home.squadIds?.includes(this.player.id) ||
+            away.squadIds?.includes(this.player.id);
+          if (playerSelected) {
+            userMatch = this.createWorldCupUserMatch(
+              tournament,
+              fixture,
+              home,
+              away,
+            );
+            continue;
+          }
+        }
         const home = tournament.qualified.find(
           (team) => team.id === fixture.homeId,
         );
@@ -2495,6 +2670,7 @@ export class Career {
           status: "completed",
           homeGoals: result.homeGoals,
           awayGoals: result.awayGoals,
+          stats: result.stats,
           penalties: result.penalties ?? null,
           decidedBy: result.decidedBy ?? null,
         });
@@ -2687,9 +2863,11 @@ export class Career {
       }
       this.refreshWorldCupCalendar(tournament);
       if (tournament.status === "complete") break;
+      if (userMatch) break;
+      if (stageOnly) continue;
       if (sameMatchday.length === 0) break;
     }
-    return completed;
+    return { completed, userMatch };
   }
 
   processWorldCupCalendar() {
@@ -2743,10 +2921,11 @@ export class Career {
       };
     }
     const today = this.currentDay();
-    const worldCupMatches = this.progressWorldCupFixtures(
+    const worldCupProgress = this.progressWorldCupFixtures(
       tournament,
       today,
     );
+    const worldCupMatches = worldCupProgress.completed;
     const unavailableIds = new Set();
     for (const fixture of tournament.fixtures) {
       const active =
@@ -2768,6 +2947,7 @@ export class Career {
       tournament,
       tournamentStarted,
       worldCupMatches,
+      worldCupUserMatch: worldCupProgress.userMatch,
     };
   }
 
@@ -9362,7 +9542,9 @@ export class Career {
     const internationalReport = this.processWorldCupCalendar();
 
     const fixtures = [];
-    let userMatch = null;
+    let userMatch = internationalReport?.worldCupUserMatch ?? null;
+    if (userMatch?.worldCupFixtureRecord)
+      fixtures.push(userMatch.worldCupFixtureRecord);
     const championsLeagueFixtureForWeek = this.getChampionsLeagueFixtureForWeek(
       this.week,
     );
@@ -9599,6 +9781,10 @@ export class Career {
           : [],
       },
     );
+    const completedLeagueFixtures = fixtures.filter(
+      (fixture) =>
+          !fixture.pending && fixture.competitionId !== "fifa-world-cup",
+    ).length;
     const allHeadlines = [
       ...(internationalReport?.qualificationFixtures?.length
         ? [
@@ -9618,17 +9804,21 @@ export class Career {
             `The ${internationalReport.tournament.year} FIFA World Cup has concluded: ${internationalReport.tournament.winner} are champions.`,
           ]
         : []),
-      ...(fixtures.length
+      ...(completedLeagueFixtures
+        ? [`${completedLeagueFixtures} league fixtures completed`]
+        : []),
+      ...(userMatch
         ? [
-            `${fixtures.length} league fixtures completed`,
-            userMatch
-              ? `${this.club.name} played ${userMatch.opponent}`
-              : "Results are in across the league",
+            userMatch.competitionId === "fifa-world-cup"
+              ? `${userMatch[userMatch.side].name} are ready to play ${userMatch.opponent} at the FIFA World Cup`
+              : `${this.club.name} are ready to play ${userMatch.opponent}`,
           ]
-        : [
-            "Training week completed",
-            "The squad is preparing for the next fixture",
-          ]),
+        : fixtures.length
+          ? ["Results are in across the league"]
+          : [
+              "Training week completed",
+              "The squad is preparing for the next fixture",
+            ]),
       ...championsLeagueHeadlines,
     ];
     const headlines = allHeadlines;
@@ -9883,7 +10073,12 @@ export class Career {
         if (!side || (side.substitutionsUsed ?? 0) >= 5) continue;
         const players = side.xi
           .map((id) => this.players.find((player) => player.id === id))
-          .filter((player) => player && player.position !== "GK");
+          .filter(
+            (player) =>
+              player &&
+              player.position !== "GK" &&
+              !(match.worldCupFixtureId && player.id === this.player.id),
+          );
         const averageOverall = players.length
           ? players.reduce(
               (total, player) => total + calculateOverall(player),
@@ -10529,6 +10724,104 @@ export class Career {
     };
   }
 
+  finishWorldCupUserMatch(match) {
+    const tournament = this.worldCup.tournament;
+    const fixture = tournament?.fixtures.find(
+      (entry) => entry.id === match.worldCupFixtureId,
+    );
+    if (!fixture || fixture.status === "completed")
+      throw new Error("The World Cup fixture is no longer available.");
+    const result = match.playerResult;
+    result.stats.goals = match.events.filter(
+      (event) => event.type === "goal" && event.scorerId === this.player.id,
+    ).length;
+    result.stats.assists = match.events.filter(
+      (event) => event.type === "goal" && event.assistId === this.player.id,
+    ).length;
+    const home = tournament.qualified.find(
+      (team) => team.id === fixture.homeId,
+    );
+    const away = tournament.qualified.find(
+      (team) => team.id === fixture.awayId,
+    );
+    if (!home || !away)
+      throw new Error(`Missing World Cup team in fixture ${fixture.id}.`);
+    const homeTeam = this.buildInternationalTeam(home, { refresh: false });
+    const awayTeam = this.buildInternationalTeam(away, { refresh: false });
+    const knockout = fixture.stage !== "group";
+    if (match.homeGoals === match.awayGoals && match.penalties?.winner) {
+      match.winnerId =
+        match.penalties.winner === "home"
+          ? homeTeam.club.id
+          : awayTeam.club.id;
+    }
+    this.recordInternationalMatch(match, homeTeam, awayTeam, {
+      worldCup: true,
+      knockout,
+    });
+    Object.assign(fixture, {
+      status: "completed",
+      homeGoals: match.homeGoals,
+      awayGoals: match.awayGoals,
+      stats: match.stats,
+      penalties: match.penalties ?? null,
+      decidedBy: match.decidedBy ?? null,
+    });
+    if (knockout) {
+      const winnerId =
+        match.homeGoals === match.awayGoals
+          ? match.penalties?.winner === "home"
+            ? home.id
+            : match.penalties?.winner === "away"
+              ? away.id
+              : null
+          : match.homeGoals > match.awayGoals
+            ? home.id
+            : away.id;
+      if (!winnerId)
+        throw new Error(`Knockout fixture ${fixture.id} has no winner.`);
+      fixture.winnerId = winnerId;
+      if (fixture.round === "Final") {
+        tournament.winnerId = winnerId;
+        tournament.runnerUpId = winnerId === home.id ? away.id : home.id;
+        tournament.winner = tournament.qualified.find(
+          (team) => team.id === winnerId,
+        )?.name;
+        tournament.runnerUp = tournament.qualified.find(
+          (team) => team.id === tournament.runnerUpId,
+        )?.name;
+      }
+      if (fixture.round === "Third-place playoff")
+        tournament.thirdPlaceId = winnerId;
+    } else {
+      const group = tournament.groups.find(
+        (entry) => entry.id === fixture.groupId,
+      );
+      if (!group)
+        throw new Error(`Missing World Cup group in fixture ${fixture.id}.`);
+      updateInternationalTable(group.table, fixture);
+    }
+    const reportFixture = match.worldCupFixtureRecord;
+    Object.assign(reportFixture, {
+      homeGoals: match.homeGoals,
+      awayGoals: match.awayGoals,
+      stats: match.stats,
+      pending: false,
+    });
+    this.progressWorldCupFixtures(tournament, this.currentDay());
+    this.refreshWorldCupCalendar(tournament);
+    this.lastReport.headlines.push(
+      `${home.name} ${match.homeGoals}–${match.awayGoals} ${away.name} · FIFA World Cup full time`,
+    );
+    this.news.push(
+      `${home.name} ${match.homeGoals}–${match.awayGoals} ${away.name} · FIFA World Cup full time.`,
+    );
+    this.matchSimulation.finalized = true;
+    this.matchSimulation.status = "finished";
+    this.seasonComplete = this.areAllSeasonCompetitionsComplete();
+    if (this.seasonComplete) this.recordSeasonAwards();
+  }
+
   finishMatchSimulation() {
     const match = this.lastReport?.userMatch;
     if (!match) return;
@@ -10554,6 +10847,10 @@ export class Career {
         stats.shots += additionalGoals;
         stats.shotsOnTarget += additionalGoals;
       }
+    }
+    if (match.worldCupFixtureId) {
+      this.finishWorldCupUserMatch(match);
+      return;
     }
     const result = match.playerResult;
     const objective =
@@ -12667,14 +12964,15 @@ export class Career {
     const worldCup = this.worldCup?.tournament;
     if (
       worldCup?.status &&
-      ["in-progress", "complete"].includes(worldCup.status) &&
-      this.worldCup?.userSelection?.selected
+      ["in-progress", "complete"].includes(worldCup.status)
     ) {
       const userTeam =
+        worldCup.qualified.find(
+          (team) => team.code === this.player.nationality,
+        ) ??
         worldCup.qualified.find((team) =>
           team.squadIds?.includes(this.player.id),
-        ) ??
-        worldCup.qualified.find((team) => team.code === this.player.nationality);
+        );
       if (userTeam) {
         for (const fixture of worldCup.fixtures ?? []) {
           const involvesUserTeam =
@@ -12694,9 +12992,11 @@ export class Career {
             competitionId: "fifa-world-cup",
             season: worldCup.season ?? worldCup.year - 1,
             roundLabel:
-              fixture.knockoutStage ??
-              fixture.round ??
-              (fixture.stage === "group" ? "Group stage" : fixture.stage),
+              fixture.stage === "group"
+                ? `Group stage · ${fixture.groupId ?? "Group"} · Matchday ${Number(fixture.round ?? 0) + 1}`
+                : fixture.knockoutStage ??
+                  fixture.round ??
+                  fixture.stage,
             matchNumber:
               fixture.stage === "group"
                 ? Number(fixture.round ?? 0) + 1
@@ -12712,7 +13012,7 @@ export class Career {
             result: played
               ? `${fixture.homeGoals} – ${fixture.awayGoals}${fixture.decidedBy === "penalties" && fixture.penalties ? " (pens)" : ""}`
               : null,
-            stats: null,
+            stats: played ? (fixture.stats ?? null) : null,
             played,
             stage: fixture.stage,
           });
@@ -13158,6 +13458,9 @@ export class Career {
       academyState(club);
       ensureSquadRegistration(club, this.players);
     }
+    this.reconcileSquadMembership();
+    for (const club of this.clubs)
+      ensureSquadRegistration(club, this.players);
     this.ensureSquadSizes();
     this.club = this.clubs.find((club) => club.id === this.player.clubId);
     for (const club of this.clubs) assignShirtNumbers(this.players, club, true);
