@@ -1,4 +1,4 @@
-import {
+﻿import {
   ageOn,
   fromDayIndex,
   seasonLabel,
@@ -24,12 +24,14 @@ import { Rng, RngBundle, hashString } from "./core/rng.mjs";
 
 import { clamp, round, formatDecimal } from "./core/util.mjs";
 import {
+  calculateMarketValue,
   ensureClubFinance,
   financialSummary,
   marketValueForPlayer,
   processMatchdayRevenue,
   processWeeklyClubFinances,
   recordClubTransaction,
+  syncPlayerMarketValue,
   transferPlayer,
 } from "./core/finance.mjs";
 import { Agent } from "./model/agent.mjs";
@@ -522,6 +524,7 @@ export class Career {
       );
       if (league) player.leagueId = league.league.id;
     }
+    this.syncAllPlayerMarketValues({ season: this.season, dayIndex: this.currentDay(), initialize: true });
     this.expansionPlayers = [];
     this.worldCupNpcPlayers = [];
     this.leagueHistories = {};
@@ -598,7 +601,7 @@ export class Career {
     this.ensureSquadSizes();
     for (const club of this.clubs) assignShirtNumbers(this.players, club);
     // In manager mode the human is the coach, so his chosen style is the club's style
-    // and he picks the shape — not an AI head coach.
+    // and he picks the shape â€” not an AI head coach.
     if (this.managerState) {
       this.club.manager.style = this.managerState.style;
       this.club.manager.name = `${this.managerState.first} ${this.managerState.last}`;
@@ -3671,20 +3674,20 @@ export class Career {
             award: "FIFA World Cup Runner-up Medal",
             season: tournament.season,
             competition: "FIFA World Cup",
-            value: `${tournament.year} · ${team.name}`,
+            value: `${tournament.year} Â· ${team.name}`,
           });
         if (award === "FIFA World Cup Third Place")
           this.recordPlayerHonour(player, {
             award: "FIFA World Cup Third-place Medal",
             season: tournament.season,
             competition: "FIFA World Cup",
-            value: `${tournament.year} · ${team.name}`,
+            value: `${tournament.year} Â· ${team.name}`,
           });
         this.recordPlayerHonour(player, {
           award,
           season: tournament.season,
           competition: "FIFA World Cup",
-          value: `${tournament.year} · ${team.name}`,
+          value: `${tournament.year} Â· ${team.name}`,
         });
       }
     }
@@ -3712,7 +3715,7 @@ export class Career {
           award,
           season: tournament.season,
           competition: "FIFA World Cup",
-          value: `${tournament.year} · ${winner.goals} goals · ${formatDecimal(meanRating(winner))} rating`,
+          value: `${tournament.year} Â· ${winner.goals} goals Â· ${formatDecimal(meanRating(winner))} rating`,
         });
     }
     const countryTrophies = (this.worldCup.countryTrophies ??= {});
@@ -4594,7 +4597,7 @@ export class Career {
           value: playerOfSeason?.points ?? null,
           valueLabel: "race points",
           displayValue: playerOfSeason
-            ? `${formatDecimal(playerOfSeason.points)} pts · league champions`
+            ? `${formatDecimal(playerOfSeason.points)} pts Â· league champions`
             : null,
         },
         {
@@ -4732,7 +4735,7 @@ export class Career {
         value: coachWinner?.score ?? null,
         valueLabel: "season score",
         displayValue: coachWinner
-          ? `${coachWinner.manager.name} · ${formatDecimal(coachWinner.score)} pts`
+          ? `${coachWinner.manager.name} Â· ${formatDecimal(coachWinner.score)} pts`
           : null,
       });
       return awards.map((award) => ({
@@ -5863,7 +5866,7 @@ export class Career {
   /**
    * Add a trophy to a player's honour list. Accepts a player object (from any league),
    * an id, or a `"First Last"` name, and silently does nothing if the player cannot be
-   * resolved — a missing award is far better than a crash at the end of a season.
+   * resolved â€” a missing award is far better than a crash at the end of a season.
    */
   recordPlayerHonour(playerName, honour) {
     let player = null;
@@ -5931,7 +5934,7 @@ export class Career {
   /**
    * Every honour earned by a player, wherever in the world he is listed. Legends and
    * world performers live outside `this.players`, so the trophy case has to look them
-   * up too — that was why most winners' trophies never appeared.
+   * up too â€” that was why most winners' trophies never appeared.
    */
   getPlayerHonours(player) {
     if (!player) return [];
@@ -6699,6 +6702,9 @@ export class Career {
       trophyWinners,
       promotionMoves,
     });
+    // Recalculate market value for every player across all leagues/contexts once per completed season,
+    // using the finished season's statistics and the players' latest attributes/OVR.
+    this.recalculateAllMarketValuesForSeason(this.season, { dayIndex: this.currentDay() });
     for (const entry of this.worldCareerLeagues) {
       entry.league.season = this.season + 1;
       this.leagueHistories[entry.league.id] = entry.league.history ?? [];
@@ -6783,10 +6789,103 @@ export class Career {
     };
   }
 
-  /**
-   * Add a league result to the manager's season record. Ignored entirely in a player
-   * career, and ignored for fixtures his club is not involved in.
-   */
+  syncAllPlayerMarketValues({ season = this.season, dayIndex = this.currentDay(), initialize = false } = {}) {
+    const clubById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    for (const player of this.collectAllMarketPlayers()) {
+      const club = clubById.get(player.clubId) ?? null;
+      if (player.marketValue == null && Number.isFinite(Number(player.value))) {
+        player.marketValue = Number(player.value);
+      }
+      syncPlayerMarketValue(player, {
+        club,
+        dayIndex,
+        season,
+        force: initialize || !Number.isFinite(Number(player.marketValue ?? player.value)),
+      });
+      if (player.previousMarketValue === undefined) player.previousMarketValue = null;
+      if (!Number.isFinite(Number(player.marketValueChange))) player.marketValueChange = 0;
+    }
+  }
+
+  collectAllMarketPlayers() {
+    const seen = new Set();
+    const players = [];
+    const add = (player) => {
+      if (!player || typeof player !== "object") return;
+      const key = player.id ?? player;
+      if (seen.has(key)) return;
+      seen.add(key);
+      players.push(player);
+    };
+    for (const player of this.players ?? []) add(player);
+    for (const player of this.expansionPlayers ?? []) add(player);
+    for (const player of this.worldCupNpcPlayers ?? []) add(player);
+    for (const state of this.worldLeagues ?? []) {
+      for (const player of state.performers ?? []) add(player);
+      for (const player of state.players ?? []) add(player);
+    }
+    for (const club of this.clubs ?? []) {
+      for (const player of club.academy?.players ?? []) add(player);
+      for (const player of club.loanedOutPlayers ?? []) add(player);
+      for (const player of club.loanedInPlayers ?? []) add(player);
+    }
+    if (typeof this.internationalPlayers === "function") {
+      for (const player of this.internationalPlayers() ?? []) add(player);
+    }
+    return players;
+  }
+
+  recalculateAllMarketValuesForSeason(completedSeason, { dayIndex = this.currentDay() } = {}) {
+    const clubById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    for (const player of this.collectAllMarketPlayers()) {
+      if (player.marketValueSeason === completedSeason) continue; // once per season per player
+      const club = clubById.get(player.clubId) ?? null;
+      if (player.marketValue == null && Number.isFinite(Number(player.value))) {
+        player.marketValue = Number(player.value);
+      }
+      const previous = Number.isFinite(Number(player.marketValue ?? player.value))
+        ? Number(player.marketValue ?? player.value)
+        : null;
+      const current = calculateMarketValue(player, {
+        club,
+        clubPrestige: club?.prestige ?? club?.reputation,
+        dayIndex,
+        season: completedSeason,
+        completedSeason,
+      });
+      let adjusted = current;
+      if (previous != null && previous > 0) {
+        const ratio = current / previous;
+        const dampedRatio = ratio > 1 ? Math.min(ratio, 1.45) : Math.max(ratio, 0.65);
+        adjusted = Math.round(previous * dampedRatio);
+        const age = Number(player.age ?? 25);
+        const apps = Number(player.leaguePerformance?.apps ?? player.stats?.apps ?? player.apps ?? 0);
+        const ratingSum = Number(player.leaguePerformance?.ratingSum ?? player.stats?.ratingSum ?? player.ratingSum ?? 0);
+        const avg = apps > 0 ? ratingSum / apps : 6.4;
+        if (age <= 21 && avg >= 7.1 && apps >= 12) {
+          adjusted = Math.max(adjusted, Math.round(previous * Math.min(ratio, 1.7)));
+        }
+        if (apps <= 2 && avg < 6.8) {
+          adjusted = Math.min(adjusted, Math.round(previous * Math.max(ratio, 0.82)));
+        }
+      }
+      const step = adjusted >= 50_000_000 ? 1_000_000
+        : adjusted >= 10_000_000 ? 500_000
+        : adjusted >= 1_000_000 ? 100_000
+        : adjusted >= 250_000 ? 25_000
+        : 10_000;
+      adjusted = Math.max(25_000, Math.round(adjusted / step) * step);
+
+      player.previousMarketValue = previous;
+      player.marketValue = adjusted;
+      player.value = adjusted; // backward-compatible alias
+      player.marketValueChange = previous != null ? adjusted - previous : 0;
+      player.marketValueSeason = completedSeason;
+      player.marketValueUpdatedSeason = completedSeason;
+      player.marketValueUpdatedAt = dayIndex;
+    }
+  }
+
   recordManagerResult(match) {
     const state = this.managerState;
     if (!state || !match) return;
@@ -6857,7 +6956,7 @@ export class Career {
         (item) => item.id === requestId,
       );
       this.news.push(
-        `Board response recorded: ${request?.label ?? "request"} — ${response}.`,
+        `Board response recorded: ${request?.label ?? "request"} â€” ${response}.`,
       );
     }
     return accepted;
@@ -7099,7 +7198,7 @@ export class Career {
     );
     if (finance.balance < appointmentCost) {
       throw new Error(
-        `You need €${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`,
+        `You need â‚¬${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`,
       );
     }
     recordClubTransaction(this.club, {
@@ -7162,7 +7261,7 @@ export class Career {
 
   /**
    * Close out a manager's season: judge him against the board's target, bank the trophies
-   * he won, update the three confidence meters and — if the board has lost faith — sack
+   * he won, update the three confidence meters and â€” if the board has lost faith â€” sack
    * him. Called from `advanceSeason` while the finished season's table is still live.
    */
   settleManagerSeason() {
@@ -7274,7 +7373,7 @@ export class Career {
         config.teams.map((name) => {
           const id = clean(name);
           const prestige =
-            /^(Ajax|PSV Eindhoven|Feyenoord|Benfica|Porto|Sporting CP|Club Brugge|Anderlecht|Celtic|Rangers|Galatasaray|Fenerbahçe|Beşiktaş)$/i.test(
+            /^(Ajax|PSV Eindhoven|Feyenoord|Benfica|Porto|Sporting CP|Club Brugge|Anderlecht|Celtic|Rangers|Galatasaray|FenerbahÃ§e|BeÅŸiktaÅŸ)$/i.test(
               name,
             )
               ? 78
@@ -8314,7 +8413,7 @@ export class Career {
     });
     player.contract.expires = this.season + contractYears;
     this.news.push(
-      `${player.first} ${player.last} joins ${this.club.name} for €${agreedFee.toLocaleString()}.`,
+      `${player.first} ${player.last} joins ${this.club.name} for â‚¬${agreedFee.toLocaleString()}.`,
     );
     return result;
   }
@@ -8707,7 +8806,7 @@ export class Career {
     // profile. Missing or invalid entries keep the seeded roll above. Because the body
     // is applied on top when the player is built, a slider value is read as "what this
     // player would show with a normal build", and divided by his physique multiplier
-    // here — so a heavy winger still ends up visibly slower than a lean one.
+    // here â€” so a heavy winger still ends up visibly slower than a lean one.
     const physique = physiqueProfile(position, height, weight);
     const sliderGroups = position === "GK" ? GK_ATTRIBUTES : ATTRIBUTES;
     let customised = false;
@@ -8756,8 +8855,8 @@ export class Career {
     const reconcileOverall = () => {
       // `calculateOverall` rounds to a whole number, so several stat lines share the same
       // displayed overall, and a fractional nudge cannot move a rounded number at all.
-      // Walk out from the rolled line one whole point at a time — on the stats that
-      // matter most for the position — and stop at the first line whose rounded overall
+      // Walk out from the rolled line one whole point at a time â€” on the stats that
+      // matter most for the position â€” and stop at the first line whose rounded overall
       // is exactly the target.
       const levers = Object.entries(
         position === "GK" ? GK_WEIGHTS : POSITION_WEIGHTS[position],
@@ -9209,7 +9308,7 @@ export class Career {
       throw new Error("That agent is already employed.");
     if (!this.spendMoney(agent.fee, `Hired agent: ${agent.name}`)) {
       throw new Error(
-        `You need €${agent.fee.toLocaleString()} to hire ${agent.name}.`,
+        `You need â‚¬${agent.fee.toLocaleString()} to hire ${agent.name}.`,
       );
     }
     this.financialHistory ??= [];
@@ -9550,7 +9649,7 @@ export class Career {
     const agentCost = Math.round(agent.fee * 0.08);
     if (agentCost > 0 && (this.money ?? 0) < agentCost)
       throw new Error(
-        `You need €${agentCost.toLocaleString()} to fund this search.`,
+        `You need â‚¬${agentCost.toLocaleString()} to fund this search.`,
       );
     this.transferMarketState.searchCount++;
     this.transferMarketState.lastSearchDay = today;
@@ -9558,7 +9657,7 @@ export class Career {
     if (agentCost > 0) {
       if (!this.spendMoney(agentCost, `${agent.name} destination search`))
         throw new Error(
-          `You need €${agentCost.toLocaleString()} to fund this search.`,
+          `You need â‚¬${agentCost.toLocaleString()} to fund this search.`,
         );
       this.financialHistory ??= [];
       this.financialHistory.push({
@@ -9852,7 +9951,7 @@ export class Career {
       this.transferHistory.unshift(transfer);
       moved.push(transfer);
       this.news.unshift(
-        `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for €${transfer.fee.toLocaleString()}.`,
+        `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for â‚¬${transfer.fee.toLocaleString()}.`,
       );
       deals++;
     }
@@ -9869,7 +9968,7 @@ export class Career {
           transfer.toClub === this.club.name
         ) {
           this.news.unshift(
-            `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for €${transfer.fee.toLocaleString()}.`,
+            `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for â‚¬${transfer.fee.toLocaleString()}.`,
           );
         }
       }
@@ -9916,11 +10015,11 @@ export class Career {
         offer.wage = requestedWage;
         offer.negotiated = true;
         this.news.unshift(
-          `${offer.clubName} accepted your request for €${requestedWage.toLocaleString()} weekly wages.`,
+          `${offer.clubName} accepted your request for â‚¬${requestedWage.toLocaleString()} weekly wages.`,
         );
       } else {
         this.news.unshift(
-          `${offer.clubName} rejected your request for €${requestedWage.toLocaleString()} weekly wages; the original terms remain available.`,
+          `${offer.clubName} rejected your request for â‚¬${requestedWage.toLocaleString()} weekly wages; the original terms remain available.`,
         );
       }
       return { accepted, negotiated: true, offer, requestedWage };
@@ -10054,7 +10153,7 @@ export class Career {
       }
       this.transferOffers = [];
       this.news.push(
-        `${this.player.first} ${this.player.last} joins ${targetClub.name} for €${offer.fee.toLocaleString()} and €${offer.wage.toLocaleString()} weekly wages.`,
+        `${this.player.first} ${this.player.last} joins ${targetClub.name} for â‚¬${offer.fee.toLocaleString()} and â‚¬${offer.wage.toLocaleString()} weekly wages.`,
       );
       return { accepted: true, offer };
     }
@@ -10284,7 +10383,7 @@ export class Career {
           const involvement = precomputedInvolvement ?? this.matchInvolvement();
           // When the career player is not starting, keep him off the XI entirely so he
           // can never be credited with a scheduled goal, card or key moment while
-          // sitting on the bench — the ghost-player bug. The teammate the plan names as
+          // sitting on the bench â€” the ghost-player bug. The teammate the plan names as
           // the one making way IS forced into the XI, so the planned entrance is real.
           const plannedOutgoingId =
             !involvement.starts && involvement.outgoingPlayerId
@@ -10381,7 +10480,7 @@ export class Career {
             side,
             objective: objective
               ? objective.title
-              : "No objective — did not play",
+              : "No objective â€” did not play",
             objectiveComplete: false,
             objectiveAwarded: false,
           };
@@ -11152,8 +11251,8 @@ export class Career {
     const displacedId = offPlayerId ?? occupantOfNaturalSlot;
 
     // Rebuild the XI so the incoming player takes the outgoing player's place exactly
-    // once. Any earlier, stale listing of the incoming player — the engine can force a
-    // bench player into the starting XI — is removed rather than left alongside it.
+    // once. Any earlier, stale listing of the incoming player â€” the engine can force a
+    // bench player into the starting XI â€” is removed rather than left alongside it.
     const nextXI = [];
     for (const id of side.xi) {
       if (id === displacedId) nextXI.push(player.id);
@@ -11495,10 +11594,10 @@ export class Career {
     this.progressWorldCupFixtures(tournament, this.currentDay());
     this.refreshWorldCupCalendar(tournament);
     this.lastReport.headlines.push(
-      `${home.name} ${match.homeGoals}–${match.awayGoals} ${away.name} · FIFA World Cup full time`,
+      `${home.name} ${match.homeGoals}â€“${match.awayGoals} ${away.name} Â· FIFA World Cup full time`,
     );
     this.news.push(
-      `${home.name} ${match.homeGoals}–${match.awayGoals} ${away.name} · FIFA World Cup full time.`,
+      `${home.name} ${match.homeGoals}â€“${match.awayGoals} ${away.name} Â· FIFA World Cup full time.`,
     );
     this.matchSimulation.finalized = true;
     this.matchSimulation.status = "finished";
@@ -11748,14 +11847,14 @@ export class Career {
       .positions()
       .get(this.club.id);
     this.lastReport.headlines.push(
-      `${this.club.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · full time`,
+      `${this.club.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· full time`,
     );
     // In a manager career there is no human player to rate, so the final score is the
     // only thing worth an inbox item. The neutral placeholder player is not named.
     this.news.push(
       this.isManagerCareer
-        ? `${match.home.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · full time.`
-        : `${match.home.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · ${this.player.first} ${this.player.last} rated ${formatDecimal(result.rating)}.`,
+        ? `${match.home.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· full time.`
+        : `${match.home.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· ${this.player.first} ${this.player.last} rated ${formatDecimal(result.rating)}.`,
     );
     this.seasonComplete = this.areAllSeasonCompetitionsComplete();
     if (this.seasonComplete) this.recordSeasonAwards();
@@ -13075,7 +13174,7 @@ export class Career {
     if (!Number.isFinite(amount) || amount < 0)
       throw new Error("Money transactions must be a non-negative amount.");
     if (!amount) return;
-    // Balance updates silently — no transaction log is kept any more.
+    // Balance updates silently â€” no transaction log is kept any more.
     this.money += amount;
   }
 
@@ -13100,7 +13199,7 @@ export class Career {
       throw new Error("That manager is already employed.");
     if (!this.spendMoney(candidate.cost, `Hired manager: ${candidate.name}`)) {
       throw new Error(
-        `You need €${candidate.cost.toLocaleString()} to hire ${candidate.name}.`,
+        `You need â‚¬${candidate.cost.toLocaleString()} to hire ${candidate.name}.`,
       );
     }
     this.club.manager = new Manager({
@@ -13308,7 +13407,7 @@ export class Career {
         objective:
           involvement.minutes > 0
             ? this.pickObjective()
-            : "No objective — did not play",
+            : "No objective â€” did not play",
         objectiveComplete: false,
         objectiveAwarded: false,
       },
@@ -13390,7 +13489,7 @@ export class Career {
         awayId: away.id,
         result:
           result && !result.pending
-            ? `${result.homeGoals} – ${result.awayGoals}`
+            ? `${result.homeGoals} â€“ ${result.awayGoals}`
             : null,
         stats: result && !result.pending ? (result.stats ?? null) : null,
         played: !!result && !result.pending,
@@ -13440,7 +13539,7 @@ export class Career {
           away: away.name,
           awayShortName: away.shortName,
           awayId,
-          result: played ? `${result.homeGoals} – ${result.awayGoals}` : null,
+          result: played ? `${result.homeGoals} â€“ ${result.awayGoals}` : null,
           stats: played ? (result.stats ?? null) : null,
           played,
           stage,
@@ -13450,7 +13549,7 @@ export class Career {
         addChampionsLeagueFixture({
           id: fixture.id,
           stage: fixture.stage,
-          roundLabel: `League phase · Matchday ${fixture.round}`,
+          roundLabel: `League phase Â· Matchday ${fixture.round}`,
           week: fixture.week,
           homeId: fixture.homeId,
           awayId: fixture.awayId,
@@ -13472,7 +13571,7 @@ export class Career {
             addChampionsLeagueFixture({
               id: leg.id,
               stage: tie.stage,
-              roundLabel: `${roundName} · ${legName}`,
+              roundLabel: `${roundName} Â· ${legName}`,
               week: leg.week,
               homeId: leg.homeId,
               awayId: leg.awayId,
@@ -13526,7 +13625,7 @@ export class Career {
             season: worldCup.season ?? worldCup.year - 1,
             roundLabel:
               fixture.stage === "group"
-                ? `Group stage · ${fixture.groupId ?? "Group"} · Matchday ${Number(fixture.round ?? 0) + 1}`
+                ? `Group stage Â· ${fixture.groupId ?? "Group"} Â· Matchday ${Number(fixture.round ?? 0) + 1}`
                 : (fixture.knockoutStage ?? fixture.round ?? fixture.stage),
             matchNumber:
               fixture.stage === "group" ? Number(fixture.round ?? 0) + 1 : null,
@@ -13539,7 +13638,7 @@ export class Career {
             awayShortName: away.code,
             awayId: away.id,
             result: played
-              ? `${fixture.homeGoals} – ${fixture.awayGoals}${fixture.decidedBy === "penalties" && fixture.penalties ? " (pens)" : ""}`
+              ? `${fixture.homeGoals} â€“ ${fixture.awayGoals}${fixture.decidedBy === "penalties" && fixture.penalties ? " (pens)" : ""}`
               : null,
             stats: played ? (fixture.stats ?? null) : null,
             played,
@@ -13940,10 +14039,19 @@ export class Career {
         apps: player.stats.apps,
         ratingSum: player.stats.ratingSum,
       };
+      if (player.marketValue == null && Number.isFinite(Number(player.value))) {
+        player.marketValue = Number(player.value);
+      }
+      if (player.marketValue != null && player.value == null) player.value = player.marketValue;
+      player.previousMarketValue ??= null;
+      player.marketValueChange ??= 0;
       player.overall = calculateOverall(player);
       player.baseOverall = player.overall;
       return player;
     });
+    this.expansionPlayers = Array.isArray(saved.expansionPlayers) ? saved.expansionPlayers : (this.expansionPlayers ?? []);
+    this.worldCupNpcPlayers = Array.isArray(saved.worldCupNpcPlayers) ? saved.worldCupNpcPlayers : (this.worldCupNpcPlayers ?? []);
+    this.syncAllPlayerMarketValues({ season: this.season, dayIndex: this.currentDay(), initialize: false });
     this.player = this.players.find((player) => player.id === saved.playerId);
     if (!this.player) throw new Error("Save is missing its career player.");
     this.trainingFocus = normalizedTrainingFocus(
@@ -14237,3 +14345,4 @@ export function createCareer(data, options, saved = null) {
 }
 
 export { emptyStats };
+

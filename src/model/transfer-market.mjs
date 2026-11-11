@@ -180,7 +180,7 @@ export function scoreTransferSuitability({
   const finance = club.finances ?? {};
   const transferValue = Math.max(
     25_000,
-    Number(player.value ?? overall ** 3 * 90),
+    Number(player.marketValue ?? player.value ?? overall ** 3 * 90),
   );
   const availableBudget = Number(finance.transferBudget ?? club.budget ?? 0);
   const currentWage = Number(player.contract?.wage ?? overall * 600);

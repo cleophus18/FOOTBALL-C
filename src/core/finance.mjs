@@ -1,4 +1,4 @@
-import { clamp, round } from "./util.mjs";
+﻿import { clamp, round } from "./util.mjs";
 import { isLegend, legendForClub } from "../model/legends.mjs";
 
 const DEFAULT_SPONSORS = [
@@ -208,18 +208,192 @@ export function processMatchdayRevenue(
   });
 }
 
-export function marketValueForPlayer(player, club, dayIndex = 0) {
-  const overall = Number(player.overall ?? 50);
-  const potential = Number(player.potential ?? overall);
-  const age = Number(player.age ?? 25);
-  const ageFactor = age < 23 ? 1 + (23 - age) * 0.08 : age > 29 ? Math.max(0.45, 1 - (age - 29) * 0.08) : 1;
-  const potentialFactor = 1 + clamp(potential - overall, 0, 20) * 0.025;
-  const contractFactor = clamp(Number(player.contract?.yearsRemaining ?? 2) / 3, 0.55, 1.15);
-  const reputationFactor = 0.8 + Number(club?.prestige ?? 50) / 250;
-  const value = overall ** 3 * 95 * ageFactor * potentialFactor * contractFactor * reputationFactor;
-  player.value = Math.max(25_000, Math.round(value / 1_000) * 1_000);
-  player.marketValueUpdatedAt = dayIndex;
-  return player.value;
+/** ---- Dynamic market value system ---- */
+
+function num(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function roundToStep(value) {
+  const step = value >= 50_000_000 ? 1_000_000
+    : value >= 10_000_000 ? 500_000
+    : value >= 1_000_000 ? 100_000
+    : value >= 250_000 ? 25_000
+    : 10_000;
+  return Math.max(25_000, Math.round(value / step) * step);
+}
+
+function contractYearsRemaining(player, context = {}) {
+  const contract = player?.contract ?? {};
+  const direct = num(contract.yearsRemaining ?? contract.years ?? contract.length, NaN);
+  if (Number.isFinite(direct)) return clamp(direct, 0, 6);
+  const expires = num(contract.expires ?? contract.endSeason ?? contract.expiry, NaN);
+  const season = num(context.season, NaN);
+  if (Number.isFinite(expires) && Number.isFinite(season)) return clamp(expires - season, 0, 6);
+  return 2;
+}
+
+function playerStatsBundle(player) {
+  const stats = player?.stats ?? {};
+  const leagueApps = num(player?.leaguePerformance?.apps ?? player?.apps, NaN);
+  const leagueRatingSum = num(player?.leaguePerformance?.ratingSum ?? player?.ratingSum, NaN);
+  const apps = Math.max(0, Number.isFinite(leagueApps) ? leagueApps : num(stats.apps));
+  const ratingSum = Number.isFinite(leagueRatingSum) ? leagueRatingSum : num(stats.ratingSum);
+  const averageRating = apps > 0 ? ratingSum / apps : (num(player?.lastMatchRating, NaN) || 6.4);
+  const goals = Math.max(0, num(player?.leagueGoals ?? player?.goals ?? stats.goals));
+  const assists = Math.max(0, num(player?.leagueAssists ?? player?.assists ?? stats.assists));
+  const minutes = Math.max(0, num(stats.minutes, apps * 70));
+  const motm = Math.max(0, num(stats.motm ?? stats.manOfTheMatch));
+  const cleanSheets = Math.max(0, num(stats.cleanSheets));
+  return { apps, averageRating, goals, assists, minutes, motm, cleanSheets };
+}
+
+function formSignal(player) {
+  const recent = Array.isArray(player?.recentMatchRatings) ? player.recentMatchRatings.filter(Number.isFinite) : [];
+  if (recent.length) {
+    const avg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+    return clamp((avg - 6.5) / 2.2, -1, 1);
+  }
+  const form = num(player?.form, NaN);
+  if (Number.isFinite(form)) return clamp((form - 50) / 35, -1, 1);
+  const last = num(player?.lastMatchRating, NaN);
+  return Number.isFinite(last) ? clamp((last - 6.6) / 2.4, -1, 1) : 0;
+}
+
+function injurySignal(player) {
+  if (!player) return 1;
+  if (player.injury) {
+    const weeks = num(player.injury.weeks ?? player.injury.duration ?? player.injury.remaining, 2);
+    const type = String(player.injury.type ?? "").toLowerCase();
+    const severe = type.includes("serious") || weeks >= 8 ? 0.72 : weeks >= 4 ? 0.82 : 0.9;
+    return severe;
+  }
+  const fitness = num(player.fitness, 100);
+  return clamp(0.9 + (fitness / 100) * 0.1, 0.9, 1);
+}
+
+function positionDemand(position = "") {
+  const pos = String(position).toUpperCase();
+  if (pos === "ST" || pos === "CF") return 1.05;
+  if (pos === "GK") return 0.97;
+  if (pos === "CB") return 0.99;
+  if (["LW", "RW", "AM", "CAM"].includes(pos)) return 1.03;
+  return 1;
+}
+
+function expectedSeasonApps(player, context = {}) {
+  const apps = playerStatsBundle(player).apps;
+  if (apps > 0) return apps;
+  if (player?.status === "academy" || String(player?.id ?? "").startsWith("academy")) return 6;
+  if (player?.onLoan || player?.loan) return 18;
+  return 24;
+}
+
+/**
+ * Dynamic market value estimate (euros). Estimate only, not a guaranteed transfer fee.
+ * Uses current OVR/potential/age, accumulated season performance, form/ratings, playing time,
+ * injuries/availability, position, contract, club/league context and demand signals.
+ * Single-match swings are damped via accumulated stats and recent-form averages.
+ */
+export function calculateMarketValue(player, context = {}) {
+  if (!player) return 0;
+  const prestige = clamp(num(context.clubPrestige ?? context.club?.prestige ?? context.club?.reputation, 55), 1, 100);
+  const season = context.season ?? context.completedSeason ?? null;
+  const overall = clamp(num(player.overall ?? player.currentOverall ?? player.baseOverall, 55), 35, 99);
+  const potential = clamp(Math.max(num(player.potential, overall), overall), 35, 99);
+  const age = clamp(num(player.age, 25), 15, 45);
+  const { apps, averageRating, goals, assists, minutes, motm, cleanSheets } = playerStatsBundle(player);
+  const position = player.position ?? "CM";
+  const yearsLeft = contractYearsRemaining(player, { season });
+
+  // Base OVR curve anchored to realistic football ranges (approximate, not hard limits).
+  let value = 65_000 * Math.pow(2.08, overall - 55);
+  if (overall >= 90) value *= 1 + (overall - 90) * 0.08;
+
+  // Age and potential.
+  const upside = Math.max(0, potential - overall);
+  if (age <= 23) value *= 1.08 + upside * 0.03 + (23 - age) * 0.045;
+  else if (age <= 27) value *= 1.02 + upside * 0.012;
+  else if (age <= 30) value *= 0.97 - (age - 27) * 0.03 + upside * 0.004;
+  else value *= Math.pow(0.88, age - 30) * (1 + upside * 0.002);
+  if (age >= 33 && overall >= 86) value *= 1.08;
+  if (age >= 35 && overall >= 88) value *= 1.06;
+
+  // Accumulated season performance and consistency/exposure.
+  const ratingFactor = clamp(1 + (averageRating - 6.6) * 0.11, 0.72, 1.28);
+  const appsNorm = clamp(apps / 30, 0, 1.3);
+  const playingTime = clamp(0.82 + appsNorm * 0.22 + clamp(minutes / 2400, 0, 1.2) * 0.08, 0.78, 1.18);
+  const outputBase = goals + assists * 0.72 + motm * 0.35 + (position === "GK" ? cleanSheets * 0.45 : 0);
+  const outputPerApp = apps > 0 ? outputBase / apps : 0;
+  const outputFactor = clamp(1 + outputPerApp * 0.22, 0.84, 1.32);
+  const exposurePenalty = apps < 8 ? 0.84 + apps * 0.015 : apps < 15 ? 0.94 + (apps - 8) * 0.008 : 1;
+  const consistency = clamp(1 - Math.abs(formSignal(player)) * 0.03, 0.96, 1.02);
+
+  const prestigeFactor = clamp(0.88 + prestige / 185, 0.9, 1.16);
+  const competitionFactor = clamp(num(context.competitionFactor, 1), 0.9, 1.15);
+  const demandRaw = num(player.transferDemand ?? player.marketDemand ?? player.interestLevel, NaN);
+  const demandFactor = Number.isFinite(demandRaw)
+    ? clamp(0.94 + clamp(demandRaw <= 1 ? demandRaw : demandRaw / 100, 0, 1.5) * 0.12, 0.94, 1.12)
+    : 1;
+  const contractFactor = clamp(0.82 + yearsLeft * 0.08, 0.82, 1.16);
+
+  value *= ratingFactor * playingTime * outputFactor * exposurePenalty * consistency;
+  value *= positionDemand(position) * injurySignal(player) * prestigeFactor * competitionFactor * demandFactor * contractFactor;
+
+  if (age <= 21 && averageRating >= 7.0 && apps >= 10) value *= 1.08 + clamp((averageRating - 7.0) * 0.12, 0, 0.18);
+  if (overall >= 92 && averageRating >= 7.1) value *= 1.05;
+  if (expectedSeasonApps(player, context) < 10 && apps < 10) value *= 0.92;
+
+  return roundToStep(value);
+}
+
+export function syncPlayerMarketValue(player, {
+  club = null,
+  dayIndex = 0,
+  season = null,
+  completedSeason = null,
+  force = false,
+} = {}) {
+  if (!player) return 0;
+  const markerSeason = completedSeason ?? season ?? null;
+  const current = calculateMarketValue(player, {
+    club,
+    clubPrestige: club?.prestige ?? club?.reputation,
+    dayIndex,
+    season: markerSeason ?? season,
+  });
+  const existing = num(player.marketValue ?? player.value, NaN);
+  if (!Number.isFinite(existing)) {
+    player.marketValue = current;
+  } else if (force || player.marketValueSeason !== markerSeason) {
+    player.marketValue = current;
+  } else {
+    player.marketValue = existing;
+  }
+  player.value = player.marketValue; // backward-compatible alias
+  if (markerSeason != null && (force || player.marketValueSeason !== markerSeason)) {
+    player.marketValueUpdatedAt = dayIndex;
+  } else if (player.marketValueUpdatedAt == null) {
+    player.marketValueUpdatedAt = dayIndex;
+  }
+  player.marketValueUpdatedSeason ??= player.marketValueSeason ?? null;
+  return player.marketValue;
+}
+
+export function formatMarketValue(value) {
+  const amount = Math.max(0, num(value));
+  if (amount >= 1_000_000) {
+    const millions = amount / 1_000_000;
+    const rounded = millions >= 100 ? Math.round(millions) : Math.round(millions * 10) / 10;
+    return `€${String(rounded).replace(/\.0$/, "")}M`;
+  }
+  const thousands = Math.round(amount / 1_000);
+  return `€${thousands}K`;
+}
+
+export function marketValueForPlayer(player, club, dayIndex = 0, context = {}) {
+  return syncPlayerMarketValue(player, { club, dayIndex, ...context });
 }
 
 export function transferPlayer({
@@ -278,7 +452,9 @@ export function transferPlayer({
     wage: Number(wage ?? player.contract?.wage ?? 0),
     startSeason: Number(date ?? 0),
   };
-  if (Array.isArray(players)) marketValueForPlayer(player, buyer, date);
+  player.lastTransferFee = amount; // actual negotiated transfer fee (distinct from market value)
+  // Refresh market value estimate after move; fee paid remains the negotiated amount.
+  syncPlayerMarketValue(player, { club: buyer, dayIndex: date, force: true });
   syncLegacyBudgetFields(seller);
   syncLegacyBudgetFields(buyer);
   return { fee: amount, player, seller, buyer };
