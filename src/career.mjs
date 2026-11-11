@@ -4449,6 +4449,20 @@ export class Career {
     const worldCupComplete =
       (!worldCupDueThisSeason && !tournamentBelongsToSeason) ||
       ["complete", "cancelled"].includes(tournament?.status);
+    if (
+      this.championsLeague?.season === this.season &&
+      this.championsLeague.status !== "complete" &&
+      !this.areAllLeagueSeasonsComplete()
+    ) {
+      return false;
+    }
+    if (
+      this.championsLeague?.season === this.season &&
+      this.championsLeague.status !== "complete" &&
+      this.areAllLeagueSeasonsComplete()
+    ) {
+      this.completeChampionsLeagueIfDue();
+    }
     return (
       this.areAllLeagueSeasonsComplete() &&
       (!this.championsLeague ||
@@ -6866,8 +6880,129 @@ export class Career {
     return this.coachMarket;
   }
 
+  requestCoachDismissal() {
+    if (this.isManagerCareer)
+      throw new Error("Managers cannot request their own dismissal this way.");
+    if (this.player?.retirement)
+      throw new Error("A retired player cannot request a coach dismissal.");
+    const importance = this.playerImportanceToClub();
+    const squad = this.players.filter((p) => p.clubId === this.club.id);
+    const apps = this.player.stats?.apps ?? 0;
+    const rating =
+      apps > 0
+        ? (this.player.stats.ratingSum ?? 0) / apps
+        : this.player.overall ?? 60;
+    const standing = this.league.table.positions().get(this.club.id) ?? 10;
+    const ownerPatience = this.club.ownerProfile?.patience ?? 50;
+    const baseChance =
+      0.08 +
+      importance * 0.55 +
+      Math.max(0, (rating - 6.4) * 0.08) +
+      Math.max(0, (10 - standing)) * 0.015 +
+      (ownerPatience < 45 ? 0.08 : 0);
+    const threshold = 0.42;
+    const roll = this.rng.stream("coach-dismissal-request").next();
+    const accepted = baseChance >= threshold && roll < baseChance + 0.12;
+    this.news ??= [];
+    if (!accepted) {
+      const reason =
+        importance < 0.25
+          ? "The owner feels you are not yet influential enough to make that demand."
+          : "The owner has backed the head coach and rejected your request.";
+      this.news.unshift(
+        `Coach dismissal request declined. ${reason}`,
+      );
+      return { accepted: false, importance, rating, message: reason };
+    }
+    const dismissedName = this.club.manager?.name ?? "the head coach";
+    const candidates = generateCoachMarket(
+      `${this.seed}-${this.club.id}-player-request-${this.currentDay()}`,
+      this.season,
+      12,
+    );
+    const finance = this.club.financials();
+    const budget = Math.max(0, Number(finance.balance ?? 0));
+    const affordable = candidates.filter(
+      (c) => Number(c.cost ?? 0) <= Math.max(500000, budget * 0.12),
+    );
+    const pool = (affordable.length ? affordable : candidates).sort(
+      (a, b) =>
+        (b.overall ?? b.rating ?? 0) - (a.overall ?? a.rating ?? 0),
+    );
+    const best = pool[0];
+    if (!best) throw new Error("No replacement coach is available.");
+    dismissClubManager(
+      this.club,
+      "Dismissed after a player-led request to the owner.",
+      this.currentDay(),
+    );
+    const hierarchy = ensureClubHierarchy(
+      this.club,
+      `${this.seed}-${this.club.id}`,
+    );
+    const cost = Math.max(0, Math.round(Number(best.cost) || 0));
+    if (cost > 0 && ensureClubFinance(this.club).balance >= cost) {
+      recordClubTransaction(this.club, {
+        id: `coach-player-request-${this.club.id}-${this.season}-${best.id}-${this.currentDay()}`,
+        date: this.currentDay(),
+        category: "coaching",
+        description: `Coach appointment after player request: ${best.name}`,
+        expense: cost,
+      });
+    }
+    const replacement = ensureCoachProfile({
+      ...this.club,
+      manager: { ...best, role: "Manager", careerHistory: [] },
+    });
+    replacement.salary = Math.round(best.salary ?? best.rating ?? 0);
+    this.club.manager = { ...replacement, role: "Manager" };
+    hierarchy.manager = { ...replacement, role: "Manager", careerHistory: [] };
+    hierarchy.employment = {
+      status: "active",
+      started: this.currentDay(),
+      contractEnd: this.season + 3,
+      salary: replacement.salary,
+    };
+    this.news.unshift(
+      `${dismissedName} has been dismissed after your request. ${replacement.name} (${replacement.overall ?? replacement.rating}/99) appointed as head coach.`,
+    );
+    return {
+      accepted: true,
+      importance,
+      rating,
+      dismissed: dismissedName,
+      replacement,
+    };
+  }
+
+  playerImportanceToClub() {
+    const squad = this.players.filter((p) => p.clubId === this.club.id);
+    if (!squad.length) return 0;
+    const me = this.player;
+    const apps = me.stats?.apps ?? 0;
+    const rating =
+      apps > 0 ? (me.stats.ratingSum ?? 0) / apps : (me.overall ?? 60) / 10;
+    const goalContrib =
+      (me.stats?.goals ?? 0) + (me.stats?.assists ?? 0) * 0.7;
+    const squadOverallAvg =
+      squad.reduce((sum, p) => sum + (p.overall ?? 60), 0) / squad.length;
+    const overallEdge = Math.max(
+      0,
+      ((me.overall ?? 60) - squadOverallAvg) / 20,
+    );
+    const xi = this.selectedXI?.(this.currentDay?.() ?? 0) ?? [];
+    const inXI = xi.some((s) => s.id === me.id || s.player?.id === me.id);
+    const appShare = apps / Math.max(1, this.league?.table?.row?.(this.club.id)?.played ?? apps);
+    const importance =
+      overallEdge * 0.35 +
+      Math.min(1, appShare) * 0.25 +
+      Math.min(1, goalContrib / 15) * 0.2 +
+      clamp((rating - 6) / 2, 0, 1) * 0.15 +
+      (inXI ? 0.05 : 0);
+    return clamp(importance, 0, 1);
+  }
+
   fireCoach(reason = "The owner has decided to appoint a new head coach.") {
-    if (!this.isManagerCareer)
       throw new Error("Only the manager can manage club staff.");
     const dismissed = dismissClubManager(this.club, reason, this.currentDay());
     if (!dismissed)
@@ -8386,6 +8521,14 @@ export class Career {
             ? generateAttributes(rng, record.position, target)
             : null;
         const age = legend ? 25 : clamp(Number(record.age) || 25, 16, 42);
+        const derivedSubAttrs =
+          hasCsvAttrs && record.position !== "GK"
+            ? deriveSubAttrsFromGroups(record.attrs)
+            : null;
+        const derivedGkAttrs =
+          hasCsvAttrs && record.position === "GK"
+            ? { ...record.attrs }
+            : null;
         const player = createPlayer({
           id: record.playerId ?? `real-${club.id}-${record.id}`,
           first: record.first,
@@ -8420,10 +8563,10 @@ export class Career {
                   record.archetype ??
                   this.pickArchetypeForPosition(rng, record.position),
               }),
-          attrs: hasCsvAttrs ? record.attrs : (generated?.attrs ?? null),
-          subAttrs: hasCsvAttrs ? null : (generated?.subAttrs ?? null),
+          attrs: hasCsvAttrs ? { ...record.attrs } : (generated?.attrs ?? null),
+          subAttrs: hasCsvAttrs ? derivedSubAttrs : (generated?.subAttrs ?? null),
           gkAttrs: hasCsvAttrs
-            ? (record.gkAttrs ?? generated?.gkAttrs ?? null)
+            ? (derivedGkAttrs ?? generated?.gkAttrs ?? null)
             : (generated?.gkAttrs ?? null),
           potential: legend
             ? LEGEND_OVERALL
@@ -8458,7 +8601,6 @@ export class Career {
           loanStatus: record.loanStatus,
           loanParentClub: record.loanParentClub,
           source: record.source ?? "real-world",
-          ...(hasCsvAttrs ? { overallAdjustment: Number(record.overall) - calculateOverall({ position: record.position, attrs: record.attrs, subAttrs: record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs), gkAttrs: record.gkAttrs ?? generated?.gkAttrs, overallAdjustment: 0 }) } : {}),
           dataSource: record.dataSource,
           dataStatus: record.dataStatus,
           lastVerified: record.lastVerified,
@@ -8474,22 +8616,15 @@ export class Career {
               ),
           ],
         });
-        // Imported real players keep their CSV overall and attributes exactly;
-        // do not let the derived attribute pass override them.
+        // Imported real players start at their CSV overall and can develop/regress.
         if (hasCsvAttrs && !legend) {
           player.attrs = { ...record.attrs };
-          player.overall = clamp(Number(record.overall), 48, 91);
+          if (record.position !== "GK" && player.subAttrs)
+            syncGroupsFromSubAttrs(player);
+          player.overall = clamp(Number(record.overall), 48, 99);
           player.baseOverall = player.overall;
-          player.overallAdjustment = player.overall - calculateOverall({ ...player, source: null, overallAdjustment: 0 });
-          if (record.playerId) {
-            player.overallAdjustment =
-              player.overall -
-              calculateOverall({
-                ...player,
-                source: null,
-                overallAdjustment: 0,
-              });
-          }
+          player.previousOverall = player.overall;
+          player.overallAdjustment = 0;
         }
         players.push(player);
         club.addPlayer(player.id);
@@ -9327,6 +9462,30 @@ export class Career {
     this.hiredManagerId = null;
     this.seasonComplete = this.areAllSeasonCompetitionsComplete();
     if (!this.isManagerCareer) this.pendingPlayerTransfer = null;
+    if (
+      this.championsLeague?.season === this.season &&
+      this.championsLeague.status !== "complete"
+    ) {
+      const userStillIn =
+        this.championsLeague.leaguePhaseTeams?.some(
+          (team) => team.id === this.club.id,
+        ) ?? false;
+      if (!userStillIn) {
+        this.completeChampionsLeagueIfDue();
+      }
+    }
+    if (
+      this.championsLeague?.season === this.season &&
+      this.championsLeague.status !== "complete"
+    ) {
+      const userStillIn =
+        this.championsLeague.leaguePhaseTeams?.some(
+          (team) => team.id === this.club.id,
+        ) ?? false;
+      if (!userStillIn) {
+        this.completeChampionsLeagueIfDue();
+      }
+    }
   }
 
   generateTransferOffers({ clubIds = [] } = {}) {
@@ -9881,6 +10040,18 @@ export class Career {
       this.agentPerformanceFor(transfer.agentId).deals++;
       this.reconcileSquadMembership();
       this.positionNeedCache = null;
+      if (
+        this.championsLeague?.season === this.season &&
+        this.championsLeague.status !== "complete"
+      ) {
+        const userStillIn =
+          this.championsLeague.leaguePhaseTeams?.some(
+            (team) => team.id === this.club.id,
+          ) ?? false;
+        if (!userStillIn) {
+          this.completeChampionsLeagueIfDue();
+        }
+      }
       this.transferOffers = [];
       this.news.push(
         `${this.player.first} ${this.player.last} joins ${targetClub.name} for €${offer.fee.toLocaleString()} and €${offer.wage.toLocaleString()} weekly wages.`,
@@ -11508,13 +11679,20 @@ export class Career {
         winnerId:
           match.homeGoals === match.awayGoals && match.penalties?.winner
             ? match.penalties.winner === "home"
-              ? match.home.clubId
-              : match.away.clubId
+              ? uefaFixture.homeId
+              : uefaFixture.awayId
             : match.homeGoals > match.awayGoals
-              ? match.home.clubId
-              : match.away.clubId,
+              ? uefaFixture.homeId
+              : uefaFixture.awayId,
       });
       this.simulateChampionsLeagueWeek(this.week);
+      if (
+        this.championsLeague?.season === this.season &&
+        this.championsLeague.status !== "complete" &&
+        !this.isChampionsLeagueClub(this.club.id)
+      ) {
+        this.completeChampionsLeagueIfDue();
+      }
     } else {
       this.league.table.record(
         match.home.clubId,

@@ -581,23 +581,26 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
     }
   } else {
     // Decline: a player who never featured, one whose season rating fell below par, or
-    // one chronologically past his peak. Decline is capped, so a strong veteran loses
-    // roughly a point while an exceptional one can hold his rating altogether.
+    // one chronologically past his peak. A truly good season protects a veteran for that
+    // year, but average seasons still allow age-related decline.
     const belowPar = playingTime > 0 && avgRating < 6.4;
     const ageing = age >= 29;
     const unused = playingTime === 0 && age >= 24;
-    if (!abovePar && (belowPar || ageing || unused) && current > 1) {
-      // Ageing alone is a gentle point for most players and two past 33; a genuinely
-      // poor season costs a point at any age.
-      const maxDecline = age >= 33 ? 2 : 1;
-      const severity = belowPar
-        ? Math.max(0.75, (6.4 - avgRating) * 3.2)
-        : ageing
-          ? 0.75 + (age - 33) * 0.9
-          : 0.9;
-      const targetDecline = Math.min(
-        maxDecline,
-        Math.max(1, Math.floor(severity)),
+    const protectedVeteran = age >= 29 && avgRating >= 7.0 && playingTime >= 0.35;
+    const agePressure = age >= 31 && playingTime > 0 && avgRating < 6.8;
+    const declineAllowed =
+      !protectedVeteran &&
+      (belowPar || ageing || unused || agePressure) &&
+      current > 1;
+    if (declineAllowed) {
+      // Poor seasons decline faster; ageing alone is gradual (1 OVR, 2 for 34+ in bad years).
+      const poorSeason = belowPar ? Math.max(1, Math.round((6.4 - avgRating) * 1.6)) : 0;
+      const ageDecline = age >= 34 ? (avgRating < 6.6 ? 1 : 0) + (age >= 36 && avgRating < 6.8 ? 1 : 0) : age >= 31 && avgRating < 6.7 ? 1 : 0;
+      const unusedDecline = unused ? (age >= 29 ? 1 : 0) : 0;
+      const targetDecline = clamp(
+        Math.max(poorSeason, ageDecline, unusedDecline, (age >= 29 && avgRating < 6.5) ? 1 : 0),
+        1,
+        age >= 34 ? 2 : 1,
       );
       const targetOverall = Math.max(1, current - targetDecline);
       let attempts = 0;
@@ -613,9 +616,9 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
     }
   }
   const calculatedAfter = calculateOverall(player);
-  const result = updatePlayerOverall(player, "Season development", { season, date });
   player.overall = calculatedAfter;
   player.baseOverall = calculatedAfter;
+  const result = updatePlayerOverall(player, "Season development", { season, date });
   player.previousOverall = previousRating;
   player.previousAttributes = beforeAttributes;
   player.lastDevelopmentSeason = season;

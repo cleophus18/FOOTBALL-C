@@ -1914,7 +1914,7 @@ function renderCreation() {
             ).join('<i aria-hidden="true"></i>')}
           </div>
           <nav class="creation-tabs" aria-label="Creation steps">
-            ${CREATION_TABS.map((tab, index) => `<button class="creation-tab ${creationTab === tab.key ? "active" : ""} ${index < creationTabIndex ? "done" : "locked"}" data-creation-tab="${tab.key}" type="button"><b>${index + 1}. ${esc(tab.label)}</b><small>${esc(tab.hint)}</small></button>`).join("")}
+            ${CREATION_TABS.map((tab, index) => `<div class="creation-tab ${creationTab === tab.key ? "active" : ""} ${index < creationTabIndex ? "done" : "locked"}"><b>${index + 1}. ${esc(tab.label)}</b><small>${esc(tab.hint)}</small></div>`).join("")}
           </nav>
           ${CREATION_TABS.map(
             (tab) =>
@@ -1924,7 +1924,7 @@ function renderCreation() {
             <button class="button-quiet" type="button" data-creation-step="prev" ${creationTabIndex === 0 ? "disabled" : ""}>← Back</button>
             <span class="creation-step-label">Section ${creationTabIndex + 1} of ${CREATION_TABS.length}</span>
             <button class="button-quiet" type="button" data-creation-step="next" ${isLastCreationTab ? "disabled" : ""}>Next →</button>
-            <button class="button-primary" type="submit" ${isLastCreationTab ? "" : 'disabled title="Complete all four sections to start your career"'}>Start your career <span>→</span></button>
+            <button class="button-primary" type="submit" ${isLastCreationTab ? "" : 'tabindex="-1" aria-hidden="true" title="Complete all four sections to start your career"'}>Start your career <span>→</span></button>
           </div>
           <p class="form-footnote">Your potential is hidden. Your performances are not.</p>
         </form>
@@ -4057,7 +4057,7 @@ function renderMatchFormations(match, minute = Number.POSITIVE_INFINITY) {
     const clubName =
       career.clubs.find((club) => club.id === team.clubId)?.name ?? team.name;
     return `<div class="match-formation ${isUserSide ? "is-user" : ""}">
-      <div class="match-formation-head"><span class="match-formation-shape">${esc(team.formation ?? career.club.formation)}</span><div><b>${esc(team.name)}</b><small>${esc(team.coach ?? "Head coach")}${isUserSide ? " · YOUR TEAM" : ""}</small>${staminaMarkup({ stamina: averageStamina }, true)}</div></div>
+      <div class="match-formation-head"><span class="match-formation-shape">${esc(team.formation ?? career.club.formation)}</span><div><b>${esc(team.name)}</b><small>${esc(team.coach ?? "Head coach")}${isUserSide ? " · YOUR TEAM" : ""}</small></div></div>
       <div class="pitch pitch-compact"><div class="pitch-markings"></div><span class="pitch-arc"></span>${renderPitchMarkup(entries, { highlightIds: isUserSide ? [career.player.id] : [], incidents: liveIncidents, shirtColor: clubCrestColors(clubName)[0], matchSide: side })}</div>
     </div>`;
   };
@@ -5374,7 +5374,7 @@ function renderConversation() {
   return `<div class="page-heading"><div><div class="eyebrow lime">PLAYER RELATIONSHIP</div><h1>Talk to the coach</h1><p>Discuss your role, development, tactical responsibilities, and future with ${esc(career.club.manager.name)}.</p></div><span class="live-tag">${esc(career.club.fanSupport ? `${Math.round(career.club.fanSupport)}% FAN SUPPORT` : "CLUB DIALOGUE")}</span></div>
     <div class="dashboard-grid">
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT COACH</div><h2>${esc(career.club.manager.name)}</h2></div><span class="live-tag">${esc(career.club.manager.style)}</span></div><p class="muted">Discuss performances, playing time, development, squad recruitment, and tactical decisions.</p><div class="manager-actions-buttons"><button class="button-primary" data-action="talk-manager" data-topic="playingTime">Ask about playing time</button><button class="button-quiet" data-action="player-request" data-request-type="playing-time" data-amount="less">Request less playing time</button><button class="button-quiet" data-action="talk-manager" data-topic="development">Discuss development</button><button class="button-quiet" data-action="talk-manager" data-topic="role">Discuss tactical role</button><button class="button-quiet" data-action="talk-manager" data-topic="training">Request extra training</button><button class="button-quiet" data-action="talk-manager" data-topic="future">Discuss your future</button></div><div class="manager-actions-buttons"><label class="position-select">Preferred teammate position<select id="coach-teammate-position">${POSITIONS.map((position) => `<option value="${position}" ${position === career.player.position ? "selected" : ""}>${position}</option>`).join("")}</select></label><button class="button-quiet" data-action="talk-manager" data-topic="betterTeammate">Ask coach to find a teammate</button></div><div class="manager-actions-buttons"><label class="position-select">Formation<select id="coach-formation">${FORMATION_NAMES.map((formation) => `<option value="${formation}" ${formation === career.club.formation ? "selected" : ""}>${formation}</option>`).join("")}</select></label><button class="button-primary" data-action="talk-manager" data-topic="formation">Ask coach to change formation</button></div><div class="manager-actions-buttons"><label class="position-select">Transfer destination<select id="player-transfer-target" aria-label="Transfer destination"><option value="">Choose a destination</option>${career.clubs.filter((club) => club.id !== career.club.id).map((club) => `<option value="${esc(club.id)}">${esc(club.name)}</option>`).join("")}</select></label><button class="button-danger" data-action="player-request" data-request-type="transfer">Ask for a transfer</button></div></section>
-      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">OWNER CONTACT</div><h2>Talk to the owner</h2></div><span class="live-tag">${appointments}/2 APPOINTMENTS THIS SEASON</span></div><p class="muted">Request that the club fire the current coach, then appoint one of the available candidates.</p><div class="manager-actions-buttons"><button class="button-danger" data-action="owner-fire-coach">Request coach dismissal</button><button class="button-quiet" data-action="refresh-coach-market">Refresh coach market</button></div><label class="position-select">Available coach<select id="coach-market-select">${coaches.map((coach) => `<option value="${esc(coach.id)}">${esc(coach.name)} · ${coach.overall ?? coach.rating}/99 · ${esc(coach.style)} · €${Number(coach.cost ?? 0).toLocaleString()}</option>`).join("")}</select></label><button class="button-primary" data-action="owner-appoint-coach">Appoint selected coach</button></section>
+      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">OWNER CONTACT</div><h2>Talk to the owner</h2></div><span class="live-tag">${appointments}/2 APPOINTMENTS THIS SEASON</span></div><p class="muted">Request that the club dismiss the current head coach. The owner's response depends on your importance to the team. If accepted, the best available coach within budget is appointed automatically.</p><div class="manager-actions-buttons"><button class="button-danger" data-action="request-coach-dismissal">Request coach dismissal</button></div></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CAREER CONTROL</div><h2>End your playing career</h2></div></div><p class="muted">Retirement keeps your statistics, awards, trophy case, and career history in the save while ending weekly progression.</p><button class="button-danger" data-action="retire-career">Retire from football</button></section>
     </div>
     <section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">CONVERSATION LOG</div><h2>Previous meetings</h2></div><span class="live-tag">${history.length} RECORDED</span></div><table class="history-table"><thead><tr><th>DATE</th><th>TOPIC</th><th>MANAGER</th><th>RESPONSE</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="scorer-empty">No conversations recorded yet.</td></tr>'}</tbody></table></section>`;
@@ -6107,6 +6107,19 @@ function handleAction(action, details = {}) {
         const coachId = $app.querySelector("#coach-market-select")?.value;
         const candidate = career.appointCoach(coachId);
         notice = `The owner has appointed ${candidate.name} as head coach.`;
+      }
+      screen = "conversation";
+    } catch (error) {
+      notice = error.message;
+    }
+  }
+  if (action === "request-coach-dismissal" && career && !career.isManagerCareer) {
+    try {
+      const result = career.requestCoachDismissal();
+      if (result.accepted) {
+        notice = `The owner accepted your request. ${result.dismissed} dismissed and ${result.replacement.name} (${result.replacement.overall ?? result.replacement.rating}/99) appointed.`;
+      } else {
+        notice = result.message;
       }
       screen = "conversation";
     } catch (error) {
