@@ -1,3 +1,24 @@
+import crestIndex from "../../assets/logos/index.json" with { type: "json" };
+
+function buildCrestLookup() {
+  const lookup = new Map();
+  for (const league of Object.keys(crestIndex)) {
+    if (league === "aliases") continue;
+    const clubs = crestIndex[league];
+    if (clubs && typeof clubs === "object") {
+      for (const [name, path] of Object.entries(clubs)) {
+        lookup.set(name, path);
+      }
+    }
+  }
+  for (const [alias, path] of Object.entries(crestIndex.aliases ?? {})) {
+    if (path) lookup.set(alias, path);
+  }
+  return lookup;
+}
+
+const CREST_LOOKUP = buildCrestLookup();
+
 const CREST_COLORS = [
   ["#1667b1", "#75c7ff"],
   ["#c63843", "#ffd16b"],
@@ -64,6 +85,11 @@ function crestMark(variant, accent) {
 
 export function renderClubCrest(name, shortName = "", className = "") {
   const clubName = String(name || "Club");
+  const logoPath = CREST_LOOKUP.get(clubName);
+  if (logoPath) {
+    const classAttribute = className ? ` class="${escapeXml(className)}"` : "";
+    return `<img${classAttribute} src="${escapeXml(logoPath)}" alt="${escapeXml(`${clubName} crest`)}" loading="lazy" decoding="async" style="object-fit:contain;display:block">`;
+  }
   const value = hash(clubName.normalize("NFD").toLowerCase());
   const [base, accent] = clubCrestColors(clubName);
   const variant = (value >>> 8) % 4;

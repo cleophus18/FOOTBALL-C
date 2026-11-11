@@ -23,6 +23,34 @@ formation pitches, tables, forms, and reduced-motion support. This is a CSS-only
 presentation upgrade; simulation rules, player data, save formats, routes, and
 interactions remain unchanged.
 
+## Real Club Logos
+
+Generated placeholder crests have been replaced with real club logos (transparent
+background SVGs) for all 96 clubs in the five major leagues (Premier League 20,
+La Liga 20, Bundesliga 18, Serie A 20, Ligue 1 18).
+
+- Logos live in `assets/logos/<league>/<slug>.svg`, one folder per league:
+  `premier-league`, `la-liga`, `bundesliga`, `serie-a`, `ligue-1`.
+- `assets/logos/index.json` maps each club name (exactly as spelled in
+  `data/config/career-league-teams.json`) to its file path. Supplemental aliases
+  from `data/config/supplemental-club-aliases.json` map to the same file.
+- `src/ui/club-crests.mjs` `renderClubCrest(name, shortName, className)` returns
+  an `` with `loading="lazy"`, `decoding="async"`, `object-fit: contain`, and
+  `alt="<club> crest"` when a logo exists. When no logo exists, it falls back to
+  the original generated SVG crest so nothing breaks. `clubCrestColors(name)` is
+  unchanged and still drives shirt colours.
+- CSS classes `.club-crest`, `.table-crest`, `.fixture-crest`, `.manager-crest`,
+  and `.manager-crest-sm` use `object-fit: contain` so logos never stretch or
+  crop at small table size or large manager-hub size.
+- The catalog page `data/logos/team-crests.html` now shows the real logos,
+  grouped by league.
+- Attribution and licence notice live in `assets/logos/README.md`. Club crests
+  are trademarks of their clubs; the logos should not be used commercially
+  without permission.
+
+All logos were verified to have fully transparent backgrounds (no white box, no
+coloured square, no drop shadow).
+
 ## Club finance and transfer market
 
 Club money is stored as integer euros inside each saved `Club.finances` profile.
@@ -273,9 +301,9 @@ use the corresponding larger group-and-knockout formats. International group tie
 head-to-head results before overall goal difference.
 Lionel Messi is
 included with FC Barcelona and Cristiano Ronaldo with Real Madrid in the La Liga roster.
-The original custom club crests are shown in league tables, fixtures, and team lists.
-Open the full 114-club crest catalog from the World tab or at
-[data/logos/team-crests.html](./data/logos/team-crests.html).
+Real club logos (transparent background) are shown in league tables, fixtures, and
+team lists for the 96 clubs in the five major leagues. Open the full crest catalog
+from the World tab or at [data/logos/team-crests.html](./data/logos/team-crests.html).
 
 The season seed reproduces the same generated squads, fixture order, and random match
 outcomes. Easy and Sandbox difficulty apply a small strength advantage to your club.

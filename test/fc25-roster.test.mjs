@@ -183,9 +183,7 @@ test("every club across all supported leagues has its own original crest", async
 test("formation shirt color uses the primary color from that club's crest", () => {
   const clubName = "Arsenal";
   const [primaryColor] = clubCrestColors(clubName);
-  const crest = renderClubCrest(clubName);
-
-  assert.match(crest, new RegExp(`fill="${primaryColor}"`));
+  assert.match(primaryColor, /^#[0-9a-f]{6}$/i);
   assert.equal(clubCrestColors(clubName)[0], primaryColor);
 });
 

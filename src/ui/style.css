@@ -1058,6 +1058,7 @@ select:focus-visible {
   border: 0;
   color: var(--lime);
   background: transparent;
+  object-fit: contain;
 }
 
 .club-mini b {
@@ -2961,6 +2962,7 @@ td:first-child {
   width: 23px;
   height: 24px;
   color: var(--lime);
+  object-fit: contain;
 }
 
 .home-name {
@@ -5951,6 +5953,7 @@ td:first-child {
   width: 58px;
   height: 58px;
   flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .manager-hero-text {
@@ -6382,6 +6385,7 @@ td:first-child {
 .manager-crest-sm {
   width: 30px;
   height: 30px;
+  object-fit: contain;
 }
 
 /* Season history and the trophy case in the side column. */

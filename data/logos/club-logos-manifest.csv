@@ -1,0 +1,97 @@
+league,club,target_file
+Premier League,Arsenal,logos/premier-league/arsenal.png
+Premier League,Aston Villa,logos/premier-league/aston-villa.png
+Premier League,Bournemouth,logos/premier-league/bournemouth.png
+Premier League,Brentford,logos/premier-league/brentford.png
+Premier League,Brighton & Hove Albion,logos/premier-league/brighton-and-hove-albion.png
+Premier League,Chelsea,logos/premier-league/chelsea.png
+Premier League,Coventry City,logos/premier-league/coventry-city.png
+Premier League,Crystal Palace,logos/premier-league/crystal-palace.png
+Premier League,Everton,logos/premier-league/everton.png
+Premier League,Fulham,logos/premier-league/fulham.png
+Premier League,Hull City,logos/premier-league/hull-city.png
+Premier League,Ipswich Town,logos/premier-league/ipswich-town.png
+Premier League,Leeds United,logos/premier-league/leeds-united.png
+Premier League,Liverpool,logos/premier-league/liverpool.png
+Premier League,Manchester City,logos/premier-league/manchester-city.png
+Premier League,Manchester United,logos/premier-league/manchester-united.png
+Premier League,Newcastle United,logos/premier-league/newcastle-united.png
+Premier League,Nottingham Forest,logos/premier-league/nottingham-forest.png
+Premier League,Sunderland,logos/premier-league/sunderland.png
+Premier League,Tottenham Hotspur,logos/premier-league/tottenham-hotspur.png
+La Liga,Alavés,logos/la-liga/alaves.png
+La Liga,Athletic Club,logos/la-liga/athletic-club.png
+La Liga,Atlético Madrid,logos/la-liga/atletico-madrid.png
+La Liga,FC Barcelona,logos/la-liga/fc-barcelona.png
+La Liga,Celta Vigo,logos/la-liga/celta-vigo.png
+La Liga,Elche,logos/la-liga/elche.png
+La Liga,Espanyol,logos/la-liga/espanyol.png
+La Liga,Getafe,logos/la-liga/getafe.png
+La Liga,Levante,logos/la-liga/levante.png
+La Liga,Osasuna,logos/la-liga/osasuna.png
+La Liga,Rayo Vallecano,logos/la-liga/rayo-vallecano.png
+La Liga,Real Betis,logos/la-liga/real-betis.png
+La Liga,Real Madrid,logos/la-liga/real-madrid.png
+La Liga,Racing Santander,logos/la-liga/racing-santander.png
+La Liga,Real Sociedad,logos/la-liga/real-sociedad.png
+La Liga,Sevilla,logos/la-liga/sevilla.png
+La Liga,Valencia,logos/la-liga/valencia.png
+La Liga,Villarreal,logos/la-liga/villarreal.png
+La Liga,Deportivo de La Coruña,logos/la-liga/deportivo-de-la-coruna.png
+La Liga,Málaga,logos/la-liga/malaga.png
+Bundesliga,Augsburg,logos/bundesliga/augsburg.png
+Bundesliga,Bayer Leverkusen,logos/bundesliga/bayer-leverkusen.png
+Bundesliga,Bayern München,logos/bundesliga/bayern-munchen.png
+Bundesliga,Borussia Dortmund,logos/bundesliga/borussia-dortmund.png
+Bundesliga,Borussia Mönchengladbach,logos/bundesliga/borussia-monchengladbach.png
+Bundesliga,Eintracht Frankfurt,logos/bundesliga/eintracht-frankfurt.png
+Bundesliga,FC Köln,logos/bundesliga/fc-koln.png
+Bundesliga,Freiburg,logos/bundesliga/freiburg.png
+Bundesliga,Hamburger SV,logos/bundesliga/hamburger-sv.png
+Bundesliga,Elversberg,logos/bundesliga/elversberg.png
+Bundesliga,Hoffenheim,logos/bundesliga/hoffenheim.png
+Bundesliga,Mainz 05,logos/bundesliga/mainz-05.png
+Bundesliga,RB Leipzig,logos/bundesliga/rb-leipzig.png
+Bundesliga,Paderborn 07,logos/bundesliga/paderborn-07.png
+Bundesliga,Schalke 04,logos/bundesliga/schalke-04.png
+Bundesliga,Union Berlin,logos/bundesliga/union-berlin.png
+Bundesliga,VfB Stuttgart,logos/bundesliga/vfb-stuttgart.png
+Bundesliga,Werder Bremen,logos/bundesliga/werder-bremen.png
+Serie A,Atalanta,logos/serie-a/atalanta.png
+Serie A,Bologna,logos/serie-a/bologna.png
+Serie A,Cagliari,logos/serie-a/cagliari.png
+Serie A,Como,logos/serie-a/como.png
+Serie A,Torino,logos/serie-a/torino.png
+Serie A,Fiorentina,logos/serie-a/fiorentina.png
+Serie A,Frosinone,logos/serie-a/frosinone.png
+Serie A,Genoa,logos/serie-a/genoa.png
+Serie A,Udinese,logos/serie-a/udinese.png
+Serie A,Inter,logos/serie-a/inter.png
+Serie A,Juventus,logos/serie-a/juventus.png
+Serie A,Lazio,logos/serie-a/lazio.png
+Serie A,Lecce,logos/serie-a/lecce.png
+Serie A,AC Milan,logos/serie-a/ac-milan.png
+Serie A,Monza,logos/serie-a/monza.png
+Serie A,Napoli,logos/serie-a/napoli.png
+Serie A,Parma,logos/serie-a/parma.png
+Serie A,Venezia,logos/serie-a/venezia.png
+Serie A,Roma,logos/serie-a/roma.png
+Serie A,Sassuolo,logos/serie-a/sassuolo.png
+Ligue 1,Angers,logos/ligue-1/angers.png
+Ligue 1,Auxerre,logos/ligue-1/auxerre.png
+Ligue 1,Brest,logos/ligue-1/brest.png
+Ligue 1,Lens,logos/ligue-1/lens.png
+Ligue 1,Lille,logos/ligue-1/lille.png
+Ligue 1,Lorient,logos/ligue-1/lorient.png
+Ligue 1,Lyon,logos/ligue-1/lyon.png
+Ligue 1,Marseille,logos/ligue-1/marseille.png
+Ligue 1,Le Mans,logos/ligue-1/le-mans.png
+Ligue 1,Monaco,logos/ligue-1/monaco.png
+Ligue 1,Troyes,logos/ligue-1/troyes.png
+Ligue 1,Nice,logos/ligue-1/nice.png
+Ligue 1,Paris FC,logos/ligue-1/paris-fc.png
+Ligue 1,Paris Saint-Germain,logos/ligue-1/paris-saint-germain.png
+Ligue 1,Rennes,logos/ligue-1/rennes.png
+Ligue 1,Strasbourg,logos/ligue-1/strasbourg.png
+Ligue 1,Toulouse,logos/ligue-1/toulouse.png
+Ligue 1,Le Havre,logos/ligue-1/le-havre.png

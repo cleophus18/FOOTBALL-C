@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b111b">
-    <title>Touchline — Custom Team Crest Catalog</title>
+    <title>Touchline — Club Logo Catalog</title>
     <style>
       :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; background: #0b111b; color: #edf4ff; }
       * { box-sizing: border-box; }
@@ -15,29 +15,26 @@
       .eyebrow { color: #70bbff; font: 11px Consolas, monospace; letter-spacing: .14em; }
       section { margin-top: 28px; }
       h2 { padding-bottom: 10px; border-bottom: 1px solid #26364b; font-size: 20px; }
-      .teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+      .teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
       article { min-height: 112px; display: flex; align-items: center; gap: 13px; padding: 14px; border: 1px solid #26364b; border-radius: 8px; background: #101a29; }
-      article svg { flex: 0 0 48px; width: 48px; height: 52px; }
+      article svg, article img { flex: 0 0 48px; width: 48px; height: 52px; object-fit: contain; }
       article b { font-size: 12px; line-height: 1.4; }
       .loading, .error { padding: 22px; color: #9aacc2; }
       .error { color: #ff9d91; }
+      .note { margin-top: 10px; font-size: 12px; color: #7c8c9a; }
     </style>
   </head>
   <body>
     <header>
-      <div class="eyebrow">TOUCHLINE · ORIGINAL GAME ART · <span id="crest-count">114</span> CLUBS</div>
-      <h1>Custom team crest catalog</h1>
-      <p>Original, team-specific badges for all clubs in the five major European leagues and South Africa's Betway Premiership. Each crest uses its club initials, a distinct color pairing, and a geometric emblem. These are original in-game designs, not official club marks.</p>
+      <div class="eyebrow">TOUCHLINE · REAL CLUB LOGOS · <span id="crest-count">96</span> CLUBS</div>
+      <h1>Club logo catalog</h1>
+      <p>Real club crests with transparent backgrounds for the five major European leagues. Logos are loaded from <code>assets/logos/</code> and grouped by league. Clubs without a matched logo fall back to the generated crest.</p>
     </header>
-    <main id="catalog"><div class="loading">Loading team crests…</div></main>
+    <main id="catalog"><div class="loading">Loading club logos…</div></main>
     <script type="module">
       import { renderClubCrest } from "../../src/ui/club-crests.mjs";
 
       const catalog = document.querySelector("#catalog");
-      const leagueNames = [
-        "Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1",
-        "Betway Premiership",
-      ];
       const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
       })[character]);
@@ -45,6 +42,7 @@
         const response = await fetch("../config/career-league-teams.json");
         if (!response.ok) throw new Error(`Could not load team list (${response.status}).`);
         const teams = await response.json();
+        const leagueNames = Object.keys(teams);
         document.querySelector("#crest-count").textContent = String(
           leagueNames.reduce((count, league) => count + (teams[league] ?? []).length, 0),
         );
@@ -54,6 +52,7 @@
             <div class="teams">${(teams[league] ?? []).map((name) => `
               <article>${renderClubCrest(name)}<b>${escapeHtml(name)}</b></article>
             `).join("")}</div>
+            <p class="note">Logos: <code>assets/logos/${league.toLowerCase().replace(" ", "-")}/</code> &middot; Fallback: generated crest</p>
           </section>
         `).join("");
       } catch (error) {
