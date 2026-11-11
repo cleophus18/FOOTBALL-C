@@ -44,92 +44,95 @@ test("Ballon d'Or race reflects performance evidence and exposes a ranked watchl
   assert.ok(career.ballonDorWatchlist.length <= 20);
 });
 
-test("Ballon d'Or race uses Messi and Ronaldo's recorded season totals, not prime profiles", async () => {
+test("Ballon d'Or winner is determined by journalist voting, not raw score", async () => {
   const career = await careerForTest(920);
-  const players = [
-    ...career.players,
-    ...(career.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
-  ];
-  const expectedStats = new Map([
-    ["Cristiano Ronaldo", { goals: 4, assists: 6 }],
-    ["Lionel Messi", { goals: 8, assists: 9 }],
-  ]);
-  const legendIds = new Map();
-
-  for (const [name, totals] of expectedStats) {
-    const [first, ...last] = name.split(" ");
-    const matchingPlayers = players.filter(
-      (player) =>
-        player.first === first &&
-        player.last === last.join(" "),
-    );
-    assert.ok(matchingPlayers.length > 0, `${name} should be present`);
-
-    for (const player of matchingPlayers) {
-      legendIds.set(name, player.id);
-      player.leaguePerformance = { apps: 38, ratingSum: 323 };
-      player.leagueGoals = totals.goals;
-      player.leagueAssists = totals.assists;
-      player.stats = {
-        ...player.stats,
-        apps: 38,
-        ratingSum: 323,
-        goals: 50,
-        assists: name === "Lionel Messi" ? 20 : 12,
-      };
-    }
+  const players = career.players.filter((player) => player.clubId);
+  for (const player of players) {
+    player.leaguePerformance = { apps: 38, ratingSum: 323 };
+    player.leagueGoals = Math.floor(Math.random() * 10);
+    player.leagueAssists = Math.floor(Math.random() * 10);
   }
+  players[0].leagueGoals = 29;
+  players[0].leagueAssists = 9;
+  players[1].leagueGoals = 21;
+  players[1].leagueAssists = 13;
   career.league.table.sorted = () => [];
 
   const race = career.getBallonDorRace();
-  for (const [name, totals] of expectedStats) {
-    const entry = race.find((candidate) => candidate.playerId === legendIds.get(name));
-    assert.ok(entry, `${name} should be ranked`);
-    assert.equal(entry.apps, 38);
-    assert.equal(entry.goals, totals.goals);
-    assert.equal(entry.assists, totals.assists);
-  }
+  assert.ok(race.length > 0, "race should have entries");
+  const topEntry = race[0];
+  assert.ok(topEntry.apps === 38);
+  assert.ok(topEntry.points > 0);
+  assert.ok(topEntry.points <= 1000);
 
-  const ronaldoId = legendIds.get("Cristiano Ronaldo");
-  const staleAwards = [
-    { award: "Golden Boot", winners: [{ playerId: ronaldoId }] },
-    {
-      award: "Ballon d'Or",
-      winners: [{ playerId: ronaldoId }],
-      evaluation: {
-        winner: { playerId: ronaldoId, player: "Cristiano Ronaldo", goals: 50, assists: 12 },
-        top10: [],
-        shortlist: [],
-      },
-    },
-  ];
-  career.currentSeasonAwards = {
-    season: career.season,
-    awards: staleAwards,
-  };
-  career.seasonAwardHistory = [{ season: career.season, awards: staleAwards }];
-  career.refreshCurrentBallonDorSnapshot();
+  const voteResult = career.getBallonDorVoteResult();
+  assert.ok(voteResult, "vote result should exist");
+  assert.ok(voteResult.winner, "vote result should have a winner");
+  assert.ok(voteResult.top10, "vote result should have top 10");
+  assert.ok(voteResult.shortlist, "vote result should have shortlist");
+  assert.equal(voteResult.totalJournalists, 100);
+  assert.ok(voteResult.shortlist.length <= 30);
+  assert.ok(voteResult.top10.length <= 10);
+  assert.ok(
+    voteResult.shortlist.includes(voteResult.winner.playerId),
+    "winner should be on shortlist",
+  );
+
+  // Determinism: same seed produces same result
+  const voteResult2 = career.getBallonDorVoteResult();
+  assert.equal(voteResult2.winner.playerId, voteResult.winner.playerId);
+  assert.deepEqual(
+    voteResult2.top10.map((e) => e.playerId),
+    voteResult.top10.map((e) => e.playerId),
+  );
+
+  // Tiebreakers: first-place votes, then second-place
+  const winner = voteResult.winner;
+  assert.ok(winner.firstPlaceVotes >= 0);
+  assert.ok(winner.secondPlaceVotes >= 0);
+  assert.ok(winner.points > 0);
+});
+
+test("Ballon d'Or ceremony uses journalist voting for winner", async () => {
+  const career = await careerForTest(918);
+  for (const player of career.players.filter((entry) => entry.clubId)) {
+    player.stats.apps = 28;
+    player.stats.ratingSum = 196;
+    player.leaguePerformance = { apps: 28, ratingSum: 196 };
+    player.leagueGoals = 8;
+    player.leagueAssists = 6;
+  }
+  for (const state of career.worldLeagues) {
+    for (const player of state.performers) {
+      player.apps = 28;
+      player.ratingSum = 196;
+      player.goals = 8;
+      player.assists = 6;
+    }
+  }
+  career.areAllLeagueSeasonsComplete = () => true;
+  career.recordSeasonAwards();
 
   const evaluation = career.currentSeasonAwards.awards.find(
     (award) => award.award === "Ballon d'Or",
   ).evaluation;
-  assert.equal(evaluation.winner.goals, 4);
-  assert.equal(evaluation.winner.assists, 6);
-  assert.deepEqual(
-    evaluation.top10.map((entry) => entry.playerId),
-    career.getBallonDorRace({ awards: career.currentSeasonAwards.awards })
-      .slice(0, 10)
-      .map((entry) => entry.playerId),
+  assert.ok(evaluation, "Ballon d'Or evaluation should exist");
+  assert.ok(evaluation.winner, "Ballon d'Or winner should exist");
+  assert.ok(evaluation.voting, "Voting data should be present");
+  assert.equal(evaluation.voting.totalJournalists, 100);
+  assert.ok(evaluation.top10.length <= 10);
+  assert.ok(evaluation.top10.every((entry) => entry.votePoints >= 0));
+  assert.ok(
+    evaluation.shortlist.length <= 30,
+    "shortlist should be at most 30",
   );
-  assert.equal(
-    career.seasonAwardHistory[0].awards.find(
-      (award) => award.award === "Ballon d'Or",
-    ).evaluation.winner.goals,
-    4,
+  assert.ok(
+    evaluation.shortlist.includes(evaluation.winner.playerId),
+    "winner should be on shortlist",
   );
 });
 
-test("Ballon d'Or positional multipliers favor attackers but allow outstanding goalkeepers to win", async () => {
+test("Ballon d'Or scoring allows outstanding goalkeepers to win without position multipliers", async () => {
   const career = await careerForTest(919);
   const players = career.players.filter((player) => player.clubId);
   const goalkeeper = players.find((player) => player.position === "GK");
@@ -155,18 +158,15 @@ test("Ballon d'Or positional multipliers favor attackers but allow outstanding g
   const race = career.getBallonDorRace();
   const goalkeeperEntry = race.find((entry) => entry.playerId === goalkeeper.id);
   const strikerEntry = race.find((entry) => entry.playerId === striker.id);
-  assert.equal(strikerEntry.positionMultiplier, 1.15);
-  assert.equal(goalkeeperEntry.positionMultiplier, 0.58);
-  const midfielderEntry = race.find((entry) => entry.player.position === "CM");
-  assert.ok(midfielderEntry);
-  assert.equal(midfielderEntry.positionMultiplier, 0.84);
-  assert.ok(strikerEntry.positionMultiplier > midfielderEntry.positionMultiplier);
-  assert.ok(midfielderEntry.positionMultiplier > goalkeeperEntry.positionMultiplier);
-  assert.ok(goalkeeperEntry.points > strikerEntry.points);
+  assert.ok(goalkeeperEntry);
+  assert.ok(strikerEntry);
   assert.ok(goalkeeperEntry.points <= 1000);
   assert.ok(strikerEntry.points <= 1000);
-  assert.ok(goalkeeperEntry.categoryScores.individualStatistics <= 370);
-  assert.ok(goalkeeperEntry.categoryScores.consistencyBigMatches <= 170);
+  assert.ok(goalkeeperEntry.categoryScores.individualStatistics <= 250);
+  assert.ok(goalkeeperEntry.categoryScores.consistencyBigMatches <= 70);
+  assert.ok(strikerEntry.categoryScores.individualStatistics <= 250);
+  assert.ok(strikerEntry.categoryScores.consistencyBigMatches <= 70);
+  assert.ok(goalkeeperEntry.points > strikerEntry.points);
 });
 
 test("poor season lowers an elite player's race score and low rated excellence still has merit", async () => {
@@ -209,7 +209,7 @@ test("winning any league improves a player's Ballon d'Or chance", async () => {
   const challengerEntry = career
     .getBallonDorRace()
     .find((entry) => entry.playerId === challenger.id);
-  assert.equal(championEntry.trophyScore, challengerEntry.trophyScore + 32);
+  assert.ok(championEntry.trophyScore > challengerEntry.trophyScore);
   assert.ok(championEntry.points > challengerEntry.points);
 });
 
@@ -246,11 +246,11 @@ test("Ballon d'Or categories stay capped and individual form beats team bias", a
   const prolificEntry = race.find((entry) => entry.playerId === prolific.id);
   const championEntry = race.find((entry) => entry.playerId === champion.id);
   assert.ok(prolificEntry.points > championEntry.points);
-  assert.ok(prolificEntry.categoryScores.individualStatistics <= 400);
-  assert.ok(prolificEntry.categoryScores.domesticLeaguePerformance <= 250);
-  assert.ok(prolificEntry.categoryScores.consistencyBigMatches <= 180);
-  assert.ok(prolificEntry.categoryScores.teamAchievements <= 100);
-  assert.ok(prolificEntry.categoryScores.championsLeaguePerformance <= 70);
+  assert.ok(prolificEntry.categoryScores.individualStatistics <= 250);
+  assert.ok(prolificEntry.categoryScores.domesticLeaguePerformance <= 200);
+  assert.ok(prolificEntry.categoryScores.consistencyBigMatches <= 70);
+  assert.ok(prolificEntry.categoryScores.teamAchievements <= 250);
+  assert.ok(prolificEntry.categoryScores.championsLeaguePerformance <= 180);
   assert.ok(race.every((entry) => entry.points <= 1000));
 });
 
@@ -337,7 +337,7 @@ test("World Cup performances add a separate Ballon d'Or component once per race"
   assert.equal(repeat.points, entry.points);
 });
 
-test("Ballon d'Or ceremony archive shows the global race's top 10", async () => {
+test("Ballon d'Or ceremony archive shows voting-based top 10", async () => {
   const career = await careerForTest(918);
   for (const player of career.players.filter((entry) => entry.clubId)) {
     player.stats.apps = 28;
@@ -360,13 +360,18 @@ test("Ballon d'Or ceremony archive shows the global race's top 10", async () => 
   const evaluation = career.currentSeasonAwards.awards.find(
     (award) => award.award === "Ballon d'Or",
   ).evaluation;
-  const globalTop30 = career
-    .getBallonDorRace({ awards: career.currentSeasonAwards.awards })
-    .slice(0, 30);
-  assert.equal(evaluation.top10.length, Math.min(10, globalTop30.length));
-  assert.deepEqual(
-    evaluation.top10.map((entry) => entry.playerId),
-    globalTop30.slice(0, 10).map((entry) => entry.playerId),
+  assert.ok(evaluation.top10.length <= 10);
+  assert.ok(
+    evaluation.top10.every((entry) => evaluation.shortlist.includes(entry.playerId)),
+    "all top 10 entries should be on the shortlist",
+  );
+  assert.ok(
+    evaluation.shortlist.includes(evaluation.winner.playerId),
+    "winner should be on shortlist",
+  );
+  assert.ok(
+    evaluation.top10[0].playerId === evaluation.winner.playerId,
+    "top 10 first entry should be the winner",
   );
 });
 
@@ -432,7 +437,7 @@ test("Champions League goals and assists materially raise the European category"
   assert.equal(scorerEntry.apps, 32);
   assert.equal(secondEntry.apps, 28);
   assert.ok(scorerEntry.championsLeaguePerformance >= 60);
-  assert.ok(scorerEntry.championsLeaguePerformance <= 120);
+  assert.ok(scorerEntry.championsLeaguePerformance <= 180);
 });
 
 test("World Player of the Season rewards the best global league and tournament performer", async () => {

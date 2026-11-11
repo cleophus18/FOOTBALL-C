@@ -100,18 +100,24 @@ use normal age, rating, development, transfer, and production rules.
 
 The Ballon d'Or is calculated from completed matches in the
 six supported competitions. Each candidate receives a capped score out of 1,000 across
-domestic league performance (300), Champions League performance (250), individual
-statistics (200), team achievements (150), and consistency/big-match performance (100).
-The evaluator is position-specific, gives Champions League knockout matches extra weight,
-uses diminishing returns, and keeps overall rating from deciding the result. The Awards
-screen stores a 30-player shortlist, a top-10 ceremony ranking, category breakdowns,
+six categories: individual statistics (250), domestic league performance (200),
+Champions League performance (180), major team achievements/trophies (250),
+consistency and big-match performance (70), and international tournament performance (50).
+The evaluator is position-specific, uses diminishing returns, and keeps overall rating
+from deciding the result. Trophies require minimum playing-time contribution; top-four
+finishes are not major trophies; no trophy is double-counted.
+
+The winner is decided by journalist voting, not raw score. A 30-player shortlist is
+ranked by the 1,000-point evaluation. One hundred journalists each submit a top-10
+ballot worth 15/12/10/8/7/5/4/3/2/1 points. Voting uses deterministic seeded randomness
+(seeded by career seed and season), so results are reproducible. Ties are broken by
+first-place votes, then second-place votes, and so on. The Awards screen stores the
+shortlist, top-10 ceremony ranking with vote breakdowns, category breakdowns,
 achievements, club and nationality, and historical results in the career save. Final
 season results are confirmed after the competitions finish; the Ballon d'Or ceremony is
 presented at the start of the following season and is recorded once per award period.
-Domestic league goals contribute 10 Ballon d'Or points each and assists contribute 5
-points each before the 300-point domestic-category cap. Champions League goals and
-assists use the same controlled values within their 250-point category cap. Domestic
-and background-league player totals reset at the start
+
+Domestic and background-league player totals reset at the start
 of every new season, so all candidates are evaluated on season form rather than career
 totals.
 

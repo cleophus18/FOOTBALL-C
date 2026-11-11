@@ -212,6 +212,7 @@ import {
   awardRace,
   awardRacePoints,
   positionAwardDefinition,
+  runJournalistVoting,
 } from "./model/awards.mjs";
 import { applyPromotionRelegation } from "./model/europe.mjs";
 import {
@@ -4819,8 +4820,10 @@ export class Career {
       requireIndividualAward: true,
     });
     const ballonAward = awards.find((award) => award.award === "Ballon d'Or");
-    if (ballonAward && evaluatedBallonRace[0]) {
-      const winner = evaluatedBallonRace[0];
+    const voteResult = this.getBallonDorVoteResult();
+    if (ballonAward && voteResult?.winner) {
+      const winnerEntry = voteResult.winner;
+      const winner = evaluatedBallonRace.find((entry) => entry.playerId === winnerEntry.playerId) ?? evaluatedBallonRace[0];
       ballonAward.winners = [
         {
           ...withClub(winner.player),
@@ -4838,32 +4841,41 @@ export class Career {
           nationality: winner.nationality,
           overall: winner.overall,
           points: winner.points,
-          positionMultiplier: winner.positionMultiplier,
           categoryScores: winner.categoryScores,
           goals: winner.goals,
           assists: winner.assists,
           domesticAchievements: winner.domesticAchievements,
           championsLeagueAchievements: winner.championsLeagueAchievements,
+          votePoints: winnerEntry.points,
+          firstPlaceVotes: winnerEntry.firstPlaceVotes,
+          secondPlaceVotes: winnerEntry.secondPlaceVotes,
         },
-        top10: finalBallonRace.slice(0, 10).map((entry, index) => ({
-          rank: index + 1,
-          playerId: entry.playerId,
-          player: `${entry.player.first} ${entry.player.last}`,
-          clubId: entry.clubId,
-          club: withClub(entry.player).club,
-          nationality: entry.nationality,
-          overall: entry.overall,
-          points: entry.points,
-          positionMultiplier: entry.positionMultiplier,
-          categoryScores: entry.categoryScores,
-          goals: entry.goals,
-          assists: entry.assists,
-          domesticAchievements: entry.domesticAchievements,
-          championsLeagueAchievements: entry.championsLeagueAchievements,
-        })),
-        shortlist: evaluatedBallonRace
-          .slice(0, 30)
-          .map((entry) => entry.playerId),
+        top10: voteResult.top10.map((entry, index) => {
+          const raceEntry = evaluatedBallonRace.find((e) => e.playerId === entry.playerId);
+          return {
+            rank: index + 1,
+            playerId: entry.playerId,
+            player: entry.player,
+            clubId: raceEntry?.clubId,
+            club: raceEntry ? withClub(raceEntry.player).club : "",
+            nationality: entry.player.nationality ?? "Unknown",
+            overall: raceEntry?.overall ?? 0,
+            points: raceEntry?.points ?? entry.points,
+            categoryScores: raceEntry?.categoryScores ?? {},
+            goals: raceEntry?.goals ?? 0,
+            assists: raceEntry?.assists ?? 0,
+            domesticAchievements: raceEntry?.domesticAchievements ?? [],
+            championsLeagueAchievements: raceEntry?.championsLeagueAchievements ?? [],
+            votePoints: entry.points,
+            firstPlaceVotes: entry.firstPlaceVotes,
+            secondPlaceVotes: entry.secondPlaceVotes,
+          };
+        }),
+        shortlist: voteResult.shortlist,
+        voting: {
+          totalJournalists: voteResult.totalJournalists,
+          winnerVotePoints: winnerEntry.points,
+        },
       };
     } else if (ballonAward) {
       ballonAward.winners = [];
@@ -4936,12 +4948,15 @@ export class Career {
     const ballonAward = awards.find((award) => award.award === "Ballon d'Or");
     if (!ballonAward) return;
 
+    const voteResult = this.getBallonDorVoteResult();
+    if (!voteResult?.winner) return;
     const race = this.getBallonDorRace({ awards });
     const eligibleRace = this.getBallonDorRace({
       awards,
       requireIndividualAward: true,
     });
-    const winner = eligibleRace[0];
+    const winnerEntry = voteResult.winner;
+    const winner = eligibleRace.find((entry) => entry.playerId === winnerEntry.playerId) ?? eligibleRace[0];
     if (!winner) return;
     const clubNameFor = (player) =>
       this.clubs.find((club) => club.id === player.clubId)?.name ??
@@ -4975,11 +4990,26 @@ export class Career {
     ballonAward.value = winner.points;
     ballonAward.displayValue = `${formatDecimal(winner.points)} / 1000 pts`;
     ballonAward.evaluation = {
-      winner: snapshotEntry(winner, 1),
-      top10: race
-        .slice(0, 10)
-        .map((entry, index) => snapshotEntry(entry, index + 1)),
-      shortlist: eligibleRace.slice(0, 30).map((entry) => entry.playerId),
+      winner: {
+        ...snapshotEntry(winner, 1),
+        votePoints: winnerEntry.points,
+        firstPlaceVotes: winnerEntry.firstPlaceVotes,
+        secondPlaceVotes: winnerEntry.secondPlaceVotes,
+      },
+      top10: voteResult.top10.map((entry, index) => {
+        const raceEntry = race.find((e) => e.playerId === entry.playerId);
+        return {
+          ...snapshotEntry(raceEntry ?? entry, index + 1),
+          votePoints: entry.points,
+          firstPlaceVotes: entry.firstPlaceVotes,
+          secondPlaceVotes: entry.secondPlaceVotes,
+        };
+      }),
+      shortlist: voteResult.shortlist,
+      voting: {
+        totalJournalists: voteResult.totalJournalists,
+        winnerVotePoints: winnerEntry.points,
+      },
     };
 
     this.currentSeasonAwards = { ...this.currentSeasonAwards, awards };
@@ -5061,20 +5091,6 @@ export class Career {
     awards = [],
     requireIndividualAward = false,
   } = {}) {
-    const positionWeights = {
-      ST: 1.15,
-      LW: 1.1,
-      RW: 1.1,
-      AM: 0.92,
-      LM: 0.88,
-      RM: 0.88,
-      CM: 0.84,
-      DM: 0.8,
-      LB: 0.72,
-      RB: 0.72,
-      CB: 0.65,
-      GK: 0.58,
-    };
     const clamp = (value, max) => Math.max(0, Math.min(max, value || 0));
     const diminishing = (value, max, scale) =>
       clamp(max * (1 - Math.exp(-Math.max(0, value) / scale)), max);
@@ -5165,10 +5181,6 @@ export class Career {
         (stats.chancesCreated ?? stats.keyPasses ?? 0) * 0.35
       );
     };
-    const positionWeightFor = (player) =>
-      positionWeights[player.position] ??
-      positionWeights[normalizePosition(player.position)] ??
-      0.92;
     const awardMatches = (award, player) =>
       award.award !== "Ballon d'Or" &&
       (award.winners ?? []).some(
@@ -5258,7 +5270,6 @@ export class Career {
         worldCupKnockouts +
         worldCupTeamAchievement +
         worldCupAwards;
-      const positionMultiplier = positionWeightFor(player);
       const cl = findClRow(player);
       const clApps = cl?.apps ?? 0;
       const clRating = clApps ? cl.ratingSum / clApps : 0;
@@ -5278,11 +5289,11 @@ export class Career {
           clamp(Math.min(apps, 38) * 1.15, 44) +
           clamp(domesticAwards.length * 8, 24)) *
           (0.65 + playingTimeFactor * 0.35),
-        230,
+        200,
       );
       const weightedDomesticLeaguePerformance = clamp(
-        domesticLeaguePerformance * positionMultiplier,
-        230,
+        domesticLeaguePerformance,
+        200,
       );
       const clStats = cl
         ? positionStats(
@@ -5324,9 +5335,8 @@ export class Career {
             clamp((cl?.playerOfMatch ?? 0) * 4, 12) +
             clamp(clAwards.length * 5, 10)
           : 0) *
-          Math.min(1, clApps / 4) *
-          positionMultiplier,
-        120,
+          Math.min(1, clApps / 4),
+        180,
       );
       const combinedStats = positionStats(player, stats, goals, assists);
       const individualStatistics =
@@ -5334,23 +5344,18 @@ export class Career {
           diminishing(combinedStats, 250, 55) +
             clamp((averageRating - 6) * 42, 65) +
             clamp(Math.min(apps, 38) * 1.2, 45),
-          370,
-        ) * positionMultiplier;
-      const cappedIndividualStatistics = clamp(individualStatistics, 370);
-      const topFour = (league.table?.sorted?.() ?? [])
-        .slice(0, 4)
-        .some((row) => row.teamId === player.clubId);
+          250,
+        );
+      const leagueChampion = league.table?.sorted?.()?.[0]?.teamId === player.clubId;
+      const clWinner = this.championsLeague?.winnerId === player.clubId;
+      const clRunnerUp = this.championsLeague?.runnerUpId === player.clubId;
+      const trophyContribution = Math.min(1, apps / 20);
+      const clContribution = Math.min(1, clApps / 4);
       const teamAchievements = clamp(
-        (league.table?.sorted?.()?.[0]?.teamId === player.clubId ? 32 : 0) +
-          (topFour && league.table?.sorted?.()?.[0]?.teamId !== player.clubId
-            ? 10
-            : 0) +
-          (this.championsLeague?.winnerId === player.clubId
-            ? 30
-            : this.championsLeague?.runnerUpId === player.clubId
-              ? 15
-              : 0),
-        110,
+        (leagueChampion ? 180 * trophyContribution : 0) +
+          (clWinner ? 70 * clContribution : 0) +
+          (clRunnerUp ? 30 * clContribution : 0),
+        250,
       );
       const consistencyBigMatches =
         clamp(
@@ -5363,21 +5368,19 @@ export class Career {
               ).length || 0) * 2,
               30,
             ),
-          170,
-        ) * positionMultiplier;
-      const cappedConsistencyBigMatches = clamp(consistencyBigMatches, 170);
+          70,
+        );
       const domesticGoalPoints = clamp(goals * 6, 0, 90);
       const domesticAssistPoints = clamp(assists * 4, 0, 50);
       const totalPoints = round(
         Math.min(
           1000,
-          (weightedDomesticLeaguePerformance +
+          weightedDomesticLeaguePerformance +
             championsLeaguePerformance +
-            cappedIndividualStatistics +
+            individualStatistics +
             teamAchievements +
-            cappedConsistencyBigMatches) *
-            0.9 +
-            worldCupPoints * 2,
+            consistencyBigMatches +
+            Math.min(worldCupPoints, 50),
         ),
         2,
       );
@@ -5395,9 +5398,9 @@ export class Career {
         domesticAssistPoints: round(domesticAssistPoints, 2),
         domesticLeaguePerformance: round(weightedDomesticLeaguePerformance, 2),
         championsLeaguePerformance: round(championsLeaguePerformance, 2),
-        individualStatistics: round(cappedIndividualStatistics, 2),
+        individualStatistics: round(individualStatistics, 2),
         teamAchievements: round(teamAchievements, 2),
-        consistencyBigMatches: round(cappedConsistencyBigMatches, 2),
+        consistencyBigMatches: round(consistencyBigMatches, 2),
         worldCupPoints: round(worldCupPoints, 2),
         categoryScores: {
           domesticLeaguePerformance: round(
@@ -5405,17 +5408,16 @@ export class Career {
             2,
           ),
           championsLeaguePerformance: round(championsLeaguePerformance, 2),
-          individualStatistics: round(cappedIndividualStatistics, 2),
+          individualStatistics: round(individualStatistics, 2),
           teamAchievements: round(teamAchievements, 2),
-          consistencyBigMatches: round(cappedConsistencyBigMatches, 2),
-          worldCup: round(worldCupPoints * 2, 2),
+          consistencyBigMatches: round(consistencyBigMatches, 2),
+          worldCup: round(Math.min(worldCupPoints, 50), 2),
         },
         points: totalPoints,
-        positionMultiplier,
         performanceScore: round(
-          cappedIndividualStatistics +
+          individualStatistics +
             weightedDomesticLeaguePerformance +
-            cappedConsistencyBigMatches +
+            consistencyBigMatches +
             championsLeaguePerformance,
           2,
         ),
@@ -5424,7 +5426,6 @@ export class Career {
           ...(league.table?.sorted?.()?.[0]?.teamId === player.clubId
             ? [`${league.name} champion`]
             : []),
-          ...(topFour ? [`${league.name} top four`] : []),
         ],
         championsLeagueAchievements: [
           ...(this.championsLeague?.winnerId === player.clubId
@@ -5483,6 +5484,13 @@ export class Career {
         rankChange: entry.rankChange,
       }));
     return rankedRace;
+  }
+
+  getBallonDorVoteResult() {
+    const shortlist = (this.ballonDorShortlist ?? []).slice(0, 30);
+    if (!shortlist.length) return null;
+    const seasonSeed = this.seed ?? 0;
+    return runJournalistVoting(shortlist, seasonSeed);
   }
 
   getLegacyBallonDorRace() {
