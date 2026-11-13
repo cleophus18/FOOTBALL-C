@@ -40,6 +40,12 @@ import {
 import { formOverallDelta } from "../model/form.mjs";
 import { calculateTeamRatings } from "../model/team-rating.mjs";
 import { formatMarketValue } from "../core/finance.mjs";
+import {
+  CONTRACT_STATUS_LABELS,
+  CONTRACT_STATUSES,
+  contractRemainingDuration,
+  freeAgentExpectedWage,
+} from "../core/contracts.mjs";
 import { agentSearchTerms } from "../model/transfer-market.mjs";
 import {
   PLAYSTYLE_REGISTRY,
@@ -153,6 +159,9 @@ let playerDirectoryLeague = "";
 let playerDirectoryPage = 0;
 let expandedFixtureStatsId = null;
 let fixtureFilter = "all";
+let transfersTab = "market";
+let freeAgentFilters = { query: "", position: "", nationality: "", minOverall: "", minPotential: "", maxAge: "", minAge: "", maxExpectedWage: "", sort: "overall" };
+let openNegotiationForm = null; // { playerId, kind: "renewal" | "free-agent" | "pre-contract" }
 let lastAutosaveAt = 0;
 let autosaveUnavailable = false;
 let matchSimulationTimer = null;
@@ -2389,6 +2398,42 @@ function renderGame() {
         wage: form.elements.wage.value,
       });
     });
+  const freeAgentFilterForm = $app.querySelector("#free-agent-filter-form");
+  if (freeAgentFilterForm)
+    freeAgentFilterForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(freeAgentFilterForm));
+      freeAgentFilters = { ...freeAgentFilters, ...values };
+      renderGame();
+    });
+  const contractOfferFormEl = $app.querySelector("#contract-offer-form");
+  if (contractOfferFormEl)
+    contractOfferFormEl.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(contractOfferFormEl));
+      const offer = {
+        weeklyWage: Number(values.weeklyWage),
+        years: Number(values.years),
+        squadRole: values.squadRole,
+        signingBonus: Number(values.signingBonus) || 0,
+        releaseClause: values.releaseClause ? Number(values.releaseClause) : null,
+      };
+      const kind = contractOfferFormEl.dataset.kind;
+      try {
+        const decision =
+          kind === "pre-contract"
+            ? career.offerPreContract(contractOfferFormEl.dataset.playerId, offer)
+            : kind === "renewal"
+              ? career.offerContractRenewal(contractOfferFormEl.dataset.playerId, offer)
+              : (career.signFreeAgent(contractOfferFormEl.dataset.playerId, offer), { kind: "signed" });
+        openNegotiationForm = null;
+        transfersTab = kind === "renewal" ? "negotiations" : kind === "pre-contract" ? "confirmed" : "free-agents";
+        notice = decision.message ?? decision.kind ?? "The offer was submitted.";
+      } catch (error) {
+        notice = error.message;
+      }
+      renderGame();
+    });
   // On a phone the sidebar becomes a horizontal icon strip that can overflow; keep
   // the active screen visible rather than hidden off the right-hand edge.
   $app
@@ -3492,24 +3537,78 @@ function renderWorld() {
     </section>`;
 }
 
+function contractStatusLabel(player) {
+  const contract = player.contract ?? {};
+  const status = contract.status ?? CONTRACT_STATUSES.ACTIVE;
+  return CONTRACT_STATUS_LABELS[status] ?? "Active";
+}
+
+function contractCountdownMarkup(player) {
+  const remaining = player.clubId
+    ? contractRemainingDuration(player.contract, currentDay())
+    : null;
+  if (!remaining) return '<span class="contract-countdown is-free">Free agent</span>';
+  const totalMonths = remaining.years * 12 + remaining.months;
+  const tone = totalMonths <= 1 ? "urgent" : totalMonths <= 6 ? "warning" : "ok";
+  const label = remaining.years
+    ? `${remaining.years}y ${remaining.months}m`
+    : `${Math.max(0, totalMonths)}m`;
+  return `<span class="contract-countdown is-${tone}" title="Contract remaining: ${label}"><i style="width:${Math.max(4, Math.min(100, (totalMonths / 60) * 100))}%"></i>${label}</span>`;
+}
+
+function contractOfferForm(playerId, kind, defaults = {}) {
+  return `<div class="wage-dialog-backdrop"><section class="wage-dialog contract-offer-dialog" role="dialog" aria-modal="true">
+    <form id="contract-offer-form" data-player-id="${esc(playerId)}" data-kind="${esc(kind)}">
+      <div class="eyebrow lime">CONTRACT NEGOTIATION</div>
+      <h2>${kind === "pre-contract" ? "Offer a pre-contract" : kind === "free-agent" ? "Offer a free-transfer contract" : "Offer a contract renewal"}</h2>
+      <p class="muted">The player will judge the wage, duration, role and bonuses. Not every offer is accepted.</p>
+      <label class="position-select">Weekly wage (€)<input name="weeklyWage" type="number" min="500" step="50" value="${Math.max(500, Math.round(defaults.weeklyWage ?? 5000))}" required></label>
+      <label class="position-select">Duration (years)<input name="years" type="number" min="1" max="5" step="1" value="${defaults.years ?? 3}" required></label>
+      <label class="position-select">Squad role
+        <select name="squadRole">${["Star Player", "Key Player", "Important Player", "Regular Starter", "Squad Rotation", "Prospect", "Fringe Player"].map((role) => `<option ${role === (defaults.squadRole ?? "Regular Starter") ? "selected" : ""}>${role}</option>`).join("")}</select>
+      </label>
+      <label class="position-select">Signing bonus (€)<input name="signingBonus" type="number" min="0" step="1000" value="${defaults.signingBonus ?? 0}"></label>
+      <label class="position-select">Release clause (€, empty for none)<input name="releaseClause" type="number" min="0" step="100000" value="${defaults.releaseClause ?? ""}"></label>
+      <div class="wage-dialog-actions">
+        <button class="button-primary" type="submit">Submit final offer</button>
+        <button class="button-quiet" type="button" data-action="cancel-contract-offer">Cancel</button>
+      </div>
+    </form>
+  </section></div>`;
+}
+
 function renderTransfersList() {
+  const tabs = [
+    ["market", "Transfer Market"],
+    ["free-agents", "Free Agents"],
+    ["expiries", "Contract Expiries"],
+    ["negotiations", "Negotiations"],
+    ["confirmed", "Confirmed Transfers"],
+  ];
+  const heading = `<div class="page-heading"><div><div class="eyebrow lime">TRANSFER CENTRE</div><h1>Transfers</h1><p>The market, the free-agent pool, expiring contracts and your negotiations in one hub.</p></div><span class="live-tag">${esc(career.league.name)}</span></div>
+    <nav class="transfer-tabs">${tabs.map(([key, label]) => `<button class="transfer-tab ${transfersTab === key ? "active" : ""}" data-action="transfers-tab" data-tab="${key}">${label}</button>`).join("")}</nav>`;
+  const body =
+    transfersTab === "free-agents" ? renderFreeAgentsTab()
+    : transfersTab === "expiries" ? renderContractExpiriesTab()
+    : transfersTab === "negotiations" ? renderNegotiationsTab()
+    : transfersTab === "confirmed" ? renderConfirmedTransfersTab()
+    : renderTransferMarketTab();
+  const dialog = openNegotiationForm
+    ? contractOfferForm(openNegotiationForm.playerId, openNegotiationForm.kind, openNegotiationForm.defaults ?? {})
+    : "";
+  return `${heading}${body}${dialog}`;
+}
+
+function renderTransferMarketTab() {
   const market = career.transferMarket();
   return `
-    <div class="page-heading">
-      <div>
-        <div class="eyebrow lime">TRANSFER MARKET</div>
-        <h1>Transfers List</h1>
-        <p>Players currently available for transfer in ${esc(career.league.name)}.</p>
-      </div>
-      <span class="live-tag">${market.length} PLAYERS LISTED</span>
-    </div>
     <section class="panel table-panel transfer-market-panel">
       <div class="panel-heading">
-        <div><div class="eyebrow">AVAILABLE PLAYERS</div><h2>Current market</h2></div>
+        <div><div class="eyebrow">AVAILABLE PLAYERS</div><h2>Transfer market</h2></div>
         <span class="live-tag">${career.isManagerCareer ? `BUDGET €${Math.round(career.financialSummary().transferBudget).toLocaleString("en-GB")}` : "SCOUTING ONLY"}</span>
       </div>
       <table class="world-roster-table">
-        <thead><tr><th>PLAYER</th><th>AGE</th><th>POSITION</th><th>OVR</th><th>CURRENT CLUB</th><th>TRANSFER VALUE</th><th></th></tr></thead>
+        <thead><tr><th>PLAYER</th><th>AGE</th><th>POSITION</th><th>OVR</th><th>CURRENT CLUB</th><th>CONTRACT</th><th>TRANSFER VALUE</th><th></th></tr></thead>
         <tbody>${market
           .map(
             ({ player, club, marketValue }) => `
@@ -3519,12 +3618,143 @@ function renderTransfersList() {
                 <td>${esc(player.position)}</td>
                 <td class="world-rating">${player.overall}</td>
                 <td>${esc(club?.name ?? "Free agent")}</td>
+                <td>${contractCountdownMarkup(player)}</td>
                 <td>${formatMarketValue(marketValue)}</td>
                 <td><button class="button-primary" data-action="${career.isManagerCareer ? "buy-player" : "player-request"}" data-request-type="better-teammates" data-player-id="${esc(player.id)}">${career.isManagerCareer ? "Enquire" : "Ask manager to sign"}</button></td>
               </tr>
             `,
           )
-          .join("") || '<tr><td colspan="7" class="scorer-empty">No players are currently listed.</td></tr>'}</tbody>
+          .join("") || '<tr><td colspan="8" class="scorer-empty">No players are currently listed.</td></tr>'}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderFreeAgentsTab() {
+  const f = freeAgentFilters;
+  const agents = career.freeAgents({ ...f, maxAge: f.maxAge, minAge: f.minAge });
+  const sorters = {
+    overall: (a, b) => b.player.overall - a.player.overall,
+    age: (a, b) => ageOn(a.player.dob, currentDay()) - ageOn(b.player.dob, currentDay()),
+    potential: (a, b) => b.player.potential - a.player.potential,
+    value: (a, b) => b.marketValue - a.marketValue,
+    wage: (a, b) => a.expectedWage - b.expectedWage,
+  };
+  agents.sort(sorters[f.sort] ?? sorters.overall);
+  const canAct = career.isManagerCareer;
+  return `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">FREE AGENTS</div><h2>Available without a fee</h2></div><span class="live-tag">${agents.length} AVAILABLE</span></div>
+      <form id="free-agent-filter-form" class="free-agent-filters">
+        <input name="query" placeholder="Search name…" value="${esc(f.query)}">
+        <select name="position"><option value="">All positions</option>${[...new Set(["GK","CB","LB","RB","CDM","CM","AM","LW","RW","ST"])].map((p) => `<option ${f.position === p ? "selected" : ""}>${p}</option>`).join("")}</select>
+        <input name="nationality" placeholder="Nationality (e.g. ENG)" value="${esc(f.nationality)}">
+        <input name="minAge" type="number" placeholder="Min age" value="${f.minAge}" min="15" max="45">
+        <input name="maxAge" type="number" placeholder="Max age" value="${f.maxAge}" min="15" max="45">
+        <input name="minOverall" type="number" placeholder="Min OVR" value="${f.minOverall}" min="40" max="99">
+        <input name="minPotential" type="number" placeholder="Min POT" value="${f.minPotential}" min="40" max="99">
+        <input name="maxExpectedWage" type="number" placeholder="Max wage €/wk" value="${f.maxExpectedWage}" min="0" step="1000">
+        <select name="sort">${[["overall","Sort: Overall"],["age","Sort: Age"],["potential","Sort: Potential"],["value","Sort: Market value"],["wage","Sort: Wage demand"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button class="button-primary" type="submit">Apply</button>
+      </form>
+      <div class="free-agent-grid">${agents
+        .map(
+          ({ player, formerClub, expectedWage, marketValue, preContract }) => `
+          <article class="free-agent-card ${preContract ? "is-pending" : ""}">
+            <header><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b><span class="status-pill">FREE AGENT</span></header>
+            <div class="free-agent-meta">
+              <span>${esc(player.position)}</span><span>${player.dob != null ? ageOn(player.dob, currentDay()) : "—"} yrs</span>
+              <span class="world-rating">${player.overall} OVR</span><span>${player.potential} POT</span>
+              <span>${esc(countryName(player.nationality ?? ""))}</span>
+            </div>
+            <div class="free-agent-details">
+              <div><small>PREVIOUS CLUB</small><b>${esc(formerClub?.name ?? "Unknown")}</b></div>
+              <div><small>PREVIOUS WAGE</small><b>${player.contract?.previousWeeklyWage ? `€${formatDecimal(player.contract.previousWeeklyWage)}/wk` : "—"}</b></div>
+              <div><small>EXPECTED WAGE</small><b>€${formatDecimal(expectedWage)}/wk</b></div>
+              <div><small>MARKET VALUE</small><b>${formatMarketValue(marketValue)}</b></div>
+              <div><small>STATUS</small><b>${preContract ? `Pre-contract → ${esc(preContract.toClubName)}` : "Available"}</b></div>
+            </div>
+            ${canAct && !preContract && !player.contract?.preContract?.status ? `<footer><button class="button-primary" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="free-agent" data-wage="${expectedWage}">Offer contract</button></footer>` : ""}
+          </article>`,
+        )
+        .join("") || '<div class="empty-report"><p>No free agents match these filters.</p></div>'}</div>
+    </section>
+  `;
+}
+
+function renderContractExpiriesTab() {
+  const expiries = career.contractExpiries({ days: 550 });
+  return `
+    <section class="panel table-panel">
+      <div class="panel-heading"><div><div class="eyebrow">COUNTDOWN</div><h2>Contract expiries</h2></div><span class="live-tag">${expiries.length} INSIDE 18 MONTHS</span></div>
+      <table class="world-roster-table">
+        <thead><tr><th>PLAYER</th><th>CLUB</th><th>POSITION</th><th>OVR</th><th>AGE</th><th>EXPIRES IN</th><th>STAGE</th><th></th></tr></thead>
+        <tbody>${expiries
+          .map(
+            ({ player, club, remaining, stage }) => `
+            <tr>
+              <td><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b></td>
+              <td>${esc(club?.name ?? "—")}</td>
+              <td>${esc(player.position)}</td>
+              <td class="world-rating">${player.overall}</td>
+              <td>${player.dob != null ? ageOn(player.dob, currentDay()) : "—"}</td>
+              <td>${contractCountdownMarkup(player)}</td>
+              <td><span class="contract-stage is-${esc(stage)}">${{ "twelve-months": "Renewal window", "six-months": "Pre-contract window", "final-month": "Final month", expired: "Expired", normal: "—" }[stage] ?? stage}</span></td>
+              <td>${career.isManagerCareer && stage === "six-months" && player.clubId !== career.club.id ? `<button class="button-quiet" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="pre-contract" data-wage="${freeAgentExpectedWage(player)}">Pre-contract</button>` : career.isManagerCareer && player.clubId === career.club.id && stage !== "normal" ? `<button class="button-quiet" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="renewal" data-wage="${player.contract?.weeklyWage ?? 5000}">Renew</button>` : ""}</td>
+            </tr>`,
+          )
+          .join("") || '<tr><td colspan="8" class="scorer-empty">No contracts are expiring inside the next 18 months.</td></tr>'}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderNegotiationsTab() {
+  const negotiations = career.contractNegotiationView();
+  return `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">INBOX</div><h2>Contract negotiations</h2></div><span class="live-tag">${negotiations.length} RECORDED</span></div>
+      <div class="transfer-list">${negotiations
+        .map(
+          (negotiation) => `
+        <article class="transfer-agent negotiation-item is-${esc(negotiation.status)}">
+          <div>
+            <b>${esc(negotiation.playerName)}</b>
+            <small>${esc(negotiation.clubName)} · €${formatDecimal(negotiation.offer.weeklyWage)}/wk · ${negotiation.offer.years}y · ${esc(negotiation.offer.squadRole)} · Bonus €${formatDecimal(negotiation.offer.signingBonus)}${negotiation.offer.releaseClause ? ` · Release €${formatDecimal(negotiation.offer.releaseClause)}` : ""}</small>
+            ${negotiation.response ? `<small class="negotiation-response">${esc(negotiation.response.message)}</small>` : ""}
+          </div>
+          <div class="agent-actions">
+            <span class="negotiation-status">${esc(negotiation.status)}</span>
+            ${["awaiting-response", "counteroffer"].includes(negotiation.status) ? `<button class="button-quiet" data-action="withdraw-negotiation" data-negotiation-id="${esc(negotiation.id)}">Withdraw</button>` : ""}
+          </div>
+        </article>`,
+        )
+        .join("") || '<div class="empty-report"><p>No contract negotiations yet. Open a player in Contract Expiries or Free Agents to make an offer.</p></div>'}</div>
+    </section>
+  `;
+}
+
+function renderConfirmedTransfersTab() {
+  const confirmed = (career.transferHistory ?? []).slice(0, 60);
+  return `
+    <section class="panel table-panel">
+      <div class="panel-heading"><div><div class="eyebrow">RECORD</div><h2>Confirmed transfers</h2></div><span class="live-tag">${career.transferHistory?.length ?? 0} TOTAL</span></div>
+      <table class="world-roster-table">
+        <thead><tr><th>DATE</th><th>PLAYER</th><th>FROM</th><th>TO</th><th>TYPE</th><th>FEE</th><th>WAGE</th></tr></thead>
+        <tbody>${confirmed
+          .map(
+            (item) => `
+          <tr class="${item.future ? "is-future-transfer" : ""}">
+            <td>${item.date != null ? esc(formatDate(item.date)) : "—"}${item.future ? ' <span class="status-pill">FUTURE</span>' : ""}</td>
+            <td><b>${esc(item.playerName ?? "—")}</b></td>
+            <td>${esc(item.fromClub ?? "—")}</td>
+            <td>${esc(item.toClub ?? "—")}</td>
+            <td>${esc(item.type ?? "transfer")}</td>
+            <td>${item.fee ? `€${formatDecimal(item.fee)}` : "Free"}</td>
+            <td>${item.wage ? `€${formatDecimal(item.wage)}/wk` : "—"}</td>
+          </tr>`,
+          )
+          .join("") || '<tr><td colspan="7" class="scorer-empty">No transfers have been completed yet.</td></tr>'}</tbody>
       </table>
     </section>
   `;
@@ -5846,6 +6076,7 @@ function renderOtherPlayer() {
     );
   return `<div class="page-heading player-hub-heading"><div><div class="eyebrow lime">PLAYER PROFILE · ${esc(player.leagueName.toUpperCase())}</div><h1>${esc(player.fullName)}</h1><p>${esc(player.archetype ?? "—")} · ${esc(player.position ?? "—")} · ${ageOn(player.dob, currentDay())} years old · ${esc(player.clubName)}</p></div><div class="rating-badge">${player.overall}<small>OVR</small></div></div>
     <button class="button-quiet player-back-button" type="button" data-action="player-directory">← All players</button>
+    ${renderContractSection(player)}
     <section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">PLAYER OVERVIEW</div><h2>Profile & current record</h2></div><span class="live-tag">${player.age ? `${player.age} YEARS` : "NPC PLAYER"} · POT ${player.potential}</span></div>
     <div class="profile-grid"><section class="panel profile-panel"><div class="profile-details"><div><small>CLUB</small><b>${esc(player.clubName)}</b></div><div><small>LEAGUE</small><b>${esc(player.leagueName)}</b></div><div><small>NATIONALITY</small><b>${esc(countryName(player.nationality ?? "—"))}</b></div><div><small>PLAYING POSITION</small><b>${esc(player.position ?? "—")}</b></div><div><small>AGE</small><b>${player.age ?? (player.dob ? ageOn(player.dob, currentDay()) : "—")}</b></div><div><small>SHIRT NUMBER</small><b>${player.shirtNumber ?? "—"}</b></div><div><small>STRONG FOOT</small><b>${esc(player.foot ?? "Right")} · ${player.weakFoot ?? 3}★ weak foot</b></div><div><small>SKILL MOVES</small><b>${player.skillMoves ?? 3} ★</b></div><div><small>ARCHETYPE</small><b>${esc(player.archetype ?? "—")}</b></div><div><small>PERSONALITY</small><b>${esc((player.personality ?? []).join(", ") || "—")}</b></div><div><small>DEVELOPMENT TRAIT</small><b>${esc((player.traits ?? []).join(", ") || "None")}</b></div><div><small>HEIGHT / WEIGHT</small><b>${player.height ?? "—"} cm / ${player.weight ?? "—"} kg</b></div><div><small>SOURCE</small><b>${player.source === "generated" ? "Generated NPC" : player.source === "real-world" ? "Imported real player" : "League player"}</b></div><div><small>MARKET VALUE</small><b>${(player.marketValue ?? player.value) ? `${formatMarketValue(player.marketValue ?? player.value)}${Number(player.previousMarketValue) > 0 ? ` <small class="${(player.marketValue ?? player.value) >= player.previousMarketValue ? "positive" : "negative"}">${(player.marketValue ?? player.value) >= player.previousMarketValue ? "▲" : "▼"} ${formatMarketValue(Math.abs((player.marketValue ?? player.value) - player.previousMarketValue))}</small>` : ""}` : "—"}</b></div><div><small>CONTRACT</small><b>${player.contract?.wage ? `€${formatDecimal(player.contract.wage)} per week` : "—"}</b></div></div></section><section class="panel attributes-panel"><div class="panel-heading"><div><div class="eyebrow">ATTRIBUTE PROFILE</div><h2>Core attributes</h2></div><span class="live-tag">${player.attrs ? "PLAYER ATTRIBUTES" : "OVR ESTIMATE"}</span></div><div class="attribute-list">${ATTRIBUTES.map((attribute) => `<div class="attribute-row"><span>${attribute.toUpperCase()}</span><div class="attribute-bar"><i style="width:${attributes[attribute] ?? player.overall}%"></i></div><b>${attributes[attribute] ?? player.overall}</b></div>`).join("")}${player.position === "GK" ? GK_ATTRIBUTES.map((attribute) => `<div class="attribute-row"><span>${attribute.toUpperCase()}</span><div class="attribute-bar"><i style="width:${player.gkAttrs?.[attribute] ?? player.overall}%"></i></div><b>${player.gkAttrs?.[attribute] ?? player.overall}</b></div>`).join("") : ""}</div><p class="muted">${player.attrs ? "Attributes are read from this player's imported or simulated profile." : "This NPC is tracked by overall rating only; individual attributes are estimated from overall, not sourced player ratings."}</p></section></div></section>
     <section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">PLAYER STATISTICS</div><h2>Season & career totals</h2></div></div><div class="player-stat-panels"><section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT SEASON · ${esc(player.leagueName.toUpperCase())}</div><h2>League record</h2></div></div><div class="player-stat-grid"><div><b>${player.appearances}</b><small>APPS</small></div><div><b>${stats.starts ?? "—"}</b><small>STARTS</small></div><div><b>${player.goals}</b><small>GOALS</small></div><div><b>${player.assists}</b><small>ASSISTS</small></div><div><b>${stats.minutes ?? "—"}</b><small>MINUTES</small></div><div><b>${average}</b><small>AVG RATING</small></div><div><b>${stats.yellowCards ?? "—"}</b><small>YELLOW</small></div><div><b>${stats.redCards ?? "—"}</b><small>RED</small></div></div></section><section class="panel"><div class="panel-heading"><div><div class="eyebrow">DEVELOPMENT</div><h2>Player growth</h2></div></div><div class="player-stat-grid"><div><b>${player.overall}</b><small>OVERALL</small></div><div><b>${player.potential}</b><small>POTENTIAL</small></div><div><b>${Math.max(0, player.potential - player.overall)}</b><small>GROWTH ROOM</small></div><div><b>${player.age ?? "—"}</b><small>AGE</small></div></div></section></div></section>
@@ -5853,6 +6084,50 @@ function renderOtherPlayer() {
     ${renderInternationalHistorySection(player)}
     <section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">OVR DEVELOPMENT</div><h2>Rating history</h2></div><span class="live-tag">${ratingHistory.length} CHANGES</span></div><section class="panel table-panel player-history-panel"><table class="history-table"><thead><tr><th>SEASON</th><th>OVR</th><th>CHANGE</th><th>REASON</th></tr></thead><tbody>${ratingHistoryRows || '<tr><td colspan="4" class="scorer-empty">No overall changes recorded yet.</td></tr>'}</tbody></table></section></section>
     <section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">PLAYER HISTORY</div><h2>Match history</h2></div><span class="live-tag">${matchHistory.length} RECORDED APPEARANCES</span></div><section class="panel table-panel player-history-panel"><table class="history-table"><thead><tr><th>DATE</th><th>COMPETITION</th><th>FIXTURE</th><th>SCORE</th><th>MINS</th><th>G</th><th>A</th><th>RTG</th><th>RESULT</th></tr></thead><tbody>${historyRows || `<tr><td colspan="9" class="scorer-empty">${appearances ? "This player's career totals are available, but detailed appearances are not tracked in the selected league data." : "No recorded appearances yet."}</td></tr>`}</tbody></table></section></section>`;
+}
+
+function renderContractSection(player) {
+  const contract = player.contract ?? {};
+  const isFree = !player.clubId;
+  const day = currentDay();
+  const from = contract.startDate != null ? formatDate(Number(contract.startDate)) : "—";
+  const expiry = contract.expiryDate != null ? formatDate(Number(contract.expiryDate)) : "—";
+  const duration = isFree ? null : contractRemainingDuration(contract, day);
+  const status = contractStatusLabel(player);
+  const history = (contract.history ?? []).slice().reverse();
+  const stage = isFree ? null : contractStageLabelFromUi(contract, day);
+  const preContract = contract.preContract?.status === "agreed" ? contract.preContract : null;
+  return `<section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">CONTRACT</div><h2>Employment & contract history</h2></div><span class="live-tag">${esc(status.toUpperCase())}</span></div>
+    <section class="panel">
+      <div class="free-agent-details contract-profile-grid">
+        <div><small>CURRENT CLUB</small><b>${esc(player.clubName)}</b></div>
+        <div><small>WEEKLY SALARY</small><b>${contract.weeklyWage ? `€${formatDecimal(contract.weeklyWage)}` : isFree ? "Unattached" : "—"}</b></div>
+        <div><small>START DATE</small><b>${from}</b></div>
+        <div><small>EXPIRY DATE</small><b>${expiry}</b></div>
+        <div><small>REMAINING</small><b>${duration ? `${duration.years}y ${duration.months}m` : isFree ? "—" : "Expired"}</b></div>
+        <div><small>RELEASE CLAUSE</small><b>${contract.releaseClause ? `€${formatDecimal(contract.releaseClause)}` : "None"}</b></div>
+        <div><small>SIGNING BONUS</small><b>${contract.signingBonus ? `€${formatDecimal(contract.signingBonus)}` : "—"}</b></div>
+        <div><small>LOYALTY BONUS</small><b>${contract.loyaltyBonus ? `€${formatDecimal(contract.loyaltyBonus)}` : "—"}</b></div>
+        <div><small>SQUAD ROLE</small><b>${esc(contract.squadRole ?? "—")}</b></div>
+        <div><small>STATUS</small><b>${esc(status)}</b></div>
+        ${preContract ? `<div><small>PRE-CONTRACT</small><b>${esc(preContract.toClubName)} from ${expiry}</b></div>` : ""}
+      </div>
+      ${duration ? `<div class="contract-profile-countdown">${contractCountdownMarkup(player)}</div>` : ""}
+      ${stage && stage !== "normal" ? `<p class="muted contract-stage-note">${{ "twelve-months": "This contract is inside its final 12 months — renewal talks are open.", "six-months": "Inside the six-month window: pre-contract agreements are permitted.", "final-month": "FINAL MONTH: the player must accept a renewal or leave on a free transfer." }[stage] ?? ""}</p>` : ""}
+      ${history.length ? `<table class="history-table"><thead><tr><th>DATE</th><th>EVENT</th><th>CLUB</th><th>DETAILS</th></tr></thead><tbody>${history.slice(0, 12).map((entry) => `<tr><td>${entry.date != null ? esc(formatDate(Number(entry.date))) : "—"}</td><td>${esc(entry.type ?? "—")}</td><td>${esc((career.clubs ?? []).find((club) => club.id === entry.clubId)?.name ?? "—")}</td><td>${esc(entry.reason ?? (entry.weeklyWage ? `€${formatDecimal(entry.weeklyWage)}/wk · ${entry.years ?? "?"}y` : ""))}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">No previous contracts recorded.</p>'}
+    </section>
+  </section>`;
+}
+
+function contractStageLabelFromUi(contract, day) {
+  const expiry = Number(contract.expiryDate ?? contract.expiry ?? NaN);
+  if (!Number.isFinite(expiry)) return "normal";
+  const remaining = expiry - day;
+  if (remaining <= 0) return "expired";
+  if (remaining <= 31) return "final-month";
+  if (remaining <= 183) return "six-months";
+  if (remaining <= 365) return "twelve-months";
+  return "normal";
 }
 
 function renderOtherPlayerHonours(player) {
@@ -6569,6 +6844,35 @@ function handleAction(action, details = {}) {
     } catch (error) {
       notice = `Could not complete transfer: ${error.message}`;
     }
+  }
+  if (action === "transfers-tab") {
+    transfersTab = details.tab ?? "market";
+    renderGame();
+  }
+  if (action === "open-contract-offer") {
+    openNegotiationForm = {
+      playerId: details.playerId,
+      kind: details.kind ?? "free-agent",
+      defaults: {
+        weeklyWage: Number(details.wage ?? 5000),
+        years: 3,
+        signingBonus: 0,
+      },
+    };
+    renderGame();
+  }
+  if (action === "cancel-contract-offer") {
+    openNegotiationForm = null;
+    renderGame();
+  }
+  if (action === "withdraw-negotiation") {
+    try {
+      career.withdrawContractNegotiation(details.negotiationId);
+      notice = "The offer has been withdrawn.";
+    } catch (error) {
+      notice = error.message;
+    }
+    renderGame();
   }
   if (action === "save") {
     try {

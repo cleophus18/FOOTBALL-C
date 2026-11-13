@@ -2142,6 +2142,180 @@ td:first-child {
   margin-top: 12px;
 }
 
+/* ===== FC26 transfer centre: tabs, free agents, contract countdowns ===== */
+.transfer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.transfer-tab {
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.transfer-tab.active {
+  background: var(--lime, #65d46e);
+  border-color: transparent;
+  color: #08131c;
+}
+
+.free-agent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.free-agent-filters input,
+.free-agent-filters select {
+  min-width: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0d1622;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.free-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.free-agent-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #121d2c, #0e1622);
+}
+
+.free-agent-card.is-pending {
+  opacity: .68;
+}
+
+.free-agent-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.free-agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.free-agent-meta .world-rating {
+  color: var(--lime, #65d46e);
+  font-weight: 700;
+}
+
+.free-agent-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.free-agent-details small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.free-agent-card footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.contract-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.contract-countdown i {
+  display: inline-block;
+  width: 38px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .85;
+}
+
+.contract-countdown.is-ok { color: #65d46e; }
+.contract-countdown.is-warning { color: #f0c86a; }
+.contract-countdown.is-urgent { color: #ef6b6b; }
+.contract-countdown.is-free { color: var(--muted); }
+
+.contract-stage {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+.contract-stage.is-twelve-months { background: rgba(240, 200, 106, .14); color: #f0c86a; }
+.contract-stage.is-six-months { background: rgba(240, 130, 60, .16); color: #f09a5a; }
+.contract-stage.is-final-month { background: rgba(239, 107, 107, .18); color: #ef6b6b; }
+
+.negotiation-item.is-accepted { border-color: #65d46e; }
+.negotiation-item.is-rejected { border-color: #ef6b6b; }
+.negotiation-item.is-counteroffer { border-color: #f0c86a; }
+.negotiation-item.is-withdrawn { opacity: .6; }
+
+.negotiation-response {
+  color: var(--text) !important;
+  font-style: italic;
+}
+
+.negotiation-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.is-future-transfer td {
+  background: rgba(101, 212, 110, .06);
+}
+
+.contract-profile-grid {
+  margin-bottom: 12px;
+}
+
+.contract-profile-countdown {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.contract-stage-note {
+  margin-bottom: 10px;
+}
+
 .transfer-agent,
 .transfer-offer {
   display: flex;

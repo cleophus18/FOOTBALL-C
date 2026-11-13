@@ -5,11 +5,77 @@ import { ensureClubFinance, recordClubTransaction, syncLegacyBudgetFields } from
 export const CONTRACT_STATUSES = {
   ACTIVE: "active",
   EXPIRING: "expiring",
+  NEGOTIATING: "negotiating",
+  RENEWAL_OFFERED: "renewal-offered",
   PENDING_RENEWAL: "pending-renewal",
   RENEWAL_REJECTED: "renewal-rejected",
+  PRE_CONTRACT_AGREED: "pre-contract-agreed",
   EXPIRED: "expired",
   FREE_AGENT: "free-agent",
+  RETIRED: "retired",
 };
+
+/** Human labels for the contract status system. */
+export const CONTRACT_STATUS_LABELS = {
+  [CONTRACT_STATUSES.ACTIVE]: "Active",
+  [CONTRACT_STATUSES.EXPIRING]: "Expiring",
+  [CONTRACT_STATUSES.NEGOTIATING]: "Negotiating",
+  [CONTRACT_STATUSES.RENEWAL_OFFERED]: "Renewal Offered",
+  [CONTRACT_STATUSES.PENDING_RENEWAL]: "Negotiating",
+  [CONTRACT_STATUSES.RENEWAL_REJECTED]: "Rejected renewal",
+  [CONTRACT_STATUSES.PRE_CONTRACT_AGREED]: "Pre-contract Agreed",
+  [CONTRACT_STATUSES.EXPIRED]: "Expired",
+  [CONTRACT_STATUSES.FREE_AGENT]: "Free Agent",
+  [CONTRACT_STATUSES.RETIRED]: "Retired",
+};
+
+/**
+ * The stage thresholds of the contract lifecycle, in days remaining:
+ * 365 days (~12 months), 183 days (~6 months, pre-contract window) and 31 days
+ * (the final month). The countdown progresses automatically as the in-game
+ * calendar advances.
+ */
+export const CONTRACT_STAGES = {
+  RENEWAL_OPEN: 365,
+  PRE_CONTRACT_OPEN: 183,
+  FINAL_MONTH: 31,
+};
+
+export function contractStageLabel(contract, currentDay) {
+  const remaining = daysUntilExpiry(contract, currentDay);
+  if (remaining == null) return null;
+  if (remaining <= 0) return "expired";
+  if (remaining <= URGENT_WINDOW_DAYS) return "final-month";
+  if (remaining <= PRE_CONTRACT_WINDOW_DAYS) return "six-months";
+  if (remaining <= RENEWAL_WINDOW_DAYS) return "twelve-months";
+  return "normal";
+}
+
+/** Remaining duration as { years, months } for the profile countdown indicator. */
+export function contractRemainingDuration(contract, currentDay) {
+  const remaining = daysUntilExpiry(contract, currentDay);
+  if (remaining == null || remaining < 0) return { years: 0, months: 0, days: 0 };
+  const months = Math.floor(remaining / 30.44);
+  return {
+    years: Math.floor(months / 12),
+    months: months % 12,
+    days: remaining - Math.round(months * 30.44),
+  };
+}
+
+/** Expected wage demanded by a free agent, based on his quality and previous wage. */
+export function freeAgentExpectedWage(player) {
+  const previous = Number(player?.contract?.previousWeeklyWage ?? player?.contract?.lastWage ?? 0);
+  const estimate = estimateWeeklyWage(player);
+  if (!previous) return estimate;
+  // A player coming off a big wage expects a similar figure, tempered by his age.
+  return Math.round(Math.max(estimate, previous * 0.92) / 50) * 50;
+}
+
+/** Agent fee for signing a player: 5% of one year's wages, floored at €25k. */
+export function agentFeeFor(wage) {
+  return Math.max(25_000, Math.round((Number(wage) || 0) * 52 * 0.05));
+}
 
 const DAYS_PER_YEAR = 365;
 export const RENEWAL_WINDOW_DAYS = 365;
@@ -330,12 +396,15 @@ export function expirePlayerContract(player, club, { currentDay = 0, season = nu
     status: CONTRACT_STATUSES.FREE_AGENT,
     weeklyWage: 0,
     wage: 0,
+    previousWeeklyWage: contract.weeklyWage ?? 0,
     expiryDate: currentDay ?? contract.expiryDate ?? null,
     squadRole: "Free Agent",
     releaseClause: null,
     renewalRejected: !!contract.renewalRejected,
     preContractAllowed: false,
     pendingOffer: null,
+    // An agreed pre-contract survives expiry so the destination club can collect him.
+    preContract: contract.preContract?.status === "agreed" ? contract.preContract : null,
   };
   addContractHistory(player.contract, {
     date: currentDay,
@@ -352,7 +421,7 @@ export function expirePlayerContract(player, club, { currentDay = 0, season = nu
   };
 }
 
-export function signPlayerContract(player, club, offer, { currentDay = 0, season = null, isFreeAgent = false } = {}) {
+export function signPlayerContract(player, club, offer, { currentDay = 0, season = null, isFreeAgent = false, loyaltyBonus = 0, agentFee = 0 } = {}) {
   if (!player || !club) throw new Error("Player and club are required.");
   const normalized = normalizeContract(player, { club, currentDay, season });
   const years = clamp(Math.round(Number(offer.years ?? offer.contractYears ?? 2) || 2), 1, 5);
@@ -391,7 +460,9 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
     renewalRejected: false,
     preContractAllowed: false,
     pendingOffer: null,
+    preContract: null,
     signingBonus,
+    loyaltyBonus: Math.max(0, Math.round(Number(loyaltyBonus) || 0)),
     signedSeason: season ?? normalized.signedSeason ?? null,
   };
   const expiry = fromDayIndex(expiryDate);
@@ -419,6 +490,34 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
         category: "wages",
         description: `Signing bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
         expense: signingBonus,
+      });
+    }
+    syncLegacyBudgetFields(club);
+  }
+  if (loyaltyBonus > 0) {
+    const finance = ensureClubFinance(club);
+    const eventId = `loyalty-bonus-${club.id}-${player.id}-${currentDay}`;
+    if (!finance.processedEvents.includes(eventId)) {
+      recordClubTransaction(club, {
+        id: eventId,
+        date: currentDay,
+        category: "wages",
+        description: `Loyalty bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
+        expense: loyaltyBonus,
+      });
+    }
+    syncLegacyBudgetFields(club);
+  }
+  if (agentFee > 0) {
+    const finance = ensureClubFinance(club);
+    const eventId = `agent-fee-${club.id}-${player.id}-${currentDay}`;
+    if (!finance.processedEvents.includes(eventId)) {
+      recordClubTransaction(club, {
+        id: eventId,
+        date: currentDay,
+        category: "agent fees",
+        description: `Agent fee for signing ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
+        expense: agentFee,
       });
     }
     syncLegacyBudgetFields(club);
@@ -487,4 +586,227 @@ export function contractSummary(contract, currentDay) {
     daysRemaining: remainingDays,
     phase: renewalPhase(contract, currentDay),
   };
+}
+
+/* =====================================================================
+ * FC26-inspired contract lifecycle: negotiations, free agency and
+ * pre-contract agreements. These helpers are pure where practical so
+ * they can be driven by the career simulation and the UI alike.
+ * ===================================================================== */
+
+/**
+ * A renewal negotiation held with a player at (or leaving) a club.
+ * Plain data so it survives save/load inside `career.contractNegotiations`.
+ */
+export function createContractNegotiation({
+  playerId,
+  clubId,
+  offer,
+  currentDay,
+  season = null,
+  kind = "renewal",
+  fromCareer = false,
+}) {
+  return {
+    id: `negotiation-${playerId}-${clubId}-${currentDay}-${Math.random().toString(36).slice(2, 7)}`,
+    playerId,
+    clubId,
+    kind, // "renewal" | "free-agent" | "pre-contract"
+    offer: createContractOffer(offer),
+    status: "awaiting-response", // awaiting-response | accepted | rejected | counteroffer | withdrawn
+    response: null,
+    createdAt: currentDay,
+    season,
+    rounds: 0,
+    fromCareer,
+  };
+}
+
+/**
+ * Evaluate a contract offer and produce one of the FC26 outcome shapes:
+ * accepted / rejected / counteroffer (wants improved wages, a bigger role,
+ * or wants to leave). Considers current salary, rating, potential, age,
+ * club reputation and performance, playing time, squad role, manager
+ * relationship, personality and interest from other clubs.
+ */
+export function resolveContractNegotiation(player, club, negotiation, context = {}) {
+  const evaluation = evaluateContractOffer(player, club, negotiation.offer);
+  const rng = context.rng ?? Math.random;
+  const remaining = daysUntilExpiry(player.contract, context.currentDay ?? 0);
+  const personality = Array.isArray(player.personality) ? player.personality[0] : player.personality;
+  const ambitious = personality === "Ambitious" || personality === "Determined";
+  const loyal = personality === "Loyal";
+  const managerTrust = Number(
+    context.managerTrust ?? club?.manager?.trust?.[player.id] ?? 50,
+  );
+  const clubPerformance = Number(context.clubPosition ?? 10);
+  const interest = Number(player.transferInterest ?? player.marketDemand ?? 0);
+
+  let score = evaluation.score;
+  score += managerTrust > 70 ? 4 : managerTrust < 35 ? -5 : 0;
+  score += clubPerformance <= 4 ? 5 : clubPerformance >= 15 ? -3 : 0;
+  if (loyal) score += 5;
+  if (ambitious) score -= 3;
+  if (remaining != null && remaining <= URGENT_WINDOW_DAYS) score += 6; // wants certainty late on
+  if (interest >= 60) score -= 6;
+
+  const outcome = {
+    negotiationId: negotiation.id,
+    playerId: player.id,
+    playerName: `${player.first ?? ""} ${player.last ?? ""}`.trim(),
+    day: context.currentDay ?? 0,
+    acceptable: evaluation.acceptable,
+  };
+
+  if (evaluation.acceptable && score >= 52) {
+    negotiation.status = "accepted";
+    negotiation.response = { ...outcome, kind: "accepted", message: `${outcome.playerName} has agreed to the new contract.` };
+    return negotiation.response;
+  }
+  if (score >= 46 && evaluation.demands.length && negotiation.rounds < 3) {
+    negotiation.rounds += 1;
+    negotiation.status = "counteroffer";
+    negotiation.response = {
+      ...outcome,
+      kind: "counteroffer",
+      demands: evaluation.demands,
+      desiredWage: evaluation.desiredWage,
+      message: `${outcome.playerName} wants ${evaluation.demands.join(", ")} before signing.`,
+    };
+    return negotiation.response;
+  }
+  if (
+    interest >= 65 &&
+    Number(player.overall ?? 60) >= 76 &&
+    remaining != null &&
+    remaining <= PRE_CONTRACT_WINDOW_DAYS
+  ) {
+    negotiation.status = "rejected";
+    negotiation.response = {
+      ...outcome,
+      kind: "wants-to-leave",
+      message: `${outcome.playerName} wants to leave the club and will not sign a renewal.`,
+    };
+    return negotiation.response;
+  }
+  negotiation.status = "rejected";
+  negotiation.rejectionCooldownDay = (context.currentDay ?? 0) + 60;
+  negotiation.response = {
+    ...outcome,
+    kind: evaluation.demands.length ? "wants-improved-wages" : "rejected",
+    demands: evaluation.demands,
+    message: `${outcome.playerName} has rejected the offer${evaluation.demands.length ? ` — he wants ${evaluation.demands.join(", ")}` : ""}.`,
+  };
+  return negotiation.response;
+}
+
+/**
+ * Score how attractive a free agent is to a club. Elite players draw elite
+ * clubs; squad players draw smaller sides. Returns a 0..100 interest score.
+ */
+export function freeAgentClubInterest(player, club, context = {}) {
+  const overall = Number(player.overall ?? 55);
+  const age = Number(player.age ?? 25);
+  const prestige = Number(club?.prestige ?? club?.reputation ?? 50);
+  const wage = freeAgentExpectedWage(player);
+  const finance = club?.finances ?? {};
+  const wageSpace = Math.max(
+    0,
+    Number(finance.wageBudget ?? club?.wageBudget ?? 0) - Number(context.currentWageBill ?? 0),
+  );
+  const leagueReputation = Number(context.leagueReputation ?? prestige);
+  const positionalNeed = Number(context.positionalNeed ?? 50);
+  const squadSize = Number(context.squadSize ?? 24);
+  const registrationLimit = Number(club?.registrationLimit ?? 25);
+
+  if (wage > wageSpace) return 0;
+  if (squadSize >= registrationLimit) return 0;
+
+  // Elite players want elite clubs; low-rated players fit lower-prestige sides.
+  // The gap is deliberately quadratic so a 55-rated squad player prefers a
+  // modest club while an 88-rated star will only move to a major one.
+  const reputationGap = Math.abs(prestige - (overall + 6));
+  const reputationFit = clamp(100 - reputationGap * reputationGap * 0.35, 0, 100);
+  const ageFit = age <= 23 ? 88 : age <= 30 ? 95 : 70;
+  const affordability = clamp((wageSpace / Math.max(1, wage * 1.5)) * 100, 0, 100);
+  const score =
+    reputationFit * 0.42 +
+    ageFit * 0.12 +
+    affordability * 0.18 +
+    positionalNeed * 0.18 +
+    leagueReputation * 0.1;
+  // A huge reputation mismatch caps interest regardless of other factors.
+  const mismatchPenalty = reputationGap > 18 ? 0.55 : 1;
+  return Math.round(clamp(score * mismatchPenalty, 0, 100));
+}
+
+/** The weekly wage a club should offer a free agent in a first approach. */
+export function freeAgentOpeningOffer(player, club, context = {}) {
+  const expected = freeAgentExpectedWage(player);
+  const prestige = Number(club?.prestige ?? 50);
+  const finance = club?.finances ?? {};
+  const wageSpace = Math.max(
+    0,
+    Number(finance.wageBudget ?? club?.wageBudget ?? 0) - Number(context.currentWageBill ?? 0),
+  );
+  // Clubs lowball slightly; richer clubs can be more generous.
+  const ratio = prestige >= 75 ? 1 : prestige >= 55 ? 0.95 : 0.88;
+  const wage = Math.min(wageSpace, Math.round((expected * ratio) / 50) * 50);
+  const years = Number(player.age ?? 25) >= 31 ? 1 : Number(player.overall ?? 60) <= 68 ? 2 : 3;
+  const role =
+    Number(player.overall ?? 60) >= 80 ? "Key Player"
+    : Number(player.overall ?? 60) >= 74 ? "Important Player"
+    : Number(player.overall ?? 60) >= 68 ? "Regular Starter"
+    : "Squad Rotation";
+  return createContractOffer({
+    weeklyWage: Math.max(500, wage),
+    years,
+    squadRole: role,
+    signingBonus: Math.round(expected * 4),
+    releaseClause: null,
+  });
+}
+
+/**
+ * A pre-contract agreement: signed while the player still has up to six
+ * months at his current club; he joins the destination club for free when
+ * the existing contract expires. One player can hold only one agreement.
+ */
+export function createPreContractAgreement({ player, club, offer, currentDay, season = null }) {
+  const existing = player.contract?.preContract;
+  if (existing && existing.status === "agreed") {
+    throw new Error(`${player.first ?? "Player"} already has a pre-contract agreement.`);
+  }
+  if (player.clubId === club?.id) {
+    throw new Error("A pre-contract is only for joining another club.");
+  }
+  const agreement = {
+    playerId: player.id,
+    playerName: `${player.first ?? ""} ${player.last ?? ""}`.trim(),
+    fromClubId: player.clubId ?? null,
+    toClubId: club.id,
+    toClubName: club.name,
+    weeklyWage: Math.max(0, Math.round(Number(offer.weeklyWage ?? offer.wage ?? 0))),
+    years: clamp(Math.round(Number(offer.years ?? 3) || 3), 1, 5),
+    signingBonus: Math.max(0, Math.round(Number(offer.signingBonus ?? 0) || 0)),
+    squadRole: offer.squadRole ?? "Regular Starter",
+    agreedDay: currentDay,
+    season,
+    status: "agreed", // agreed | completed | cancelled
+  };
+  player.contract ??= {};
+  player.contract.preContract = agreement;
+  player.contract.preContractAllowed = true;
+  if (player.contract.status === CONTRACT_STATUSES.ACTIVE || player.contract.status === CONTRACT_STATUSES.EXPIRING) {
+    player.contract.status = CONTRACT_STATUSES.PRE_CONTRACT_AGREED;
+  }
+  return agreement;
+}
+
+/** True when the player may sign a pre-contract under the six-month rule. */
+export function canSignPreContract(player, currentDay) {
+  if (!player?.clubId) return false;
+  if (player.contract?.preContract?.status === "agreed") return false;
+  const remaining = daysUntilExpiry(player.contract, currentDay);
+  return remaining != null && remaining > 0 && remaining <= PRE_CONTRACT_WINDOW_DAYS;
 }
