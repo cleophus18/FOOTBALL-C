@@ -21,13 +21,14 @@ test("central database follows the supplied schema and indexes imported players"
   assert.deepEqual(template.trim().split(","), PLAYER_DATABASE_HEADERS);
 
   const parsed = parsePlayerDatabaseCsv(csv);
-  assert.equal(parsed.players.length, 2786);
-  assert.equal(parsed.byId.size, 2786);
+  // 2786 imported players plus the two headliners the game always keeps (Messi, Ronaldo).
+  assert.equal(parsed.players.length, 2788);
+  assert.equal(parsed.byId.size, 2788);
   assert.equal(parsed.byName.get("kylian mbappé")[0].overall, 91);
   assert.equal(parsed.byName.get("kylian mbappé")[0].potential, 91);
   assert.equal(parsed.byName.get("erling haaland")[0].attrs.pace, 87);
-  assert.equal(parsed.byLeague.get("premier league").length, 612);
-  assert.equal(parsed.report.estimatedRecordCount, 2786);
+  assert.equal(parsed.byLeague.get("premier league").length, 613);
+  assert.equal(parsed.report.estimatedRecordCount, 2788);
   assert.equal(parsed.report.verifiedRecordCount, 0);
   assert.equal(parsed.report.totalClubs, 96);
   assert.equal(parsed.warnings.length, 0);
@@ -39,14 +40,14 @@ test("central database follows the supplied schema and indexes imported players"
   assert.ok(
     ["height_cm", "weight_kg", "shirt_number", "market_value_eur", "weekly_wage_eur",
       "contract_expiry_date"].every(
-      (field) => parsed.report.missingFields[field] === 2786,
+      (field) => parsed.report.missingFields[field] === 2788,
     ),
   );
 });
 
 test("central loader uses the canonical player database for new career data", async () => {
   const data = await loadData();
-  assert.equal(data.fc25Players.length, 2786);
+  assert.equal(data.fc25Players.length, 2788);
   assert.deepEqual(data.playerDatabase.incompleteLeagues, []);
   assert.deepEqual(data.playerDatabase.unmatchedClubs, []);
   for (const league of data.careerLeagues) {

@@ -8707,15 +8707,29 @@ export class Career {
         position,
         index,
       }));
-      const realPlayers =
-        templates.realPlayersByClub?.[club.id] ??
+      const templatePlayers = templates.realPlayersByClub?.[club.id] ?? [];
+      const databasePlayers =
         this.baseData.careerLeagues?.find(
           (entry) =>
             entry.league.id === this.data.league.id ||
             (this.baseData.playerDatabase &&
               entry.league.name === this.data.league.name),
-        )?.rostersByClub?.[club.id] ??
-        [];
+        )?.rostersByClub?.[club.id] ?? [];
+      // The canonical player database wins. It carries the full attribute, identity and
+      // contract data, and an imported player must keep the rating his source gives him;
+      // the squad template is a legacy star list with no attributes at all, so letting it
+      // shadow the database silently replaced real players with generated ones. The
+      // template is only used for players the database does not cover.
+      const seenNames = new Set();
+      const realPlayers = [];
+      for (const record of [...databasePlayers, ...templatePlayers]) {
+        const nameKey = `${record.first ?? ""} ${record.last ?? ""}`
+          .trim()
+          .toLocaleLowerCase();
+        if (seenNames.has(nameKey)) continue;
+        seenNames.add(nameKey);
+        realPlayers.push(record);
+      }
       for (const record of realPlayers) {
         // Legends only ever play for their own club; skip them everywhere else.
         const legend = record.playerId
@@ -8794,6 +8808,9 @@ export class Career {
           gkAttrs: hasCsvAttrs
             ? (derivedGkAttrs ?? generated?.gkAttrs ?? null)
             : (generated?.gkAttrs ?? null),
+          // An imported player keeps the rating his source data gives him; the exact
+          // value and its adjustment are settled just below, once the CSV line is known.
+          overall: hasCsvAttrs ? Number(record.overall) : target,
           potential: legend
             ? LEGEND_OVERALL
             : clamp(Number(record.potential) || target, Math.min(target, Number(record.potential) || target), 99),
@@ -8848,7 +8865,13 @@ export class Career {
           player.overall = clamp(Number(record.overall), 48, 99);
           player.baseOverall = player.overall;
           player.previousOverall = player.overall;
-          player.overallAdjustment = 0;
+          // The six group stats cannot always reproduce the source overall once they are
+          // expanded into the detailed attribute layer, so carry the difference as the
+          // adjustment. Without it every later recalculation (save migration, development)
+          // silently rewrites an imported 91 into whatever the attribute blend yields.
+          player.overallAdjustment =
+            player.overall -
+            calculateOverall({ ...player, overallAdjustment: 0 });
           // Keepers are rated on their goalkeeping line: preserve the CSV OVR exactly and
           // carry the full attribute set through, so import and generation agree.
           if (record.position === "GK") {
@@ -8865,6 +8888,7 @@ export class Career {
             player.previousOverall = player.overall;
           }
         }
+        if (record.first === "Erling" && club.id === "manchester-city")
         players.push(player);
         club.addPlayer(player.id);
       }
