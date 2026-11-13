@@ -1,6 +1,20 @@
-import { toDayIndex } from "../core/calendar.mjs";
-import { normalizePosition, POSITIONS } from "../core/constants.mjs";
+import { toDayIndex, fromDayIndex } from "../core/calendar.mjs";
+import { normalizePosition, POSITIONS, POSITION_GROUPS } from "../core/constants.mjs";
 import { parseCsvRows, serializeCsvRows } from "./csv.mjs";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+
+const SEASON_START_DAY_INDEX = toDayIndex(2026, 7, 1);
+
+const CAREER_LEAGUE_TEAMS = JSON.parse(
+  readFileSync(resolve("data/config/career-league-teams.json"), "utf-8")
+);
+const VALID_CLUBS = new Set();
+for (const [league, clubs] of Object.entries(CAREER_LEAGUE_TEAMS)) {
+  for (const club of clubs) {
+    VALID_CLUBS.add(`${league.toLowerCase()}:${club.toLowerCase()}`);
+  }
+}
 
 export const PLAYER_DATABASE_HEADERS = [
   "player_id",
@@ -111,6 +125,7 @@ function normalizeRecord(record) {
   );
   const dateOfBirth = String(record.date_of_birth ?? "").trim();
   const parsedBirthDate = dateIndex(dateOfBirth);
+  const age = parsedBirthDate != null ? Math.floor((SEASON_START_DAY_INDEX - parsedBirthDate) / 365.25) : null;
   const traits = splitList(record.development_traits);
   const dataStatus = String(record.data_status ?? "").trim();
   const dataSource = String(record.data_source ?? "").trim();
@@ -142,7 +157,7 @@ function normalizeRecord(record) {
     last,
     displayName,
     dob: parsedBirthDate,
-    age: null,
+    age,
     nationality: String(record.nationality ?? "").trim() || null,
     league,
     clubName: club,
@@ -184,12 +199,24 @@ function normalizeRecord(record) {
   };
 }
 
-export function validatePlayerDatabase(records) {
+export function validatePlayerDatabase(records, { strict = false } = {}) {
   const errors = [];
   const warnings = [];
   const ids = new Set();
   const identityRows = new Map();
   const shirts = new Map();
+  const criticalFields = [
+    "height_cm",
+    "weight_kg",
+    "shirt_number",
+    "market_value_eur",
+    "weekly_wage_eur",
+    "contract_start_date",
+    "contract_expiry_date",
+    "release_clause_eur",
+    "development_traits",
+    "personality",
+  ];
 
   records.forEach((record, index) => {
     const row = index + 2;
@@ -270,10 +297,55 @@ export function validatePlayerDatabase(records) {
       if (value != null && value < 0)
         errors.push(`Row ${row}: ${field} cannot be negative.`);
     }
+
+    // Validate age range
+    if (normalized.age != null && (normalized.age < 15 || normalized.age > 45)) {
+      warnings.push(`Row ${row}: age ${normalized.age} is outside typical range (15-45).`);
+    }
+
+    // Validate club membership against career-league-teams.json
+    if (normalized.league && normalized.clubName) {
+      const clubKey = `${normalized.league.toLowerCase()}:${normalized.clubName.toLowerCase()}`;
+      if (!VALID_CLUBS.has(clubKey)) {
+        if (strict) {
+          errors.push(`Row ${row}: club "${normalized.clubName}" not found in ${normalized.league} career league configuration.`);
+        } else {
+          warnings.push(`Row ${row}: club "${normalized.clubName}" not found in ${normalized.league} career league configuration.`);
+        }
+      }
+    }
+
+    // Validate attribute ranges per position group
+    const posGroup = POSITION_GROUPS.GK.includes(normalized.position) ? "GK" :
+      POSITION_GROUPS.DEF.includes(normalized.position) ? "DEF" :
+      POSITION_GROUPS.MID.includes(normalized.position) ? "MID" : "ATT";
+    if (posGroup === "GK") {
+      if (normalized.physicality != null && (normalized.physicality < 1 || normalized.physicality > 99)) {
+        errors.push(`Row ${row}: physicality (GK attribute) must be from 1 to 99.`);
+      }
+    } else {
+      const keyAttrs = posGroup === "DEF" ? ["defending", "physicality"] :
+        posGroup === "MID" ? ["passing", "dribbling"] : ["shooting", "pace"];
+      for (const attr of keyAttrs) {
+        const value = normalized.attrs?.[attr] ?? normalized[attr];
+        if (value != null && (value < 1 || value > 99)) {
+          errors.push(`Row ${row}: ${attr} must be from 1 to 99 for ${posGroup} player.`);
+        }
+      }
+    }
+
     if (!normalized.dataSource)
       errors.push(`Row ${row}: data_source is required.`);
     if (!normalized.dataStatus)
       errors.push(`Row ${row}: data_status is required.`);
+
+    // Warnings for missing critical fields (only in strict mode)
+    if (strict) {
+      const missingCritical = criticalFields.filter(field => !String(record[field] ?? "").trim());
+      if (missingCritical.length > 0) {
+        warnings.push(`Row ${row}: missing critical fields: ${missingCritical.join(", ")}.`);
+      }
+    }
 
     const identity = `${normalized.league.toLowerCase()}:${normalized.clubName.toLowerCase()}:${normalized.displayName.toLocaleLowerCase()}`;
     if (identityRows.has(identity))
@@ -353,7 +425,7 @@ export function playerDatabaseReport(records) {
   };
 }
 
-export function parsePlayerDatabaseCsv(text) {
+export function parsePlayerDatabaseCsv(text, { strict = false } = {}) {
   const records = parseCsvRows(text);
   const missingHeaders = PLAYER_DATABASE_HEADERS.filter(
     (field) => !Object.hasOwn(records[0] ?? {}, field),
@@ -363,7 +435,7 @@ export function parsePlayerDatabaseCsv(text) {
       `Player database is missing columns: ${missingHeaders.join(", ")}.`,
     );
 
-  const validation = validatePlayerDatabase(records);
+  const validation = validatePlayerDatabase(records, { strict });
   if (!validation.valid)
     throw new Error(`Invalid player database:\n${validation.errors.join("\n")}`);
 

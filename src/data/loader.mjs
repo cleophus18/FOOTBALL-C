@@ -43,7 +43,7 @@ export async function loadData() {
 
   leagueConfig.$expandedLeagues = expandedLeagueConfig;
   leagueConfig.$europeanAccess = europeanAccessConfig;
-  const playerDatabase = parsePlayerDatabaseCsv(playerDatabaseCsv);
+  const playerDatabase = parsePlayerDatabaseCsv(playerDatabaseCsv, { strict: true });
   const players = playerDatabase.players;
   const expectedClubCounts = Object.fromEntries(
     Object.entries(careerLeagueTeams)

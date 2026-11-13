@@ -8726,8 +8726,6 @@ export class Career {
         // Imported real players start at their CSV overall and can develop/regress.
         if (hasCsvAttrs && !legend) {
           player.attrs = { ...record.attrs };
-          if (record.position !== "GK" && player.subAttrs)
-            syncGroupsFromSubAttrs(player);
           player.overall = clamp(Number(record.overall), 48, 99);
           player.baseOverall = player.overall;
           player.previousOverall = player.overall;
