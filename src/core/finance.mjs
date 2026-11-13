@@ -1,4 +1,4 @@
-﻿import { clamp, round } from "./util.mjs";
+import { clamp, round } from "./util.mjs";
 import { isLegend, legendForClub } from "../model/legends.mjs";
 
 const DEFAULT_SPONSORS = [
@@ -419,7 +419,7 @@ export function transferPlayer({
   const buyerFinance = ensureClubFinance(buyer);
   if (buyerFinance.transferBudget < amount || buyerFinance.balance < amount)
     throw new Error("The buying club cannot afford this transfer fee.");
-  if (buyerFinance.wageBudget < Number(wage ?? player.contract?.wage ?? 0))
+  if (buyerFinance.wageBudget < Number(wage ?? player.contract?.weeklyWage ?? player.contract?.wage ?? 0))
     throw new Error("The buying club cannot fit this player's wages.");
   const registrationLimit = buyer.registrationLimit ?? 25;
   if ((buyer.squad?.length ?? 0) >= registrationLimit)
@@ -451,7 +451,8 @@ export function transferPlayer({
   player.clubId = buyer.id;
   player.contract = {
     ...(player.contract ?? {}),
-    wage: Number(wage ?? player.contract?.wage ?? 0),
+    weeklyWage: Number(wage ?? player.contract?.weeklyWage ?? player.contract?.wage ?? 0),
+    wage: Number(wage ?? player.contract?.weeklyWage ?? player.contract?.wage ?? 0),
     startSeason: Number(date ?? 0),
   };
   player.lastTransferFee = amount; // actual negotiated transfer fee (distinct from market value)

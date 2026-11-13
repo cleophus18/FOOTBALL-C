@@ -1,4 +1,4 @@
-﻿import {
+import {
   ageOn,
   fromDayIndex,
   seasonLabel,
@@ -34,6 +34,25 @@ import {
   syncPlayerMarketValue,
   transferPlayer,
 } from "./core/finance.mjs";
+import {
+  CONTRACT_STATUSES,
+  PRE_CONTRACT_WINDOW_DAYS,
+  RENEWAL_WINDOW_DAYS,
+  URGENT_WINDOW_DAYS,
+  canDiscussRenewal,
+  contractExpiryDay,
+  contractYearsRemaining as contractYearsRemainingFromDay,
+  createContractOffer,
+  desiredWeeklyWage,
+  daysUntilExpiry,
+  evaluateContractOffer,
+  expirePlayerContract,
+  isContractExpired,
+  normalizeContract,
+  renewalPhase,
+  signPlayerContract,
+  wageCommitmentForPlayers,
+} from "./core/contracts.mjs";
 import { Agent } from "./model/agent.mjs";
 import {
   agentSearchTerms,
@@ -413,7 +432,7 @@ function assignShirtNumbers(players, club, preserveExisting = false) {
   }
 }
 
-function releaseSquadPlayer(club, player, date) {
+function releaseSquadPlayer(club, player, date, reason = "Released by club") {
   if (
     !player ||
     player.isLegend ||
@@ -427,10 +446,23 @@ function releaseSquadPlayer(club, player, date) {
   player.releasedFromClubId = club.id;
   player.clubId = null;
   player.squadStatus = "Free Agent";
+  const day = Number(date ?? 0);
+  const year = Number.isFinite(day) ? fromDayIndex(day).year : null;
   player.contract = {
     ...(player.contract ?? {}),
     wage: 0,
-    expires: Number(date ?? 0),
+    weeklyWage: 0,
+    status: CONTRACT_STATUSES.FREE_AGENT,
+    expiryDate: day,
+    expires: year ?? player.contract?.expires ?? null,
+    squadRole: "Free Agent",
+    releaseClause: null,
+    renewalRejected: false,
+    preContractAllowed: false,
+    pendingOffer: null,
+    history: Array.isArray(player.contract?.history)
+      ? [...player.contract.history, { date: day, type: "released", clubId: club.id, reason }]
+      : [{ date: day, type: "released", clubId: club.id, reason }],
   };
   return player;
 }
@@ -592,11 +624,19 @@ export class Career {
     this.player = this.createCareerPlayer(options);
     this.player.contract = {
       ...(this.player.contract ?? {}),
+      weeklyWage: data.careerSettings.finance.startingWeeklyWage,
       wage: data.careerSettings.finance.startingWeeklyWage,
+      years: 3,
+      role: 'Important Player',
+      status: CONTRACT_STATUSES.ACTIVE,
     };
     this.money = data.careerSettings.finance.startingBalance;
     this.financialHistory = [];
     this.lastFanReaction = null;
+    this.contractNotifications = [];
+    this.contractEvents = [];
+    this.recentlyExpiredContracts = [];
+    this.lastContractProcessDay = null;
     this.players.push(this.player);
     for (const player of this.players) {
       player.careerStats = { ...player.stats };
@@ -610,6 +650,7 @@ export class Career {
     this.player.clubId = this.club.id;
     this.ensureSquadSizes();
     for (const club of this.clubs) assignShirtNumbers(this.players, club);
+    if (typeof this.normalizeAllContracts === "function") this.normalizeAllContracts({ announce: false, migrate: true });
     // In manager mode the human is the coach, so his chosen style is the club's style
     // and he picks the shape — not an AI head coach.
     if (this.managerState) {
@@ -698,6 +739,7 @@ export class Career {
     this.coachAppointments = { season: this.season, count: 0 };
 
     if (saved) this.restore(saved);
+    if (typeof this.normalizeAllContracts === "function") this.normalizeAllContracts({ announce: false, migrate: true, fromRestore: !!saved });
     // One authority for the base overall: derived from attributes, never above potential.
     this.enforcePotentialCeiling();
     this.enforceGeneratedOverallLimit();
@@ -8888,7 +8930,6 @@ export class Career {
             player.previousOverall = player.overall;
           }
         }
-        if (record.first === "Erling" && club.id === "manchester-city")
         players.push(player);
         club.addPlayer(player.id);
       }
@@ -9530,6 +9571,49 @@ export class Career {
     this.transferOffers = [];
     this.news.push(`${agent.name} has been released from your representation.`);
     return { agent: null, offers: [] };
+  }
+
+
+  normalizeAllContracts({ announce = false, migrate = true, fromRestore = false } = {}) {
+    this.contractNotifications = Array.isArray(this.contractNotifications) ? this.contractNotifications : [];
+    this.contractEvents = Array.isArray(this.contractEvents) ? this.contractEvents : [];
+    this.recentlyExpiredContracts = Array.isArray(this.recentlyExpiredContracts) ? this.recentlyExpiredContracts : [];
+    const currentDay = typeof this.currentDay === "function" ? this.currentDay() : null;
+    const season = this.season ?? 1;
+    const clubsById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    for (const player of this.players ?? []) {
+      const club = player?.clubId ? clubsById.get(player.clubId) ?? null : null;
+      if (typeof normalizeContract === "function") {
+        normalizeContract(player, { club, currentDay, season, migrate });
+      } else if (player && !player.contract && player.clubId) {
+        player.contract = {
+          weeklyWage: Number(player.wage ?? 0),
+          wage: Number(player.wage ?? 0),
+          status: CONTRACT_STATUSES?.ACTIVE ?? "active",
+        };
+      }
+      if (!player) continue;
+      // Keep legacy convenience fields aligned without destroying existing data.
+      if (player.contract) {
+        const w = Number(player.contract.weeklyWage ?? player.contract.wage ?? 0);
+        player.contract.weeklyWage = Number.isFinite(w) ? Math.round(w) : 0;
+        player.contract.wage = player.contract.weeklyWage;
+        if (migrate && !player.squadStatus && player.contract.squadRole) player.squadStatus = player.contract.squadRole;
+      }
+    }
+    // Normalize embedded performer snapshots used by world leagues.
+    for (const state of this.worldLeagues ?? []) {
+      for (const performer of state?.performers ?? []) {
+        const club = performer?.clubId ? clubsById.get(performer.clubId) ?? null : null;
+        if (typeof normalizeContract === "function") normalizeContract(performer, { club, currentDay, season, migrate });
+      }
+    }
+    for (const performer of this.expansionPlayers ?? []) {
+      const club = performer?.clubId ? clubsById.get(performer.clubId) ?? null : null;
+      if (typeof normalizeContract === "function") normalizeContract(performer, { club, currentDay, season, migrate });
+    }
+    if (fromRestore && currentDay != null) this.lastContractProcessDay ??= currentDay;
+    return { normalized: true, day: currentDay, season };
   }
 
   reconcileSquadMembership() {
@@ -14028,6 +14112,10 @@ export class Career {
       agentPerformance: this.agentPerformance ?? {},
       transferRumours: this.transferRumours ?? [],
       nextCpuTransferEvaluationWeek: this.nextCpuTransferEvaluationWeek ?? 0,
+      contractNotifications: this.contractNotifications ?? [],
+      contractEvents: this.contractEvents ?? [],
+      recentlyExpiredContracts: this.recentlyExpiredContracts ?? [],
+      lastContractProcessDay: this.lastContractProcessDay ?? null,
       pendingPlayerTransfer: this.pendingPlayerTransfer ?? null,
       usedSituationIds: this.usedSituationIds,
       matchSimulation: this.matchSimulation,
@@ -14144,6 +14232,10 @@ export class Career {
   }
 
   restore(saved) {
+    this.contractNotifications = saved.contractNotifications ?? [];
+    this.contractEvents = saved.contractEvents ?? [];
+    this.recentlyExpiredContracts = saved.recentlyExpiredContracts ?? [];
+    this.lastContractProcessDay = saved.lastContractProcessDay ?? null;
     const freshLegendPlayers = [
       ...(this.players ?? []),
       ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
