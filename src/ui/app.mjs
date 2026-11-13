@@ -5177,7 +5177,7 @@ function renderTeam() {
     .map((result) => {
       const home = result.home?.name ?? result.home?.clubName ?? result.homeName ?? result.home ?? "Home";
       const away = result.away?.name ?? result.away?.clubName ?? result.awayName ?? result.away ?? "Away";
-      const score = `${result.homeGoals ?? "—"}–${result.awayGoals ?? "—"}`;
+      const score = `${result.homeGoals ?? "\u2014"}\u2013${result.awayGoals ?? "\u2014"}`;
       const dateIndex = Number(
         result.dateIndex ?? result.date ?? result.matchday ?? result.week,
       );
@@ -5466,7 +5466,7 @@ function renderPlayer() {
     .slice(0, 30)
     .map(
       (match) =>
-        `<tr><td>${match.dateIndex == null ? seasonLabel(match.season) : esc(formatDate(match.dateIndex))}</td><td>${esc(match.competition)}</td><td>${esc(match.club)} vs ${esc(match.opponent)}</td><td>${match.homeGoals}–${match.awayGoals}</td><td>${match.minutes > 0 ? `${match.minutes}'` : "—"}</td><td>${match.goals}</td><td>${match.assists}</td><td>${match.rating == null ? "—" : formatDecimal(match.rating)}</td><td>${match.result}</td></tr>`,
+        `<tr><td>${match.dateIndex == null ? seasonLabel(match.season) : esc(formatDate(match.dateIndex))}</td><td>${esc(match.competition)}</td><td>${esc(match.club)} vs ${esc(match.opponent)}</td><td>${match.homeGoals}\u2013${match.awayGoals}</td><td>${match.minutes > 0 ? `${match.minutes}'` : "\u2014"}</td><td>${match.goals}</td><td>${match.assists}</td><td>${match.rating == null ? "\u2014" : formatDecimal(match.rating)}</td><td>${match.result}</td></tr>`,
     )
     .join("");
   const overallNow = career.displayOverall(player);
@@ -5827,7 +5827,7 @@ function renderOtherPlayer() {
     .slice(0, 50)
     .map(
       (match) =>
-        `<tr><td>${match.dateIndex == null ? seasonLabel(match.season) : esc(formatDate(match.dateIndex))}</td><td>${esc(match.competition ?? "—")}</td><td>${esc(match.club ?? player.clubName)} vs ${esc(match.opponent ?? "—")}</td><td>${match.homeGoals ?? 0}–${match.awayGoals ?? 0}</td><td>${match.minutes > 0 ? `${match.minutes}'` : "—"}</td><td>${match.goals ?? 0}</td><td>${match.assists ?? 0}</td><td>${match.rating == null ? "—" : formatDecimal(match.rating)}</td><td>${esc(match.result ?? "—")}</td></tr>`,
+        `<tr><td>${match.dateIndex == null ? seasonLabel(match.season) : esc(formatDate(match.dateIndex))}</td><td>${esc(match.competition ?? "\u2014")}</td><td>${esc(match.club ?? player.clubName)} vs ${esc(match.opponent ?? "\u2014")}</td><td>${match.homeGoals ?? 0}\u2013${match.awayGoals ?? 0}</td><td>${match.minutes > 0 ? `${match.minutes}'` : "\u2014"}</td><td>${match.goals ?? 0}</td><td>${match.assists ?? 0}</td><td>${match.rating == null ? "\u2014" : formatDecimal(match.rating)}</td><td>${esc(match.result ?? "\u2014")}</td></tr>`,
     )
     .join("");
   const ratingHistory = [...(player.ratingHistory ?? [])]

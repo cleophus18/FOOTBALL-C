@@ -3595,7 +3595,7 @@ test("a full Premier League season completes with 38 matches per club", async ()
   );
   for (const row of career.league.table.rows.values()) row.played = 0;
   let weeks = 0;
-  while (!career.seasonComplete && weeks < 44) {
+  while (!career.seasonComplete && weeks < 46) {
     advanceAndResolve(career);
     weeks++;
   }
@@ -3611,7 +3611,7 @@ test("a full Premier League season completes with 38 matches per club", async ()
       championsLeague: career.championsLeague?.status,
     }),
   );
-  assert.equal(weeks <= 44, true);
+  assert.equal(weeks <= 46, true);
   assert.ok(career.league.table.sorted().every((row) => row.played === 38));
   assert.ok(career.player.stats.apps > 0 && career.player.stats.apps <= 38);
   assert.equal(career.results.length, 380);

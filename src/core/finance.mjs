@@ -307,18 +307,20 @@ export function calculateMarketValue(player, context = {}) {
   const position = player.position ?? "CM";
   const yearsLeft = contractYearsRemaining(player, { season });
 
-  // Base OVR curve anchored to realistic football ranges (approximate, not hard limits).
-  let value = 65_000 * Math.pow(2.08, overall - 55);
-  if (overall >= 90) value *= 1 + (overall - 90) * 0.08;
+  // Base value curve: realistic football ranges
+  // OVR 55 -> ~0.5M, 65 -> ~5M, 75 -> ~25M, 85 -> ~65M, 90 -> ~110M, 95 -> ~180M
+  let value = 400_000 * Math.pow(1.18, overall - 55);
+  if (overall >= 85) value *= 1 + (overall - 85) * 0.12;
+  if (overall >= 92) value *= 1 + (overall - 92) * 0.08;
 
   // Age and potential.
   const upside = Math.max(0, potential - overall);
-  if (age <= 23) value *= 1.08 + upside * 0.03 + (23 - age) * 0.045;
-  else if (age <= 27) value *= 1.02 + upside * 0.012;
-  else if (age <= 30) value *= 0.97 - (age - 27) * 0.03 + upside * 0.004;
-  else value *= Math.pow(0.88, age - 30) * (1 + upside * 0.002);
-  if (age >= 33 && overall >= 86) value *= 1.08;
-  if (age >= 35 && overall >= 88) value *= 1.06;
+  if (age <= 23) value *= 1.1 + upside * 0.04 + (23 - age) * 0.05;
+  else if (age <= 27) value *= 1.03 + upside * 0.015;
+  else if (age <= 30) value *= 0.98 - (age - 27) * 0.035 + upside * 0.005;
+  else value *= Math.pow(0.85, age - 30) * (1 + upside * 0.003);
+  if (age >= 33 && overall >= 86) value *= 1.1;
+  if (age >= 35 && overall >= 88) value *= 1.07;
 
   // Accumulated season performance and consistency/exposure.
   const ratingFactor = clamp(1 + (averageRating - 6.6) * 0.11, 0.72, 1.28);

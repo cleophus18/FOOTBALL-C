@@ -134,6 +134,8 @@ export class League {
     this.season = spec.season ?? null;
     /** Historical finishing order, newest last: [{season, order: [teamId]}]. */
     this.history = spec.history ? [...spec.history] : [];
+    /** Week index when fixtures start (data-driven, e.g., 3). */
+    this.fixtureStartWeek = spec.fixtureStartWeek;
   }
 
   get displayName() {

@@ -581,9 +581,7 @@ export class Career {
     this.player = this.createCareerPlayer(options);
     this.player.contract = {
       ...(this.player.contract ?? {}),
-      wage:
-        this.player.contract?.wage ??
-        data.careerSettings.finance.startingWeeklyWage,
+      wage: data.careerSettings.finance.startingWeeklyWage,
     };
     this.money = data.careerSettings.finance.startingBalance;
     this.financialHistory = [];
@@ -4726,6 +4724,7 @@ export class Career {
         winners: coachWinner
           ? [
               {
+                playerId: coachWinner.manager.id,
                 coachId: coachWinner.manager.id,
                 coach: coachWinner.manager.name,
                 club: coachWinner.club.name,
@@ -4736,7 +4735,7 @@ export class Career {
         value: coachWinner?.score ?? null,
         valueLabel: "season score",
         displayValue: coachWinner
-          ? `${coachWinner.manager.name} Â· ${formatDecimal(coachWinner.score)} pts`
+          ? `${coachWinner.manager.name} \u2013 ${formatDecimal(coachWinner.score)} pts`
           : null,
       });
       return awards.map((award) => ({
@@ -4910,6 +4909,13 @@ export class Career {
             season: this.season,
             club: coachClub.name,
             achievement: award.award,
+          });
+          // Also record in coach's honours for getPlayerHonours compatibility
+          this.recordPlayerHonour(manager.id, {
+            award: award.award,
+            season: this.season,
+            competition: award.competition,
+            value: award.displayValue ?? `${award.value} ${award.valueLabel}`,
           });
         }
         continue;
@@ -5835,6 +5841,10 @@ export class Career {
       const found = state.performers?.find((entry) => entry.id === playerId);
       if (found) return found;
     }
+    // Also check coaches (managers)
+    for (const club of this.clubs ?? []) {
+      if (club.manager?.id === playerId) return club.manager;
+    }
     const legend = LEGENDS.find((entry) => `legend-${entry.key}` === playerId);
     if (legend) {
       const inSave = this.players.find(
@@ -6557,8 +6567,10 @@ export class Career {
     if (!this.calendar?.length) {
       this.calendar = seasonWeeks(this.season, this.seasonWeekCount ?? 56);
     }
+    const isLegacy = league.fixtureStartWeek === undefined;
+    const startWeek = isLegacy ? 0 : (league.fixtureStartWeek ?? 2);
     const planned = planLeagueWeeks(this.calendar, {
-      startWeek: 2,
+      startWeek,
       endWeek: Math.min(this.calendar.length - 2, 43),
       breakWeeks: [8, 16, 24, 32],
     });
@@ -9136,11 +9148,13 @@ export class Career {
       season: this.season,
     });
     league.buildFixtures(this.rng.stream("schedule"));
+    const breakWeeks = [8, 16, 24, 32];
+    const minCalendarWeeks = (leagueSpec.fixtureStartWeek ?? 3) + league.fixtures.length + breakWeeks.length;
     const calendar = seasonWeeks(
       this.season,
       Math.max(
         this.seasonWeekCount ?? this.data.league.seasonWeeks ?? 44,
-        (leagueSpec.fixtureStartWeek ?? 0) + league.fixtures.length,
+        minCalendarWeeks,
       ),
     );
     this.calendar = calendar;
@@ -11600,10 +11614,10 @@ export class Career {
     this.progressWorldCupFixtures(tournament, this.currentDay());
     this.refreshWorldCupCalendar(tournament);
     this.lastReport.headlines.push(
-      `${home.name} ${match.homeGoals}â€“${match.awayGoals} ${away.name} Â· FIFA World Cup full time`,
+      `${home.name} ${match.homeGoals}\u2013${match.awayGoals} ${away.name} \u00B7 FIFA World Cup full time`,
     );
     this.news.push(
-      `${home.name} ${match.homeGoals}â€“${match.awayGoals} ${away.name} Â· FIFA World Cup full time.`,
+      `${home.name} ${match.homeGoals}\u2013${match.awayGoals} ${away.name} \u00B7 FIFA World Cup full time.`,
     );
     this.matchSimulation.finalized = true;
     this.matchSimulation.status = "finished";
@@ -13495,7 +13509,7 @@ export class Career {
         awayId: away.id,
         result:
           result && !result.pending
-            ? `${result.homeGoals} â€“ ${result.awayGoals}`
+            ? `${result.homeGoals}\u2013${result.awayGoals}`
             : null,
         stats: result && !result.pending ? (result.stats ?? null) : null,
         played: !!result && !result.pending,
@@ -13545,7 +13559,7 @@ export class Career {
           away: away.name,
           awayShortName: away.shortName,
           awayId,
-          result: played ? `${result.homeGoals} â€“ ${result.awayGoals}` : null,
+          result: played ? `${result.homeGoals}\u2013${result.awayGoals}` : null,
           stats: played ? (result.stats ?? null) : null,
           played,
           stage,
@@ -13644,7 +13658,7 @@ export class Career {
             awayShortName: away.code,
             awayId: away.id,
             result: played
-              ? `${fixture.homeGoals} â€“ ${fixture.awayGoals}${fixture.decidedBy === "penalties" && fixture.penalties ? " (pens)" : ""}`
+              ? `${fixture.homeGoals} \u2013 ${fixture.awayGoals}${fixture.decidedBy === "penalties" && fixture.penalties ? " (pens)" : ""}`
               : null,
             stats: played ? (fixture.stats ?? null) : null,
             played,

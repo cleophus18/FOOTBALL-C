@@ -473,7 +473,7 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
   const apps = Math.max(0, Number(appearances ?? player.stats?.apps ?? player.apps ?? 0));
   const playedMinutes = Math.max(0, Number(minutes ?? player.stats?.minutes ?? 0));
   const avgRating = apps
-    ? Number(ratingSum ?? player.stats?.ratingSum ?? player.ratingSum ?? 0) / apps
+    ? (Number(ratingSum ?? player.stats?.ratingSum ?? player.ratingSum ?? 0) || apps * 6.5) / apps
     : 6.1;
   // Development propensity, not a rating: it follows the design's age bands (15-19
   // high, 20-23 strong, 24-27 gradual, 28-30 peak, 31-33 decline, 34+ decline). It
