@@ -1,9 +1,39 @@
 import { toDayIndex, fromDayIndex } from "../core/calendar.mjs";
 import { normalizePosition, POSITIONS, POSITION_GROUPS } from "../core/constants.mjs";
 import { parseCsvRows, serializeCsvRows } from "./csv.mjs";
-import CAREER_LEAGUE_TEAMS from "../data/config/career-league-teams.json" with { type: "json" };
 
 const SEASON_START_DAY_INDEX = toDayIndex(2026, 7, 1);
+
+const CAREER_LEAGUE_TEAMS = {
+  "Premier League": [
+    "Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton & Hove Albion",
+    "Chelsea", "Coventry City", "Crystal Palace", "Everton", "Fulham", "Hull City",
+    "Ipswich Town", "Leeds United", "Liverpool", "Manchester City", "Manchester United",
+    "Newcastle United", "Nottingham Forest", "Sunderland", "Tottenham Hotspur"
+  ],
+  "La Liga": [
+    "Alavés", "Athletic Club", "Atlético Madrid", "FC Barcelona", "Celta Vigo",
+    "Elche", "Espanyol", "Getafe", "Levante", "Osasuna", "Rayo Vallecano",
+    "Real Betis", "Real Madrid", "Racing Santander", "Real Sociedad", "Sevilla",
+    "Valencia", "Villarreal", "Deportivo de La Coruña", "Málaga"
+  ],
+  "Bundesliga": [
+    "Augsburg", "Bayer Leverkusen", "Bayern München", "Borussia Dortmund",
+    "Borussia Mönchengladbach", "Eintracht Frankfurt", "FC Köln", "Freiburg",
+    "Hamburger SV", "Elversberg", "Hoffenheim", "Mainz 05", "RB Leipzig",
+    "Paderborn 07", "Schalke 04", "Union Berlin", "VfB Stuttgart", "Werder Bremen"
+  ],
+  "Serie A": [
+    "Atalanta", "Bologna", "Cagliari", "Como", "Torino", "Fiorentina", "Frosinone",
+    "Genoa", "Udinese", "Inter", "Juventus", "Lazio", "Lecce", "AC Milan", "Monza",
+    "Napoli", "Parma", "Venezia", "Roma", "Sassuolo"
+  ],
+  "Ligue 1": [
+    "Angers", "Auxerre", "Brest", "Lens", "Lille", "Lorient", "Lyon", "Marseille",
+    "Le Mans", "Monaco", "Troyes", "Nice", "Paris FC", "Paris Saint-Germain",
+    "Rennes", "Strasbourg", "Toulouse", "Le Havre"
+  ],
+};
 
 const VALID_CLUBS = new Set();
 for (const [league, clubs] of Object.entries(CAREER_LEAGUE_TEAMS)) {
