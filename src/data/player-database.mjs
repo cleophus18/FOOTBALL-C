@@ -1,14 +1,10 @@
 import { toDayIndex, fromDayIndex } from "../core/calendar.mjs";
 import { normalizePosition, POSITIONS, POSITION_GROUPS } from "../core/constants.mjs";
 import { parseCsvRows, serializeCsvRows } from "./csv.mjs";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import CAREER_LEAGUE_TEAMS from "../data/config/career-league-teams.json" with { type: "json" };
 
 const SEASON_START_DAY_INDEX = toDayIndex(2026, 7, 1);
 
-const CAREER_LEAGUE_TEAMS = JSON.parse(
-  readFileSync(resolve("data/config/career-league-teams.json"), "utf-8")
-);
 const VALID_CLUBS = new Set();
 for (const [league, clubs] of Object.entries(CAREER_LEAGUE_TEAMS)) {
   for (const club of clubs) {
