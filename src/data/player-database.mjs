@@ -314,6 +314,9 @@ function normalizeRecord(record) {
 export function validatePlayerDatabase(records, { strict = false } = {}) {
   const errors = [];
   const warnings = [];
+  // Same display name, different human. These are intentional and must not be reported
+  // as data problems, so they live in their own list and stay queryable.
+  const nameConflicts = [];
   const ids = new Set();
   const identityRows = new Map();
   const identityRecords = new Map();
@@ -497,9 +500,14 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
     const priorName = nameRows.get(nameOnly);
     if (priorName && !prior && normalized.playerId !== priorName.playerId) {
       if (!matchPlayerIdentity(priorName, normalized))
-        warnings.push(
-          `Row ${row}: "${normalized.displayName}" matches row ${priorName.playerId}'s name but has conflicting identity data; kept as a separate player.`,
-        );
+        nameConflicts.push({
+          row,
+          playerId: normalized.playerId,
+          name: normalized.displayName,
+          conflictsWith: priorName.playerId,
+          reason:
+            "Same display name with different nationality, date of birth, club or league.",
+        });
     } else if (!priorName) {
       nameRows.set(nameOnly, normalized);
     }
@@ -521,7 +529,7 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
     }
   });
 
-  return { valid: errors.length === 0, errors, warnings };
+  return { valid: errors.length === 0, errors, warnings, nameConflicts };
 }
 
 export function playerDatabaseReport(records) {
@@ -623,6 +631,7 @@ export function parsePlayerDatabaseCsv(text, { strict = false } = {}) {
     byClub,
     report: playerDatabaseReport(records),
     warnings: validation.warnings,
+    nameConflicts: validation.nameConflicts,
   };
 }
 

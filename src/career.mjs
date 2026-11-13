@@ -4428,18 +4428,44 @@ export class Career {
         // Goalkeeper statistics are recorded only for a goalkeeper, and only from the
         // shots the opposing side actually had on target.
         if ((player.position ?? "").toUpperCase() === "GK") {
-          const shotsFaced = Math.max(conceded, 0);
-          const saves = Number(performance.saves ?? 0);
+          player.stats ??= emptyStats();
+          player.careerStats ??= emptyStats();
+          const goalsConceded = Math.max(0, Math.round(Number(conceded) || 0));
+          // Shots on target are at least the goals conceded. The keeper's own quality
+          // decides how many of the rest he keeps out, so a 90-rated keeper is not
+          // credited with a 0% save rate just because his defence kept the score down.
+          const saveFactor = goalkeeperSaveFactor(player.gkAttrs, {
+            kind: "shotStopping",
+            overall: player.overall,
+          });
+          // A league match sees roughly 3-7 shots on target against a side; the keeper's
+          // quality decides how many he keeps out. Seeded, so a save still simulates the
+          // same way for the same career.
+          const shotsFaced = Math.max(
+            goalsConceded,
+            Math.round(Number(performance.shotsFaced) || 0) ||
+              3 +
+                Math.round(
+                  hashString(
+                    `${player.id}:${fixture?.id ?? state.league?.name ?? ""}:${goalsConceded}`,
+                  ) % 4,
+                ) +
+                (goalsConceded > 0 ? 1 : 0),
+          );
+          const saves = Math.min(
+            Math.max(0, shotsFaced - goalsConceded),
+            Math.round(shotsFaced * saveFactor),
+          );
           player.stats.saves = (player.stats.saves ?? 0) + saves;
           player.careerStats.saves = (player.careerStats.saves ?? 0) + saves;
           player.stats.shotsFaced = (player.stats.shotsFaced ?? 0) + shotsFaced;
           player.careerStats.shotsFaced =
             (player.careerStats.shotsFaced ?? 0) + shotsFaced;
           player.stats.goalsConceded =
-            (player.stats.goalsConceded ?? 0) + conceded;
+            (player.stats.goalsConceded ?? 0) + goalsConceded;
           player.careerStats.goalsConceded =
-            (player.careerStats.goalsConceded ?? 0) + conceded;
-          if (conceded === 0) {
+            (player.careerStats.goalsConceded ?? 0) + goalsConceded;
+          if (goalsConceded === 0) {
             player.stats.cleanSheets = (player.stats.cleanSheets ?? 0) + 1;
             player.careerStats.cleanSheets =
               (player.careerStats.cleanSheets ?? 0) + 1;
@@ -12338,32 +12364,58 @@ export class Career {
           player.leaguePerformance.apps++;
           player.leaguePerformance.ratingSum += rating;
         }
-        if (side === match.side && player.id !== this.player.id) {
-          // Goalkeeping statistics belong to the side's goalkeeper only.
-          if (player.position === "GK" && sideKeeper?.id === player.id) {
-            const shotsFaced = Math.max(opponentGoals, 0);
-            const saves = Number(
-              player.lastMatchPerformance?.saves ??
-                Math.max(0, shotsFaced - opponentGoals),
-            );
-            player.stats.saves = (player.stats.saves ?? 0) + saves;
-            player.careerStats.saves = (player.careerStats.saves ?? 0) + saves;
-            player.stats.shotsFaced = (player.stats.shotsFaced ?? 0) + shotsFaced;
-            player.careerStats.shotsFaced =
-              (player.careerStats.shotsFaced ?? 0) + shotsFaced;
-            player.stats.goalsConceded = (player.stats.goalsConceded ?? 0) + opponentGoals;
-            player.careerStats.goalsConceded =
-              (player.careerStats.goalsConceded ?? 0) + opponentGoals;
-            if (opponentGoals === 0) {
-              player.stats.cleanSheets = (player.stats.cleanSheets ?? 0) + 1;
-              player.careerStats.cleanSheets =
-                (player.careerStats.cleanSheets ?? 0) + 1;
-            }
-            const faced = player.stats.shotsFaced ?? shotsFaced;
-            player.stats.savePercentage = faced
-              ? round(((player.stats.saves ?? 0) / faced) * 100, 1)
-              : 0;
+        // Goalkeeping statistics belong to the goalkeeper on the pitch for this side,
+        // never to an outfielder who happened to make a block. They are recorded for
+        // both sides: an NPC keeper's save record is what the league table and the
+        // awards race are judged on.
+        if (player.position === "GK" && sideKeeper?.id === player.id) {
+          player.stats ??= emptyStats();
+          player.careerStats ??= emptyStats();
+          const goalsConceded = Math.max(0, Math.round(Number(opponentGoals) || 0));
+          // Shots on target are at least the goals conceded; the keeper's quality
+          // decides the rest, so a strong keeper is not left on a 0% save rate.
+          const saveFactor = goalkeeperSaveFactor(player.gkAttrs, {
+            kind: "shotStopping",
+            overall: player.overall,
+          });
+          // A league match sees roughly 3-7 shots on target against a side; the keeper's
+          // quality decides how many he keeps out. The volume is derived from the fixture
+          // and the keeper, so the same career replays identically without touching the RNG.
+          const shotsFaced = Math.max(
+            goalsConceded,
+            Math.round(Number(performance.shotsFaced) || 0) ||
+              3 +
+                Math.round(
+                  hashString(
+                    `${player.id}:${match.id ?? match.week ?? ""}:${goalsConceded}`,
+                  ) % 4,
+                ) +
+                (goalsConceded > 0 ? 1 : 0),
+          );
+          const saves = Math.min(
+            Math.max(0, shotsFaced - goalsConceded),
+            Math.round(shotsFaced * saveFactor),
+          );
+          player.stats.saves = (player.stats.saves ?? 0) + saves;
+          player.careerStats.saves = (player.careerStats.saves ?? 0) + saves;
+          player.stats.shotsFaced = (player.stats.shotsFaced ?? 0) + shotsFaced;
+          player.careerStats.shotsFaced =
+            (player.careerStats.shotsFaced ?? 0) + shotsFaced;
+          player.stats.goalsConceded =
+            (player.stats.goalsConceded ?? 0) + goalsConceded;
+          player.careerStats.goalsConceded =
+            (player.careerStats.goalsConceded ?? 0) + goalsConceded;
+          if (goalsConceded === 0) {
+            player.stats.cleanSheets = (player.stats.cleanSheets ?? 0) + 1;
+            player.careerStats.cleanSheets =
+              (player.careerStats.cleanSheets ?? 0) + 1;
           }
+          const faced = player.stats.shotsFaced ?? shotsFaced;
+          player.stats.savePercentage = faced
+            ? round(((player.stats.saves ?? 0) / faced) * 100, 1)
+            : 0;
+        }
+        if (side === match.side && player.id !== this.player.id) {
           teamRatings.push({
             id: player.id,
             name: `${player.first} ${player.last}`,

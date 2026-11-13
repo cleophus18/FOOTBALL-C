@@ -155,15 +155,17 @@ export function deriveNickname(first, last, display) {
 
 /**
  * Split a full name into given name(s) and surname(s) without ever dropping parts.
- * The heuristic order is: known nickname -> particle-aware surname -> final token.
+ * The heuristic order is: verified identity -> particle-aware surname -> final token.
+ *
+ * A bare single-token name ("Rodri") is *not* rewritten into a legal name here: the
+ * source data is authoritative, and `KNOWN_SINGLE_NAME_PLAYERS` exists only so that a
+ * nickname can be matched against a full name elsewhere.
  */
 export function splitFullName(fullName, { display } = {}) {
   const full = String(fullName ?? "").replace(/\s+/g, " ").trim();
   const normalized = normalizeText(full);
   const verified = verifiedIdentity(full, normalized);
   if (verified) return verified;
-  const single = KNOWN_SINGLE_NAME_PLAYERS[normalized];
-  if (single) return single;
 
   if (!full) return { first: "", last: "", display: display ?? "", nickname: null };
   const words = full.split(" ");
@@ -274,17 +276,33 @@ export function strongIdentityKey({ displayName, nationality, dateOfBirth, club,
   return [name, nation, dob, leagueKey, clubKey].filter(Boolean).join("|");
 }
 
+/** The names a record should be compared against: its own, plus any known alias. */
+function nameVariants(record) {
+  const keys = new Set();
+  const add = (value) => {
+    if (!value) return;
+    keys.add(nameKey(value));
+    keys.add(compactNameKey(value));
+  };
+  const display = record.displayName ?? record.fullName ?? "";
+  add(display);
+  const alias = KNOWN_SINGLE_NAME_PLAYERS[normalizeText(display)];
+  if (alias) {
+    add(`${alias.first} ${alias.last}`.trim());
+    add(alias.display);
+  }
+  return keys;
+}
+
 /** True when two records plausibly describe the same human. */
 export function matchPlayerIdentity(left, right) {
   if (!left || !right) return false;
   const a = strongIdentityKey(left);
   const b = strongIdentityKey(right);
   if (a && b && a === b) return true;
-  const sameName =
-    nameKey(left.displayName ?? left.fullName) ===
-      nameKey(right.displayName ?? right.fullName) ||
-    compactNameKey(left.displayName ?? left.fullName) ===
-      compactNameKey(right.displayName ?? right.fullName);
+  const leftNames = nameVariants(left);
+  const rightNames = nameVariants(right);
+  const sameName = [...leftNames].some((key) => rightNames.has(key));
   if (!sameName) return false;
   // Different birth dates or nationalities are a hard veto: similar names are common.
   const dobA = left.dateOfBirth ? String(left.dateOfBirth).trim() : "";

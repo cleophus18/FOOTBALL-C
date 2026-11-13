@@ -348,14 +348,14 @@ const GOALKEEPER_ATTRIBUTE_SET = new Set([
 
 /**
  * Build an effective outfield attribute view for a player: the detailed layer where it
- * exists, group values otherwise, and the overall as a last resort. Goalkeeping
- * attributes are excluded entirely.
+ * exists, group values otherwise. `gkAttrs` is never consulted — a goalkeeper's reflexes
+ * must not become a striker's reflexes, and an outfield record has no keeper line to
+ * contribute in the first place.
  */
-function outfieldAttributeView(player, { excludeGroups = null } = {}) {
+function outfieldAttributeView(player) {
   const subAttrs = player.subAttrs ?? {};
   const groupOverrides = new Set(
     ATTRIBUTES.filter((group) => {
-      if (excludeGroups?.has(group)) return false;
       const values = (SUB_ATTRIBUTES[group] ?? [])
         .map((key) => subAttrs[key])
         .filter((value) => value != null);
@@ -364,17 +364,10 @@ function outfieldAttributeView(player, { excludeGroups = null } = {}) {
       return Math.abs(player.attrs[group] - average) > 3;
     }),
   );
-  const fallback = Number(player.overall) || 50;
   return (attribute) => {
-    if (isGoalkeeperAttribute(attribute)) return null;
-    if (player.subAttrs && subAttrs[attribute] != null) {
-      const group = SUB_ATTRIBUTE_OWNER[attribute];
-      if (group && groupOverrides.has(group)) return player.attrs?.[group] ?? fallback;
-      return subAttrs[attribute];
-    }
-    const group = SUB_ATTRIBUTE_OWNER[attribute];
-    if (group && player.attrs?.[group] != null) return player.attrs[group];
-    return player.attrs?.[attribute] ?? fallback;
+    const group = SUB_ATTRIBUTE_GROUP[attribute];
+    if (groupOverrides.has(group)) return player.attrs?.[group] ?? 50;
+    return subAttrs[attribute] ?? player.attrs?.[group] ?? 50;
   };
 }
 const POSITION_SHIRT_NUMBERS = {
@@ -657,13 +650,13 @@ export function calculatePlayerOverall(player, position = player?.position) {
       : clampAttr(rating - ((player.altPositions ?? []).map(normalizePosition).includes(pos) ? 1 : 3));
   }
   const weights = POSITION_ATTRIBUTE_WEIGHTS[pos] || POSITION_ATTRIBUTE_WEIGHTS.CM;
-  // Goalkeeping attributes never feed an outfield rating, and vice versa: the lookup is
-  // restricted to the player's outfield layers.
+  // The view never reads `gkAttrs`, so a keeper's reflexes can never reach an outfield
+  // rating; outfield sub-attributes that happen to share a name with a keeper attribute
+  // are still the striker's own values.
   const attributeValue = outfieldAttributeView(player);
   let total = 0;
   let weightTotal = 0;
   for (const [key, weight] of Object.entries(weights)) {
-    if (isGoalkeeperAttribute(key)) continue;
     const value = attributeValue(key);
     if (value == null) continue;
     total += value * weight;
@@ -1042,6 +1035,12 @@ export function createPlayer(spec) {
     // Verified identity: full name, display name, common nickname. Old saves fall back
     // to the legacy first/last split rather than losing their players.
     fullName: spec.fullName ?? `${spec.first ?? ""} ${spec.last ?? ""}`.trim(),
+    // The name the game shows: a verified shortened form when the source has one,
+    // otherwise the full name. Never undefined — the UI reads this directly.
+    displayName:
+      spec.displayName ??
+      spec.fullName ??
+      `${spec.first ?? ""} ${spec.last ?? ""}`.trim(),
     nickname: spec.nickname ?? null,
     traits: spec.traits ? [...spec.traits] : [],
     personality: spec.personality

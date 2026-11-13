@@ -132,9 +132,18 @@ test("a single-token nickname is not mistaken for a full name", () => {
     displayName: "Rodri",
     nationality: "ESP",
   });
-  assert.equal(identity.first, "Rodrigo");
-  assert.equal(identity.last, "Hernández Cascante");
+  assert.equal(identity.first, "Rodri");
+  assert.equal(identity.last, "");
+  assert.equal(identity.displayName, "Rodri");
   assert.equal(identity.nickname, "Rodri");
+  // The alias table still lets the nickname match the full legal name.
+  assert.equal(
+    matchPlayerIdentity(identity, {
+      displayName: "Rodrigo Hernández Cascante",
+      nationality: "ESP",
+    }),
+    true,
+  );
 });
 
 /* ------------------------------------------------------------------ *
@@ -544,6 +553,61 @@ test("goalkeeper statistics are recorded for keepers only", () => {
   assert.deepEqual(keepers.map((p) => p.position), ["GK"]);
   assert.ok(playerAwardScore(keeper, { category: "goalkeeper" }) > 0);
   assert.equal(playerAwardScore(outfielder, { category: "goalkeeper" }), 0);
+});
+
+test("a world-league keeper records saves, shots faced and clean sheets", async () => {
+  const data = await loadData();
+  const career = careerFor(data);
+  const advance = () => {
+    const report = career.advanceWeek();
+    if (!report.userMatch) return;
+    let guard = 0;
+    while (career.matchSimulation.status !== "finished" && guard++ < 5000) {
+      const state = career.advanceMatchSimulation();
+      const moments =
+        career.lastReport.userMatch.playerResult.keyMoments ?? [];
+      if (state.status === "paused" && !moments[state.momentIndex]?.resolved)
+        career.resolveKeyMoment(state.momentIndex, "play-safe");
+    }
+  };
+  for (let week = 0; week < 8; week++) advance();
+
+  const keepers = career.players.filter(
+    (player) => player.position === "GK" && (player.stats?.apps ?? 0) > 0,
+  );
+  assert.ok(keepers.length >= 5, "several keepers must have played");
+
+  for (const keeper of keepers) {
+    assert.ok(keeper.stats.shotsFaced >= keeper.stats.goalsConceded);
+    assert.ok(keeper.stats.saves >= 0);
+    assert.ok(
+      keeper.stats.saves <= keeper.stats.shotsFaced,
+      `${keeper.displayName} cannot save more than he faces`,
+    );
+    assert.ok(
+      keeper.stats.savePercentage >= 0 && keeper.stats.savePercentage <= 100,
+    );
+    if (keeper.stats.goalsConceded === 0 && keeper.stats.apps > 0)
+      assert.ok(keeper.stats.cleanSheets > 0);
+  }
+
+  // Goalkeeping statistics never leak onto outfielders.
+  for (const player of career.players.filter((p) => p.position !== "GK")) {
+    assert.equal(player.stats?.saves ?? 0, 0, `${player.position} must not record saves`);
+    assert.equal(player.stats?.shotsFaced ?? 0, 0);
+    assert.equal(player.stats?.cleanSheets ?? 0, 0);
+  }
+});
+
+test("every career player carries a display name and full name", async () => {
+  const data = await loadData();
+  const career = careerFor(data);
+  for (const player of career.players) {
+    assert.equal(typeof player.displayName, "string", `${player.id} display name`);
+    assert.ok(player.displayName.trim().length > 0, `${player.id} display name is empty`);
+    assert.equal(typeof player.fullName, "string", `${player.id} full name`);
+    assert.ok(player.fullName.trim().length > 0, `${player.id} full name is empty`);
+  }
 });
 
 test("save percentage is derived from saves and shots faced", () => {
