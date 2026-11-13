@@ -1,6 +1,54 @@
 /** Retained for old saves; no active players receive a fixed legend rating. */
 export const LEGEND_OVERALL = 94;
 
+/**
+ * The headliners the game always keeps in the world.
+ *
+ * They are ordinary players for rating, development, transfer and match purposes — they
+ * age, they can be transferred, and `primeProfileFor` deliberately returns nothing for
+ * them. What makes them headliners is only that they are guaranteed to be in the game,
+ * so their honours, records and award races survive a career.
+ */
+export const HEADLINERS = [
+  {
+    key: "messi",
+    name: "Lionel Messi",
+    first: "Lionel",
+    last: "Messi",
+    clubId: "fc-barcelona",
+    clubName: "FC Barcelona",
+  },
+  {
+    key: "ronaldo",
+    name: "Cristiano Ronaldo",
+    first: "Cristiano",
+    last: "Ronaldo",
+    clubId: "manchester-united",
+    clubName: "Manchester United",
+  },
+];
+
+const HEADLINER_BY_NAME = new Map(
+  HEADLINERS.map((entry) => [entry.name.trim().toLowerCase(), entry]),
+);
+
+/** The headliner with this full name, or null. */
+export function headlinerForName(name) {
+  if (!name) return null;
+  return HEADLINER_BY_NAME.get(String(name).trim().toLowerCase()) ?? null;
+}
+
+/** The headliner who belongs to a club id, or null. */
+export function headlinerForClub(clubId) {
+  return HEADLINERS.find((entry) => entry.clubId === clubId) ?? null;
+}
+
+/** True when this player object is one of the guaranteed headliners. */
+export function isHeadliner(player) {
+  if (!player) return false;
+  return !!headlinerForName(`${player.first ?? ""} ${player.last ?? ""}`.trim());
+}
+
 /** Messi and Ronaldo now use the same age, development, and transfer rules as everyone else. */
 export const LEGENDS = [];
 

@@ -321,18 +321,60 @@ export function releaseAcademyPlayer(club, playerId) {
   return player;
 }
 
+/**
+ * One week of academy coaching.
+ *
+ * A prospect only moves when he has room to grow and has put in the weeks: the progress
+ * counter fills a little faster for a high-ceiling, well-coached kid, and once it is full
+ * the prospect takes a development step towards his potential and the step is recorded in
+ * the academy's history. Prospects already at their ceiling keep training but stop
+ * improving, which is what makes the potential estimate meaningful.
+ */
 export function developAcademy(club, rng, date) {
   const state = academyState(club);
   const manager = ensureCoachProfile(club);
-  const facilityLevel = club.investment?.facilities?.youthAcademy ?? 1;
   for (const player of state.players) {
     if (player.status !== "academy") continue;
     player.trainingAttendance = (player.trainingAttendance ?? 0) + 1;
     player.morale = player.morale ?? player.confidence ?? 65;
     player.academyCoachQuality = manager.youthAbility;
-    player.potentialTrajectory = clamp((Number(player.potentialRange?.max ?? player.potential ?? player.overall) - Number(player.overall ?? 40)) * 3 + manager.youthAbility * 0.25, 0, 100);
-    if ((player.potentialRange?.max ?? player.potential ?? 0) >= (player.overall ?? 0) + 10) player.developmentProgress = (player.developmentProgress ?? 0) + 0.1;
+    const current = Number(player.overall ?? 40);
+    const ceiling = Number(
+      player.potentialRange?.max ?? player.potential ?? current,
+    );
+    const room = Math.max(0, ceiling - current);
+    player.potentialTrajectory = clamp(room * 3 + manager.youthAbility * 0.25, 0, 100);
     player.academyTraining = true;
-    player.confidence = clamp((player.confidence ?? 50) + (manager.youthAbility - 50) * 0.025, 0, 100);
+    player.confidence = clamp(
+      (player.confidence ?? 50) + (manager.youthAbility - 50) * 0.025,
+      0,
+      100,
+    );
+
+    if (room < 0.5) {
+      player.developmentProgress = 0;
+      continue;
+    }
+    // Coaching quality and remaining headroom both speed the week up.
+    const weeklyGain =
+      (0.08 + room * 0.004) * (0.75 + (manager.youthAbility - 50) / 200);
+    player.developmentProgress = (player.developmentProgress ?? 0) + Math.max(0, weeklyGain);
+    if (player.developmentProgress < 1) continue;
+
+    player.developmentProgress -= 1;
+    const step = Math.min(room, Math.max(0.5, room * 0.08));
+    player.overall = Math.round((current + step) * 10) / 10;
+    const change = Math.round((player.overall - current) * 10) / 10;
+    player.lastDevelopmentDate = date ?? null;
+    state.developmentHistory.unshift({
+      playerId: player.id,
+      date: date ?? null,
+      previousOverall: current,
+      currentOverall: player.overall,
+      change,
+      plan: player.plan,
+    });
+    state.developmentHistory = state.developmentHistory.slice(0, 200);
   }
+  return state;
 }

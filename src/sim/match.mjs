@@ -26,6 +26,18 @@ import { groupOf } from "../core/constants.mjs";
 import { goalkeeperQuality } from "../model/goalkeeper.mjs";
 
 /**
+ * A player cannot score more than this many goals in one league season. The cap is a
+ * game rule, not a data quirk: without it a single elite striker can end a season on an
+ * absurd total, and the record books stop meaning anything.
+ */
+export const MAX_LEAGUE_GOALS = 50;
+
+/** The per-player league goal ceiling for a match, or null when the cap does not apply. */
+export function leagueGoalLimit(competition) {
+  return competition === "league" ? MAX_LEAGUE_GOALS : null;
+}
+
+/**
  * Simulate a background match using the shared event engine.
  *
  * @returns {{homeGoals:number, awayGoals:number, xg:object, events:Array, stats:object, playerStats:object}}
@@ -43,13 +55,14 @@ export function simulateQuickMatch(home, away, ctx = {}) {
     home: clamp((xg.home * homeQuality) / awayDefending, 0.1, 5),
     away: clamp((xg.away * awayQuality) / homeDefending, 0.1, 5),
   };
+  const maxLeagueGoals = leagueGoalLimit(ctx.competition);
   let simulation = simulatePossessionEngine({
     home: { ...home, xi: home.xi ?? [] },
     away: { ...away, xi: away.xi ?? [] },
     baselineXg: tunedXg,
     rng,
     neutralVenue: ctx.neutralVenue,
-    maxLeagueGoals: null,
+    maxLeagueGoals,
   });
   let homeGoals = simulation.homeGoals;
   let awayGoals = simulation.awayGoals;
@@ -69,7 +82,7 @@ export function simulateQuickMatch(home, away, ctx = {}) {
       rng,
       neutralVenue: ctx.neutralVenue,
       minutes: 30,
-      maxLeagueGoals: null,
+      maxLeagueGoals,
     });
     simulation = mergeExtraTime(simulation, extraTime, 90);
     homeGoals += extraTime.homeGoals;
@@ -370,7 +383,7 @@ export function simulateMatch(opts) {
     baselineXg: xg,
     rng,
     neutralVenue,
-    maxLeagueGoals: null,
+    maxLeagueGoals: leagueGoalLimit(competition),
   });
   const result = {
     homeGoals: simulation.homeGoals,
@@ -404,7 +417,7 @@ export function simulateMatch(opts) {
       rng,
       neutralVenue,
       minutes: 30,
-      maxLeagueGoals: null,
+      maxLeagueGoals: leagueGoalLimit(competition),
     });
     simulation = mergeExtraTime(simulation, extraTime, 90);
     result.homeGoals += extraTime.homeGoals;

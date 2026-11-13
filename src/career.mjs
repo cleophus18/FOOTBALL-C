@@ -147,6 +147,8 @@ import {
   LEGENDS,
   LEGEND_OVERALL,
   honourKey,
+  headlinerForClub,
+  isHeadliner,
   legendForName,
   legendForClub,
   legendAllowedAt,
@@ -208,7 +210,7 @@ import {
 } from "./model/manager.mjs";
 import { normalizePlayerNationality } from "./data/fc25-roster.mjs";
 import expansionConfig from "../data/config/expanded-leagues.json" with { type: "json" };
-import { simulateMatch } from "./sim/match.mjs";
+import { simulateMatch, MAX_LEAGUE_GOALS } from "./sim/match.mjs";
 import { simulatePossessionEngine } from "./sim/event-engine.mjs";
 import {
   resolveMomentDecision,
@@ -609,7 +611,7 @@ export class Career {
     this.ensureSquadSizes();
     for (const club of this.clubs) assignShirtNumbers(this.players, club);
     // In manager mode the human is the coach, so his chosen style is the club's style
-    // and he picks the shape â€” not an AI head coach.
+    // and he picks the shape — not an AI head coach.
     if (this.managerState) {
       this.club.manager.style = this.managerState.style;
       this.club.manager.name = `${this.managerState.first} ${this.managerState.last}`;
@@ -3696,20 +3698,20 @@ export class Career {
             award: "FIFA World Cup Runner-up Medal",
             season: tournament.season,
             competition: "FIFA World Cup",
-            value: `${tournament.year} Â· ${team.name}`,
+            value: `${tournament.year} · ${team.name}`,
           });
         if (award === "FIFA World Cup Third Place")
           this.recordPlayerHonour(player, {
             award: "FIFA World Cup Third-place Medal",
             season: tournament.season,
             competition: "FIFA World Cup",
-            value: `${tournament.year} Â· ${team.name}`,
+            value: `${tournament.year} · ${team.name}`,
           });
         this.recordPlayerHonour(player, {
           award,
           season: tournament.season,
           competition: "FIFA World Cup",
-          value: `${tournament.year} Â· ${team.name}`,
+          value: `${tournament.year} · ${team.name}`,
         });
       }
     }
@@ -3737,7 +3739,7 @@ export class Career {
           award,
           season: tournament.season,
           competition: "FIFA World Cup",
-          value: `${tournament.year} Â· ${winner.goals} goals Â· ${formatDecimal(meanRating(winner))} rating`,
+          value: `${tournament.year} · ${winner.goals} goals · ${formatDecimal(meanRating(winner))} rating`,
         });
     }
     const countryTrophies = (this.worldCup.countryTrophies ??= {});
@@ -3932,7 +3934,9 @@ export class Career {
           },
           baselineXg: xg,
           rng,
-          maxLeagueGoals: null,
+          // World-league fixtures are league matches, so the same 50-goal season cap
+          // applies here as it does in the domestic league.
+          maxLeagueGoals: MAX_LEAGUE_GOALS,
         });
         const { homeGoals, awayGoals } = matchSimulation;
         state.league.table.record(
@@ -4689,7 +4693,7 @@ export class Career {
           value: playerOfSeason?.points ?? null,
           valueLabel: "race points",
           displayValue: playerOfSeason
-            ? `${formatDecimal(playerOfSeason.points)} pts Â· league champions`
+            ? `${formatDecimal(playerOfSeason.points)} pts · league champions`
             : null,
         },
         {
@@ -5977,7 +5981,7 @@ export class Career {
   /**
    * Add a trophy to a player's honour list. Accepts a player object (from any league),
    * an id, or a `"First Last"` name, and silently does nothing if the player cannot be
-   * resolved â€” a missing award is far better than a crash at the end of a season.
+   * resolved — a missing award is far better than a crash at the end of a season.
    */
   recordPlayerHonour(playerName, honour) {
     let player = null;
@@ -6045,7 +6049,7 @@ export class Career {
   /**
    * Every honour earned by a player, wherever in the world he is listed. Legends and
    * world performers live outside `this.players`, so the trophy case has to look them
-   * up too â€” that was why most winners' trophies never appeared.
+   * up too — that was why most winners' trophies never appeared.
    */
   getPlayerHonours(player) {
     if (!player) return [];
@@ -7069,7 +7073,7 @@ export class Career {
         (item) => item.id === requestId,
       );
       this.news.push(
-        `Board response recorded: ${request?.label ?? "request"} â€” ${response}.`,
+        `Board response recorded: ${request?.label ?? "request"} — ${response}.`,
       );
     }
     return accepted;
@@ -7311,7 +7315,7 @@ export class Career {
     );
     if (finance.balance < appointmentCost) {
       throw new Error(
-        `You need â‚¬${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`,
+        `You need €${candidate.cost.toLocaleString()} to appoint ${candidate.name}.`,
       );
     }
     recordClubTransaction(this.club, {
@@ -7374,7 +7378,7 @@ export class Career {
 
   /**
    * Close out a manager's season: judge him against the board's target, bank the trophies
-   * he won, update the three confidence meters and â€” if the board has lost faith â€” sack
+   * he won, update the three confidence meters and — if the board has lost faith — sack
    * him. Called from `advanceSeason` while the finished season's table is still live.
    */
   settleManagerSeason() {
@@ -7486,7 +7490,7 @@ export class Career {
         config.teams.map((name) => {
           const id = clean(name);
           const prestige =
-            /^(Ajax|PSV Eindhoven|Feyenoord|Benfica|Porto|Sporting CP|Club Brugge|Anderlecht|Celtic|Rangers|Galatasaray|FenerbahÃ§e|BeÅŸiktaÅŸ)$/i.test(
+            /^(Ajax|PSV Eindhoven|Feyenoord|Benfica|Porto|Sporting CP|Club Brugge|Anderlecht|Celtic|Rangers|Galatasaray|Fenerbahçe|Beşiktaş)$/i.test(
               name,
             )
               ? 78
@@ -8526,7 +8530,7 @@ export class Career {
     });
     player.contract.expires = this.season + contractYears;
     this.news.push(
-      `${player.first} ${player.last} joins ${this.club.name} for â‚¬${agreedFee.toLocaleString()}.`,
+      `${player.first} ${player.last} joins ${this.club.name} for €${agreedFee.toLocaleString()}.`,
     );
     return result;
   }
@@ -8549,27 +8553,32 @@ export class Career {
 
   /**
    * Messi and Ronaldo live in their own clubs' squads (FC Barcelona and Manchester United).
-   * This returns them for the UI: ageless, fixed at 94 overall, on exactly one club each.
+   * This returns them for the UI and the award race. They are ordinary players for
+   * rating, development and transfers — only their guaranteed presence is special, so
+   * honours and records recorded against them survive a career.
    */
   getLegends() {
-    // A legend may be in the user's own league (this.players) or in any other playable
+    // A headliner may be in the user's own league (this.players) or in any other playable
     // league (tracked as a world performer), so look in both.
     const found = new Map();
     for (const player of this.players) {
-      if (player.isLegend) found.set(player.id, player);
+      if (player.isLegend || isHeadliner(player)) found.set(player.id, player);
     }
     for (const state of this.worldLeagues ?? []) {
       for (const performer of state.performers) {
-        if (performer.isLegend) found.set(performer.id, performer);
+        if (performer.isLegend || isHeadliner(performer))
+          found.set(performer.id, performer);
       }
     }
     return [...found.values()].map((player) => {
-      const legend = legendForClub(player.clubId);
+      const headliner = headlinerForClub(player.clubId);
       const ownClub = this.clubs.find((club) => club.id === player.clubId);
       return {
         player,
-        clubName: ownClub?.name ?? legend?.clubName ?? "",
-        overall: LEGEND_OVERALL,
+        clubName: ownClub?.name ?? headliner?.clubName ?? "",
+        overall: Number.isFinite(Number(player.overall))
+          ? Number(player.overall)
+          : LEGEND_OVERALL,
       };
     });
   }
@@ -8937,7 +8946,7 @@ export class Career {
     // profile. Missing or invalid entries keep the seeded roll above. Because the body
     // is applied on top when the player is built, a slider value is read as "what this
     // player would show with a normal build", and divided by his physique multiplier
-    // here â€” so a heavy winger still ends up visibly slower than a lean one.
+    // here — so a heavy winger still ends up visibly slower than a lean one.
     const physique = physiqueProfile(position, height, weight);
     const sliderGroups = position === "GK" ? GOALKEEPER_ATTRIBUTES : ATTRIBUTES;
     let customised = false;
@@ -8986,8 +8995,8 @@ export class Career {
     const reconcileOverall = () => {
       // `calculateOverall` rounds to a whole number, so several stat lines share the same
       // displayed overall, and a fractional nudge cannot move a rounded number at all.
-      // Walk out from the rolled line one whole point at a time â€” on the stats that
-      // matter most for the position â€” and stop at the first line whose rounded overall
+      // Walk out from the rolled line one whole point at a time — on the stats that
+      // matter most for the position — and stop at the first line whose rounded overall
       // is exactly the target.
       const levers = Object.entries(
         position === "GK" ? GK_WEIGHTS : POSITION_WEIGHTS[position],
@@ -9441,7 +9450,7 @@ export class Career {
       throw new Error("That agent is already employed.");
     if (!this.spendMoney(agent.fee, `Hired agent: ${agent.name}`)) {
       throw new Error(
-        `You need â‚¬${agent.fee.toLocaleString()} to hire ${agent.name}.`,
+        `You need €${agent.fee.toLocaleString()} to hire ${agent.name}.`,
       );
     }
     this.financialHistory ??= [];
@@ -9782,7 +9791,7 @@ export class Career {
     const agentCost = Math.round(agent.fee * 0.08);
     if (agentCost > 0 && (this.money ?? 0) < agentCost)
       throw new Error(
-        `You need â‚¬${agentCost.toLocaleString()} to fund this search.`,
+        `You need €${agentCost.toLocaleString()} to fund this search.`,
       );
     this.transferMarketState.searchCount++;
     this.transferMarketState.lastSearchDay = today;
@@ -9790,7 +9799,7 @@ export class Career {
     if (agentCost > 0) {
       if (!this.spendMoney(agentCost, `${agent.name} destination search`))
         throw new Error(
-          `You need â‚¬${agentCost.toLocaleString()} to fund this search.`,
+          `You need €${agentCost.toLocaleString()} to fund this search.`,
         );
       this.financialHistory ??= [];
       this.financialHistory.push({
@@ -10084,7 +10093,7 @@ export class Career {
       this.transferHistory.unshift(transfer);
       moved.push(transfer);
       this.news.unshift(
-        `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for â‚¬${transfer.fee.toLocaleString()}.`,
+        `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for €${transfer.fee.toLocaleString()}.`,
       );
       deals++;
     }
@@ -10101,7 +10110,7 @@ export class Career {
           transfer.toClub === this.club.name
         ) {
           this.news.unshift(
-            `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for â‚¬${transfer.fee.toLocaleString()}.`,
+            `${transfer.playerName} transferred from ${transfer.fromClub} to ${transfer.toClub} for €${transfer.fee.toLocaleString()}.`,
           );
         }
       }
@@ -10148,11 +10157,11 @@ export class Career {
         offer.wage = requestedWage;
         offer.negotiated = true;
         this.news.unshift(
-          `${offer.clubName} accepted your request for â‚¬${requestedWage.toLocaleString()} weekly wages.`,
+          `${offer.clubName} accepted your request for €${requestedWage.toLocaleString()} weekly wages.`,
         );
       } else {
         this.news.unshift(
-          `${offer.clubName} rejected your request for â‚¬${requestedWage.toLocaleString()} weekly wages; the original terms remain available.`,
+          `${offer.clubName} rejected your request for €${requestedWage.toLocaleString()} weekly wages; the original terms remain available.`,
         );
       }
       return { accepted, negotiated: true, offer, requestedWage };
@@ -10286,7 +10295,7 @@ export class Career {
       }
       this.transferOffers = [];
       this.news.push(
-        `${this.player.first} ${this.player.last} joins ${targetClub.name} for â‚¬${offer.fee.toLocaleString()} and â‚¬${offer.wage.toLocaleString()} weekly wages.`,
+        `${this.player.first} ${this.player.last} joins ${targetClub.name} for €${offer.fee.toLocaleString()} and €${offer.wage.toLocaleString()} weekly wages.`,
       );
       return { accepted: true, offer };
     }
@@ -10516,7 +10525,7 @@ export class Career {
           const involvement = precomputedInvolvement ?? this.matchInvolvement();
           // When the career player is not starting, keep him off the XI entirely so he
           // can never be credited with a scheduled goal, card or key moment while
-          // sitting on the bench â€” the ghost-player bug. The teammate the plan names as
+          // sitting on the bench — the ghost-player bug. The teammate the plan names as
           // the one making way IS forced into the XI, so the planned entrance is real.
           const plannedOutgoingId =
             !involvement.starts && involvement.outgoingPlayerId
@@ -10613,7 +10622,7 @@ export class Career {
             side,
             objective: objective
               ? objective.title
-              : "No objective â€” did not play",
+              : "No objective — did not play",
             objectiveComplete: false,
             objectiveAwarded: false,
           };
@@ -11409,8 +11418,8 @@ export class Career {
     const displacedId = offPlayerId ?? occupantOfNaturalSlot;
 
     // Rebuild the XI so the incoming player takes the outgoing player's place exactly
-    // once. Any earlier, stale listing of the incoming player â€” the engine can force a
-    // bench player into the starting XI â€” is removed rather than left alongside it.
+    // once. Any earlier, stale listing of the incoming player — the engine can force a
+    // bench player into the starting XI — is removed rather than left alongside it.
     const nextXI = [];
     for (const id of side.xi) {
       if (id === displacedId) nextXI.push(player.id);
@@ -12005,14 +12014,14 @@ export class Career {
       .positions()
       .get(this.club.id);
     this.lastReport.headlines.push(
-      `${this.club.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· full time`,
+      `${this.club.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · full time`,
     );
     // In a manager career there is no human player to rate, so the final score is the
     // only thing worth an inbox item. The neutral placeholder player is not named.
     this.news.push(
       this.isManagerCareer
-        ? `${match.home.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· full time.`
-        : `${match.home.name} ${match.homeGoals}â€“${match.awayGoals} ${match.away.name} Â· ${this.player.first} ${this.player.last} rated ${formatDecimal(result.rating)}.`,
+        ? `${match.home.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · full time.`
+        : `${match.home.name} ${match.homeGoals}–${match.awayGoals} ${match.away.name} · ${this.player.first} ${this.player.last} rated ${formatDecimal(result.rating)}.`,
     );
     this.seasonComplete = this.areAllSeasonCompetitionsComplete();
     if (this.seasonComplete) this.recordSeasonAwards();
@@ -13388,7 +13397,7 @@ export class Career {
     if (!Number.isFinite(amount) || amount < 0)
       throw new Error("Money transactions must be a non-negative amount.");
     if (!amount) return;
-    // Balance updates silently â€” no transaction log is kept any more.
+    // Balance updates silently — no transaction log is kept any more.
     this.money += amount;
   }
 
@@ -13413,7 +13422,7 @@ export class Career {
       throw new Error("That manager is already employed.");
     if (!this.spendMoney(candidate.cost, `Hired manager: ${candidate.name}`)) {
       throw new Error(
-        `You need â‚¬${candidate.cost.toLocaleString()} to hire ${candidate.name}.`,
+        `You need €${candidate.cost.toLocaleString()} to hire ${candidate.name}.`,
       );
     }
     this.club.manager = new Manager({
@@ -13621,7 +13630,7 @@ export class Career {
         objective:
           involvement.minutes > 0
             ? this.pickObjective()
-            : "No objective â€” did not play",
+            : "No objective — did not play",
         objectiveComplete: false,
         objectiveAwarded: false,
       },
@@ -13753,7 +13762,11 @@ export class Career {
           away: away.name,
           awayShortName: away.shortName,
           awayId,
-          result: played ? `${result.homeGoals}\u2013${result.awayGoals}` : null,
+          // Every tournament fixture renders the score the same way — spaced en dash,
+          // with the shoot-out noted — so the fixture list and the match report agree.
+          result: played
+            ? `${result.homeGoals} \u2013 ${result.awayGoals}${result.decidedBy === "penalties" && result.penalties ? " (pens)" : ""}`
+            : null,
           stats: played ? (result.stats ?? null) : null,
           played,
           stage,
@@ -13763,7 +13776,7 @@ export class Career {
         addChampionsLeagueFixture({
           id: fixture.id,
           stage: fixture.stage,
-          roundLabel: `League phase Â· Matchday ${fixture.round}`,
+          roundLabel: `League phase · Matchday ${fixture.round}`,
           week: fixture.week,
           homeId: fixture.homeId,
           awayId: fixture.awayId,
@@ -13785,7 +13798,7 @@ export class Career {
             addChampionsLeagueFixture({
               id: leg.id,
               stage: tie.stage,
-              roundLabel: `${roundName} Â· ${legName}`,
+              roundLabel: `${roundName} · ${legName}`,
               week: leg.week,
               homeId: leg.homeId,
               awayId: leg.awayId,
@@ -13839,7 +13852,7 @@ export class Career {
             season: worldCup.season ?? worldCup.year - 1,
             roundLabel:
               fixture.stage === "group"
-                ? `Group stage Â· ${fixture.groupId ?? "Group"} Â· Matchday ${Number(fixture.round ?? 0) + 1}`
+                ? `Group stage · ${fixture.groupId ?? "Group"} · Matchday ${Number(fixture.round ?? 0) + 1}`
                 : (fixture.knockoutStage ?? fixture.round ?? fixture.stage),
             matchNumber:
               fixture.stage === "group" ? Number(fixture.round ?? 0) + 1 : null,
