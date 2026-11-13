@@ -1,6 +1,19 @@
 import { toDayIndex, fromDayIndex } from "../core/calendar.mjs";
-import { normalizePosition, POSITIONS, POSITION_GROUPS } from "../core/constants.mjs";
+import { normalizePosition, POSITIONS, POSITION_GROUPS, GK_ATTRIBUTES, GK_DERIVED_ATTRIBUTES } from "../core/constants.mjs";
+import {
+  nameKey,
+  normalizeText,
+  playerIdentity,
+  matchPlayerIdentity,
+  strongIdentityKey,
+} from "../model/identity.mjs";
 import { parseCsvRows, serializeCsvRows } from "./csv.mjs";
+import {
+  DIRECT_GOALKEEPER_ATTRIBUTES,
+  GOALKEEPER_ATTRIBUTES,
+  estimateGoalkeeperAttributes,
+  hasGoalkeeperAttributes,
+} from "../model/goalkeeper.mjs";
 
 const SEASON_START_DAY_INDEX = toDayIndex(2026, 7, 1);
 
@@ -44,9 +57,11 @@ for (const [league, clubs] of Object.entries(CAREER_LEAGUE_TEAMS)) {
 
 export const PLAYER_DATABASE_HEADERS = [
   "player_id",
+  "full_name",
   "display_name",
   "first_name",
   "last_name",
+  "nickname",
   "date_of_birth",
   "nationality",
   "league",
@@ -61,6 +76,12 @@ export const PLAYER_DATABASE_HEADERS = [
   "dribbling",
   "defending",
   "physicality",
+  "gk_diving",
+  "gk_handling",
+  "gk_kicking",
+  "gk_reflexes",
+  "gk_positioning",
+  "gk_speed",
   "weak_foot",
   "skill_moves",
   "preferred_foot",
@@ -98,6 +119,12 @@ const numericFields = [
   "dribbling",
   "defending",
   "physicality",
+  "gk_diving",
+  "gk_handling",
+  "gk_kicking",
+  "gk_reflexes",
+  "gk_positioning",
+  "gk_speed",
   "weak_foot",
   "skill_moves",
   "height_cm",
@@ -144,6 +171,42 @@ function splitList(value) {
     .filter(Boolean);
 }
 
+/** The six EA-style goalkeeper columns read from the CSV (may be absent). */
+const GK_COLUMN_BY_ATTRIBUTE = {
+  gk_diving: "diving",
+  gk_handling: "handling",
+  gk_kicking: "kicking",
+  gk_reflexes: "reflexes",
+  gk_positioning: "positioning",
+  gk_speed: "speed",
+};
+
+/**
+ * Map the CSV columns into the engine's goalkeeper attribute set.
+ * Rows whose GK columns are blank (or zero where zero is not a real value) fall back
+ * to a clearly-labelled estimation derived from the outfield profile and OVR, so an
+ * imported keeper never silently receives zeros.
+ */
+export function goalkeeperAttributesFromRecord(record, numeric, position) {
+  const supplied = {};
+  for (const [column, attribute] of Object.entries(GK_COLUMN_BY_ATTRIBUTE)) {
+    const value = numeric[column];
+    if (Number.isFinite(value) && value >= 1 && value <= 99) supplied[attribute] = value;
+  }
+  const fallbackSource = {
+    overall: numeric.overall,
+    pace: numeric.pace,
+    shooting: numeric.shooting,
+    passing: numeric.passing,
+    dribbling: numeric.dribbling,
+    defending: numeric.defending,
+    physical: numeric.physicality,
+    height: numeric.height_cm,
+  };
+  const { attributes, estimated, method } = estimateGoalkeeperAttributes(supplied, fallbackSource);
+  return { attributes, estimated, method, suppliedCount: Object.keys(supplied).length };
+}
+
 function normalizeRecord(record) {
   const position = normalizePosition(record.position);
   const numeric = Object.fromEntries(
@@ -163,9 +226,22 @@ function normalizeRecord(record) {
     sourceClub.toLocaleLowerCase() === "ipswich"
       ? "Ipswich Town"
       : sourceClub;
-  const displayName = String(record.display_name ?? "").trim();
-  const first = String(record.first_name ?? "").trim();
-  const last = String(record.last_name ?? "").trim();
+  const nationality = String(record.nationality ?? "").trim().toUpperCase() || null;
+  // Names are resolved through the identity module: never a blind first-space split.
+  const identity = playerIdentity({
+    playerId: id,
+    fullName: String(record.full_name ?? "").trim(),
+    firstName: String(record.first_name ?? "").trim(),
+    lastName: String(record.last_name ?? "").trim(),
+    displayName: String(record.display_name ?? "").trim(),
+    nickname: String(record.nickname ?? "").trim() || null,
+    nationality,
+    dateOfBirth,
+    club,
+    league,
+    position,
+    source: "player-database",
+  });
   const alternatePositions = [
     ...new Set(
       splitList(record.alternate_positions)
@@ -174,17 +250,24 @@ function normalizeRecord(record) {
     ),
   ];
   const sourceStatus = dataStatus.toLowerCase();
+  const goalkeeper = position === "GK"
+    ? goalkeeperAttributesFromRecord(record, numeric, position)
+    : null;
   return {
     ...record,
     ...numeric,
     id,
     playerId: id,
-    first,
-    last,
-    displayName,
+    first: identity.first,
+    last: identity.last,
+    fullName: identity.fullName,
+    displayName: identity.displayName,
+    nickname: identity.nickname,
+    identityKey: identity.identityKey,
+    strongIdentityKey: identity.strongIdentityKey,
     dob: parsedBirthDate,
     age,
-    nationality: String(record.nationality ?? "").trim() || null,
+    nationality,
     league,
     clubName: club,
     position,
@@ -199,6 +282,9 @@ function normalizeRecord(record) {
       defending: numeric.defending,
       physical: numeric.physicality,
     },
+    gkAttrs: goalkeeper?.attributes ?? null,
+    gkAttributesEstimated: goalkeeper?.estimated ?? false,
+    gkEstimationMethod: goalkeeper?.method ?? null,
     shirtNumber: numeric.shirt_number,
     foot: String(record.preferred_foot ?? "").trim() || null,
     weakFoot: numeric.weak_foot,
@@ -230,6 +316,8 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
   const warnings = [];
   const ids = new Set();
   const identityRows = new Map();
+  const identityRecords = new Map();
+  const nameRows = new Map();
   const shirts = new Map();
   const criticalFields = [
     "height_cm",
@@ -253,8 +341,20 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
     else ids.add(normalized.playerId);
     if (!normalized.displayName)
       errors.push(`Row ${row}: display_name is required.`);
-    if (!normalized.first || !normalized.last)
-      warnings.push(`Row ${row}: first_name or last_name is missing.`);
+    // A single token is fine when it is a genuine football nickname (Alisson, Pedri...).
+    if (!normalized.first && !normalized.nickname)
+      warnings.push(`Row ${row}: first_name is missing and no nickname is recorded.`);
+    if (!normalized.last)
+      warnings.push(`Row ${row}: last_name is missing.`);
+    if (
+      normalized.fullName &&
+      normalized.last &&
+      !nameKey(normalized.fullName).endsWith(nameKey(normalized.last)) &&
+      !nameKey(normalized.fullName).includes(nameKey(normalized.last))
+    )
+      warnings.push(
+        `Row ${row}: full_name "${normalized.fullName}" does not contain last name "${normalized.last}".`,
+      );
     if (!PLAYER_DATABASE_LEAGUES.includes(normalized.league))
       errors.push(`Row ${row}: unsupported league "${normalized.league}".`);
     if (!normalized.clubName) errors.push(`Row ${row}: club is required.`);
@@ -346,8 +446,14 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
       POSITION_GROUPS.DEF.includes(normalized.position) ? "DEF" :
       POSITION_GROUPS.MID.includes(normalized.position) ? "MID" : "ATT";
     if (posGroup === "GK") {
-      if (normalized.physicality != null && (normalized.physicality < 1 || normalized.physicality > 99)) {
-        errors.push(`Row ${row}: physicality (GK attribute) must be from 1 to 99.`);
+      // A keeper is judged on his keeper attributes. Outfield columns may exist for
+      // display, but a genuine keeper must never be left without a goalkeeping line.
+      if (!hasGoalkeeperAttributes(normalized.gkAttrs))
+        errors.push(`Row ${row}: goalkeeper has no usable goalkeeping attributes.`);
+      for (const attribute of GOALKEEPER_ATTRIBUTES) {
+        const value = normalized.gkAttrs?.[attribute];
+        if (!Number.isFinite(value) || value < 1 || value > 99)
+          errors.push(`Row ${row}: goalkeeper ${attribute} must be from 1 to 99.`);
       }
     } else {
       const keyAttrs = posGroup === "DEF" ? ["defending", "physicality"] :
@@ -373,12 +479,30 @@ export function validatePlayerDatabase(records, { strict = false } = {}) {
       }
     }
 
-    const identity = `${normalized.league.toLowerCase()}:${normalized.clubName.toLowerCase()}:${normalized.displayName.toLocaleLowerCase()}`;
-    if (identityRows.has(identity))
-      warnings.push(
-        `Row ${row}: same player name and club as row ${identityRows.get(identity)}.`,
-      );
-    else identityRows.set(identity, row);
+    // Duplicate detection uses stable identity keys, not accent/spacing-sensitive text.
+    const identity = normalized.strongIdentityKey;
+    const prior = identityRows.get(identity);
+    if (prior) {
+      const priorRecord = identityRecords.get(identity);
+      if (priorRecord && matchPlayerIdentity(priorRecord, normalized))
+        warnings.push(
+          `Row ${row}: same player identity as row ${prior} (${normalized.displayName}).`,
+        );
+    } else {
+      identityRows.set(identity, row);
+      identityRecords.set(identity, normalized);
+    }
+    // Same name with *conflicting* evidence (different club/nation/DOB) is two humans.
+    const nameOnly = nameKey(normalized.displayName);
+    const priorName = nameRows.get(nameOnly);
+    if (priorName && !prior && normalized.playerId !== priorName.playerId) {
+      if (!matchPlayerIdentity(priorName, normalized))
+        warnings.push(
+          `Row ${row}: "${normalized.displayName}" matches row ${priorName.playerId}'s name but has conflicting identity data; kept as a separate player.`,
+        );
+    } else if (!priorName) {
+      nameRows.set(nameOnly, normalized);
+    }
 
     if (
       Number.isInteger(normalized.shirtNumber) &&
@@ -468,14 +592,22 @@ export function parsePlayerDatabaseCsv(text, { strict = false } = {}) {
   const players = records.map(normalizeRecord);
   const byId = new Map(players.map((player) => [player.playerId, player]));
   const byName = new Map();
+  const byNormalizedName = new Map();
+  const byIdentity = new Map();
   const byLeague = new Map();
   const byClub = new Map();
   for (const player of players) {
     const nameKey = player.displayName.toLocaleLowerCase();
+    const normalizedName = normalizeText(player.displayName);
     const leagueKey = player.league.toLocaleLowerCase();
     const clubKey = `${leagueKey}:${player.clubName.toLocaleLowerCase()}`;
     if (!byName.has(nameKey)) byName.set(nameKey, []);
     byName.get(nameKey).push(player);
+    // Accent/spacing-insensitive lookup for imports with different formatting.
+    if (!byNormalizedName.has(normalizedName)) byNormalizedName.set(normalizedName, []);
+    byNormalizedName.get(normalizedName).push(player);
+    if (!byIdentity.has(player.strongIdentityKey)) byIdentity.set(player.strongIdentityKey, []);
+    byIdentity.get(player.strongIdentityKey).push(player);
     if (!byLeague.has(leagueKey)) byLeague.set(leagueKey, []);
     byLeague.get(leagueKey).push(player);
     if (!byClub.has(clubKey)) byClub.set(clubKey, []);
@@ -485,6 +617,8 @@ export function parsePlayerDatabaseCsv(text, { strict = false } = {}) {
     players,
     byId,
     byName,
+    byNormalizedName,
+    byIdentity,
     byLeague,
     byClub,
     report: playerDatabaseReport(records),
@@ -556,9 +690,11 @@ export function migrateLegacyPlayerDatabase({
     );
     Object.assign(fresh, {
       player_id: playerId,
+      full_name: player.fullName ?? player.displayName,
       display_name: player.displayName,
       first_name: player.first,
       last_name: player.last,
+      nickname: player.nickname ?? "",
       nationality: String(source.nationality ?? "").trim(),
       league: player.league,
       club: player.clubName,
@@ -607,6 +743,52 @@ export function migrateLegacyPlayerDatabase({
     for (const field of ratingFields) {
       const value = String(record[field] ?? "").trim();
       if (value && Number(value) === 0) record[field] = "";
+    }
+    // Backfill the identity columns for pre-existing rows, without overwriting data.
+    if (!String(record.full_name ?? "").trim())
+      record.full_name = `${record.first_name ?? ""} ${record.last_name ?? ""}`.trim();
+    if (!String(record.nickname ?? "").trim()) {
+      const identity = playerIdentity({
+        fullName: record.full_name,
+        firstName: record.first_name,
+        lastName: record.last_name,
+        displayName: record.display_name,
+        nationality: record.nationality,
+        dateOfBirth: record.date_of_birth,
+        club: record.club,
+        league: record.league,
+        position: record.position,
+      });
+      record.first_name = identity.first || record.first_name;
+      record.last_name = identity.last || record.last_name;
+      record.display_name = identity.displayName || record.display_name;
+      record.nickname = identity.nickname ?? "";
+    }
+    // Give goalkeepers a complete, non-zero goalkeeping line.
+    if (normalizePosition(record.position) === "GK") {
+      const numeric = Object.fromEntries(
+        ["overall", "pace", "shooting", "passing", "dribbling", "defending", "physicality",
+          "height_cm", "gk_diving", "gk_handling", "gk_kicking", "gk_reflexes",
+          "gk_positioning", "gk_speed"].map((field) => [field, numberOrNull(record[field])]),
+      );
+      const supplied = {};
+      for (const [column, attribute] of Object.entries({
+        gk_diving: "diving",
+        gk_handling: "handling",
+        gk_kicking: "kicking",
+        gk_reflexes: "reflexes",
+        gk_positioning: "positioning",
+        gk_speed: "speed",
+      })) {
+        const value = numeric[column];
+        if (Number.isFinite(value) && value >= 1 && value <= 99) supplied[attribute] = value;
+      }
+      const { attributes } = estimateGoalkeeperAttributes(supplied, numeric);
+      for (const attribute of DIRECT_GOALKEEPER_ATTRIBUTES) {
+        const column = `gk_${attribute}`;
+        if (!String(record[column] ?? "").trim() || Number(record[column]) === 0)
+          record[column] = String(Math.round(attributes[attribute]));
+      }
     }
   }
 

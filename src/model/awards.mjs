@@ -47,7 +47,15 @@ export function playerAwardScore(player, {
   if (category === "goals") return goals * 10 + apps * 0.1;
   if (category === "assists") return assists * 10 + creation * 2 + apps * 0.1;
   if (category === "goalkeeper") {
-    return average * 7 + cleanSheets * 4 + saves * 0.35 + teamSuccess * 0.5 +
+    // Only actual goalkeepers can win the goalkeeper award, and it rewards the things a
+    // keeper is judged on: clean sheets, saves, save percentage and penalties saved.
+    if (position !== "GK") return 0;
+    const shotsFaced = number(stats.shotsFaced);
+    const savePercentage = number(stats.savePercentage) ||
+      (shotsFaced > 0 ? (saves / shotsFaced) * 100 : 0);
+    const penaltySaves = number(stats.penaltySaves);
+    return average * 7 + cleanSheets * 4 + saves * 0.35 +
+      savePercentage * 0.25 + penaltySaves * 3 + teamSuccess * 0.5 +
       minutesFactor * 8 + decisive;
   }
   if (category === "defender") {
@@ -68,10 +76,13 @@ export function playerAwardScore(player, {
 }
 
 export function eligibleAwardPlayers(players, definition = {}) {
+  const category = definition.category ?? "overall";
   return (players ?? []).filter((player) => {
     const stats = player?.stats ?? player ?? {};
     const apps = number(stats.apps ?? player?.apps);
     const age = number(player?.age);
+    if (category === "goalkeeper" && normalizePosition(player?.position ?? "CM") !== "GK")
+      return false;
     return apps >= (definition.minimumApps ?? 1) &&
       (definition.maxAge == null || !age || age <= definition.maxAge);
   });
@@ -344,8 +355,13 @@ export function calculateBallonDorScore(player, context = {}) {
 
   let individualStatistics = 0;
   if (position === "GK") {
+    // Keeper awards read keeper statistics only; an outfielder never contributes saves.
+    const shotsFaced = number(stats.shotsFaced);
+    const savePercentage = number(stats.savePercentage) ||
+      (shotsFaced > 0 ? (saves / shotsFaced) * 100 : 0);
+    const penaltySaves = number(stats.penaltySaves);
     individualStatistics = diminishing(
-      cleanSheets * 3 + saves * 0.35 + (stats.savePercentage ?? 0) * 0.25 + (stats.goalsPrevented ?? 0) * 2 +
+      cleanSheets * 3 + saves * 0.35 + savePercentage * 0.25 + penaltySaves * 2 +
         goals * 4 + assists * 3,
       250, 55
     );

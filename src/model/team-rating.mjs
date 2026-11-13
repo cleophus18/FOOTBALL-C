@@ -1,6 +1,7 @@
 import { groupOf, normalizePosition } from "../core/constants.mjs";
 import { clamp, round } from "../core/util.mjs";
 import { calculatePlayerOverall, effectiveRating } from "./player.mjs";
+import { goalkeeperQuality } from "./goalkeeper.mjs";
 
 const FORMATION_SLOTS = {
   "4-3-3": ["GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "ST", "RW"],
@@ -82,13 +83,10 @@ function lineRatings(lineup, useEffective, dayIndex) {
   });
   const goalkeepingQuality = average(
     goalkeeper,
-    ({ player }) =>
-      (Number(player.gkAttrs?.reflexes ?? player.overall ?? 55) * 0.24) +
-      (Number(player.gkAttrs?.diving ?? player.gkAttrs?.reflexes ?? 55) * 0.2) +
-      (Number(player.gkAttrs?.positioning ?? player.overall ?? 55) * 0.2) +
-      (Number(player.gkAttrs?.handling ?? player.overall ?? 55) * 0.16) +
-      (Number(player.gkAttrs?.reactions ?? player.overall ?? 55) * 0.12) +
-      (Number(player.gkAttrs?.jumping ?? player.overall ?? 55) * 0.08),
+    ({ player }) => goalkeeperQuality(player.gkAttrs, {
+      kind: "shotStopping",
+      overall: Number(player.overall) || 55,
+    }),
   );
   return {
     attack: bounded(attack),

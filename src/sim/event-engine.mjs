@@ -2,6 +2,7 @@ import { clamp, round } from "../core/util.mjs";
 import { eliteProfileFor } from "../model/elite.mjs";
 import { actionAbility, decidePlayerAction } from "./playerintelligence.mjs";
 import { ROLE_MODIFIERS } from "./playermatch.mjs";
+import { goalkeeperQuality } from "../model/goalkeeper.mjs";
 
 const POSSESSION_COUNT = 70;
 
@@ -23,12 +24,34 @@ const PASS_WEIGHT = {
 function skill(player, keys, fallback = 55) {
   for (const key of keys) {
     const value =
-      player.subAttrs?.[key] ??
+      player.attrs?.[key] ??
       player.gkAttrs?.[key] ??
-      player.attrs?.[key];
+      player.subAttrs?.[key];
     if (Number.isFinite(Number(value))) return Number(value);
   }
+  // A goalkeeper's missing attribute must not fall back to an outfield group value:
+  // that would import a striker's shooting as "reflexes". Use the shared estimator.
+  const isGoalkeeperKeys = keys.some((key) =>
+    ["reflexes", "diving", "handling", "positioning", "kicking", "speed", "reactions", "jumping", "composure"].includes(key),
+  );
+  if (isGoalkeeperKeys && normalizeGkPosition(player)) {
+    const overall = Number(player.overall) || fallback;
+    return goalkeeperQuality(player.gkAttrs, {
+      kind: keys.includes("handling")
+        ? "handling"
+        : keys.includes("positioning")
+          ? "positioning"
+          : keys.includes("kicking")
+            ? "distribution"
+            : "reflexes",
+      overall,
+    });
+  }
   return Number(player.overall) || fallback;
+}
+
+function normalizeGkPosition(player) {
+  return (player.position ?? "").toUpperCase() === "GK";
 }
 
 function productionFactor(player, category) {
@@ -291,13 +314,14 @@ function shotOpportunity(
   const finishing = skill(actor, ["finishing", "shooting"]);
   const composure = skill(actor, ["composure", "vision"]);
   const keeper = opponent.xi.find((player) => player.position === "GK");
+  // Goalkeeping is judged by the shared model: reflexes, diving, positioning, handling
+  // and reactions all feed one quality number, with one-on-one situations weighted for
+  // the shot type actually faced.
   const keeperQuality = keeper
-    ? (skill(keeper, ["reflexes"]) * 0.26 +
-        skill(keeper, ["diving", "reflexes"]) * 0.2 +
-        skill(keeper, ["positioning"]) * 0.22 +
-        skill(keeper, ["handling"]) * 0.14 +
-        skill(keeper, ["reactions", "reflexes"]) * 0.12 +
-        skill(keeper, ["oneOnOne", "reflexes"]) * 0.06)
+    ? goalkeeperQuality(keeper.gkAttrs, {
+        kind: shotType === "oneOnOne" ? "oneOnOne" : "shotStopping",
+        overall: Number(keeper.overall) || 60,
+      })
     : 55;
   const conversion = clamp(
     (0.82 + finishing * 0.003 + composure * 0.0015) *

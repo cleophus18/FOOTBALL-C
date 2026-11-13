@@ -8,6 +8,11 @@ import expansionConfig from "../../data/config/expanded-leagues.json" with { typ
 import configuredClubGroups from "../../data/config/clubs.json" with { type: "json" };
 import leagueConfig from "../../data/config/leagues.json" with { type: "json" };
 import { normalizeClubName, stadiumIdentityForClub } from "../model/stadiums.mjs";
+import { playerIdentity, splitFullName } from "../model/identity.mjs";
+import {
+  estimateGoalkeeperAttributes,
+  hasGoalkeeperAttributes,
+} from "../model/goalkeeper.mjs";
 import { parseCsvRows } from "./csv.mjs";
 export { parseCsvRows } from "./csv.mjs";
 
@@ -253,16 +258,14 @@ function splitName(player) {
     player.long_name ?? player.name ?? player.short_name ?? "",
   ).trim();
   if (!fullName) return { first: "Unknown", last: "Player" };
-  const firstSpace = fullName.indexOf(" ");
-  return firstSpace < 0
-    ? IMPORTED_NAME_FIXES[fullName.toLocaleLowerCase()] ?? {
-        first: fullName,
-        last: "",
-      }
-    : {
-        first: fullName.slice(0, firstSpace),
-        last: fullName.slice(firstSpace + 1),
-      };
+  // Identity resolution is centralised: it understands Iberian compound surnames,
+  // Dutch/French particles, and single-name football nicknames.
+  const identity = splitFullName(fullName);
+  if (!identity.last) {
+    const fix = IMPORTED_NAME_FIXES[fullName.toLocaleLowerCase()];
+    if (fix) return fix;
+  }
+  return { first: identity.first, last: identity.last };
 }
 
 // Several real players are commonly imported under a single-name football
@@ -585,6 +588,9 @@ export function buildPlayableCareerLeagues(
           clubName: player.clubName,
           first: player.first,
           last: player.last,
+          fullName: player.fullName ?? `${player.first} ${player.last}`.trim(),
+          displayName: player.displayName,
+          nickname: player.nickname ?? null,
           dob: player.dob,
           nationality: player.nationality,
           age: player.age,
@@ -604,6 +610,7 @@ export function buildPlayableCareerLeagues(
           overall: player.overall,
           potential: player.potential ?? player.overall,
           attrs: player.attrs,
+          gkAttrs: player.gkAttrs,
           value: player.value,
           wage: player.wage,
           contractYears: player.contractYears,
@@ -729,6 +736,29 @@ function normalizePlayer(record, index, clubLeagueMap) {
     contractYears: numberOrNull(record.contract_years) ?? profile.contractYears,
     attrs: Object.values(attrs).every((value) => value != null)
       ? attrs
+      : undefined,
+    // Full identity (full name, display name, common nickname) for imported players.
+    identity: playerIdentity({
+      fullName: sourceDisplayName,
+      firstName: name.first,
+      lastName: name.last,
+      displayName: String(record.long_name ?? record.name ?? record.short_name ?? "").trim(),
+      nationality: resolvedNationality,
+      club: clubName,
+      league,
+      position,
+    }),
+    gkAttrs: position === "GK"
+      ? estimateGoalkeeperAttributes({}, {
+          overall,
+          pace: attrs.pace,
+          shooting: attrs.shooting,
+          passing: attrs.passing,
+          dribbling: attrs.dribbling,
+          defending: attrs.defending,
+          physical: attrs.physical,
+          height: numberOrNull(record.height),
+        }).attributes
       : undefined,
     source: sourceStatus.startsWith("real player")
       ? "real-world"

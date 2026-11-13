@@ -23,6 +23,13 @@ import {
 } from "../core/constants.mjs";
 import { attr as clampAttr, clamp, round } from "../core/util.mjs";
 import { ageOn, toDayIndex } from "../core/calendar.mjs";
+import {
+  GOALKEEPER_ATTRIBUTES,
+  GOALKEEPER_RATING_WEIGHTS,
+  estimateGoalkeeperAttributes,
+  goalkeeperOverall,
+  hasGoalkeeperAttributes,
+} from "./goalkeeper.mjs";
 import { LEGEND_OVERALL } from "./legends.mjs";
 import { ensurePlayStyles, seedPlayStyles } from "./playstyles.mjs";
 import { ensureStamina, staminaPerformanceFactor } from "./stamina.mjs";
@@ -316,6 +323,60 @@ export const POSITION_WEIGHTS = {
   },
 };
 
+/** Attribute -> the outfield group that owns it. */
+export const SUB_ATTRIBUTE_OWNER = Object.fromEntries(
+  Object.entries(SUB_ATTRIBUTES).flatMap(([group, list]) =>
+    list.map((sub) => [sub, group]),
+  ),
+);
+
+/**
+ * Whether an attribute belongs to an outfield group.
+ *
+ * Goalkeeper attributes share names with outfield sub-attributes ("reflexes",
+ * "composure", "jumping", "reactions", "positioning"), so a keeper's values must never
+ * be fed into the outfield overall calculation or the reverse.
+ */
+export function isGoalkeeperAttribute(attribute) {
+  return GOALKEEPER_ATTRIBUTE_SET.has(attribute);
+}
+
+const GOALKEEPER_ATTRIBUTE_SET = new Set([
+  ...GOALKEEPER_ATTRIBUTES,
+  "oneOnOne",
+]);
+
+/**
+ * Build an effective outfield attribute view for a player: the detailed layer where it
+ * exists, group values otherwise, and the overall as a last resort. Goalkeeping
+ * attributes are excluded entirely.
+ */
+function outfieldAttributeView(player, { excludeGroups = null } = {}) {
+  const subAttrs = player.subAttrs ?? {};
+  const groupOverrides = new Set(
+    ATTRIBUTES.filter((group) => {
+      if (excludeGroups?.has(group)) return false;
+      const values = (SUB_ATTRIBUTES[group] ?? [])
+        .map((key) => subAttrs[key])
+        .filter((value) => value != null);
+      if (!values.length || player.attrs?.[group] == null) return false;
+      const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return Math.abs(player.attrs[group] - average) > 3;
+    }),
+  );
+  const fallback = Number(player.overall) || 50;
+  return (attribute) => {
+    if (isGoalkeeperAttribute(attribute)) return null;
+    if (player.subAttrs && subAttrs[attribute] != null) {
+      const group = SUB_ATTRIBUTE_OWNER[attribute];
+      if (group && groupOverrides.has(group)) return player.attrs?.[group] ?? fallback;
+      return subAttrs[attribute];
+    }
+    const group = SUB_ATTRIBUTE_OWNER[attribute];
+    if (group && player.attrs?.[group] != null) return player.attrs[group];
+    return player.attrs?.[attribute] ?? fallback;
+  };
+}
 const POSITION_SHIRT_NUMBERS = {
   GK: [1, 13, 22, 31],
   CB: [4, 5, 6, 15, 26],
@@ -548,15 +609,18 @@ export function generatedAttributeLimits(targetOverall, attribute, position) {
  * four core keeper attributes. Deterministic, so saves and seeded streams stay stable.
  */
 export function deriveGkAttrs(gkAttrs = {}, attrs = {}) {
-  return {
-    diving: clampAttr(
-      (gkAttrs.reflexes ?? 55) * 0.6 +
-        (gkAttrs.positioning ?? 55) * 0.4,
-    ),
-    speed: clampAttr(
-      (attrs.pace ?? 50) * 0.7 + (gkAttrs.kicking ?? 55) * 0.3,
-    ),
-  };
+  const overall = Number.isFinite(Number(attrs.overall)) ? Number(attrs.overall) : 60;
+  const complete = estimateGoalkeeperAttributes(gkAttrs, { ...attrs, overall }).attributes;
+  return { diving: complete.diving, speed: complete.speed };
+}
+
+/**
+ * A complete, valid goalkeeper attribute line. Missing keeper values are estimated from
+ * whatever else the player has; zeroes are never accepted as "no goalkeeping ability".
+ */
+export function ensureGoalkeeperAttributes(gkAttrs = {}, attrs = {}) {
+  const overall = Number.isFinite(Number(attrs.overall)) ? Number(attrs.overall) : 60;
+  return estimateGoalkeeperAttributes(gkAttrs, { ...attrs, overall }).attributes;
 }
 
 /**
@@ -572,55 +636,36 @@ export function calculatePlayerOverall(player, position = player?.position) {
     return clampAttr(player.overall ?? 50);
   const pos = normalizePosition(position || "CM");
   if (pos === "GK") {
-    const a = {
-      ...player.attrs,
-      ...(player.gkAttrs ?? {}),
-      // Diving/speed are derived on the fly if the save predates them.
-      ...deriveGkAttrs(player.gkAttrs ?? {}, player.attrs),
-    };
-    const weights = POSITION_ATTRIBUTE_WEIGHTS.GK;
-    let total = 0;
-    let weightTotal = 0;
-    for (const [key, weight] of Object.entries(weights)) {
-      total += (a[key] ?? 50) * weight;
-      weightTotal += weight;
+    // A keeper is rated on goalkeeping attributes only. Outfield groups never lower the
+    // rating, and missing keeper values are estimated rather than counted as zero.
+    const base = Number.isFinite(Number(player.overall)) && Number(player.overall) > 0
+      ? Number(player.overall)
+      : 50;
+    const supplied = { ...(player.gkAttrs ?? {}) };
+    if (!hasGoalkeeperAttributes(supplied)) {
+      // Legacy save or imported record with no keeper line at all: preserve the stored
+      // rating rather than inventing one, exactly as the outfield path does for
+      // compact records.
+      return clampAttr(base + (player.overallAdjustment ?? 0));
     }
-    // Old imported keepers may not have detailed attributes; preserve a useful,
-    // deterministic fallback rather than silently rating missing data as zero.
-    if (!player.gkAttrs && !player.subAttrs) {
-      return clampAttr(
-        Object.entries(GK_WEIGHTS).reduce(
-          (sum, [key, weight]) => sum + (a[key] ?? 50) * weight,
-          0,
-        ) + (player.overallAdjustment ?? 0),
-      );
-    }
+    const complete = ensureGoalkeeperAttributes(supplied, { ...player.attrs, overall: base });
     const rating = clampAttr(
-      total / weightTotal + (player.overallAdjustment ?? 0),
+      goalkeeperOverall(complete, base) + (player.overallAdjustment ?? 0),
     );
     return pos === normalizePosition(player.position)
       ? rating
       : clampAttr(rating - ((player.altPositions ?? []).map(normalizePosition).includes(pos) ? 1 : 3));
   }
   const weights = POSITION_ATTRIBUTE_WEIGHTS[pos] || POSITION_ATTRIBUTE_WEIGHTS.CM;
-  const subAttrs = player.subAttrs ?? {};
-  const groupOverrides = new Set(
-    ATTRIBUTES.filter((group) => {
-      const values = (SUB_ATTRIBUTES[group] ?? [])
-        .map((key) => subAttrs[key])
-        .filter((value) => value != null);
-      if (!values.length || player.attrs?.[group] == null) return false;
-      const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-      return Math.abs(player.attrs[group] - average) > 3;
-    }),
-  );
+  // Goalkeeping attributes never feed an outfield rating, and vice versa: the lookup is
+  // restricted to the player's outfield layers.
+  const attributeValue = outfieldAttributeView(player);
   let total = 0;
   let weightTotal = 0;
   for (const [key, weight] of Object.entries(weights)) {
-    const group = SUB_ATTRIBUTE_GROUP[key];
-    const value = groupOverrides.has(group)
-      ? (player.attrs?.[group] ?? 50)
-      : (subAttrs[key] ?? player.attrs?.[group] ?? 50);
+    if (isGoalkeeperAttribute(key)) continue;
+    const value = attributeValue(key);
+    if (value == null) continue;
     total += value * weight;
     weightTotal += weight;
   }
@@ -821,11 +866,15 @@ export function generateAttributes(rng, position, targetOverall) {
     out[k] = clampAttr(rng.normalClamped(base, 7, limits.min, limits.max));
   }
   const gk = {};
-  if (position0 === "GK" && profile.gk) {
+  if (position0 === "GK") {
+    // Every generated keeper gets a complete, coherent goalkeeping line. The four
+    // historical core attributes are rolled first, then the whole set is completed and
+    // rescaled to the target so generated keepers match imported ones.
     for (const k of GK_ATTRIBUTES) {
       gk[k] = clampAttr(rng.normalClamped(profile.gk[k] ?? 60, 6, 15, 99));
     }
-    // Diving/speed are derived, never rolled — keeps seeded streams stable.
+    // Diving/speed are derived from the rolled attributes, so the seeded stream is
+    // identical to the pre-existing engine for any given set of rolls.
     Object.assign(gk, deriveGkAttrs(gk, out));
   }
 
@@ -850,6 +899,18 @@ export function generateAttributes(rng, position, targetOverall) {
       }
     }
     ov = calculateOverall({ position: position0, attrs: out, gkAttrs: gk });
+  }
+  // Keepers are rated on their own attributes; if the generic loop could not land on the
+  // target (because the outfield groups moved but the rating is goalkeeping-only), rescale
+  // the keeper line deterministically. This adds no rng draws, so seeded streams stay put.
+  if (position0 === "GK") {
+    let gkGuard = 0;
+    while (Math.abs(goalkeeperOverall(gk, targetOverall) - targetOverall) > 1 && gkGuard++ < 24) {
+      const delta = clamp(targetOverall - goalkeeperOverall(gk, targetOverall), -3, 3);
+      for (const k of GK_ATTRIBUTES) gk[k] = clampAttr(gk[k] + delta);
+    }
+    // Complete the line with every derived attribute so the OVR inputs are all present.
+    Object.assign(gk, ensureGoalkeeperAttributes(gk, { ...out, overall: targetOverall }));
   }
   // The detailed layer is derived deterministically from the final group stats —
   // deliberately with NO extra rng draws, so every seeded stream downstream
@@ -954,7 +1015,15 @@ export function createPlayer(spec) {
     archetype: spec.archetype ?? fallbackArchetype,
     attrs: { ...spec.attrs },
     subAttrs,
-    gkAttrs: spec.gkAttrs ? { ...spec.gkAttrs } : {},
+    gkAttrs:
+      position === "GK"
+        ? ensureGoalkeeperAttributes(spec.gkAttrs ?? {}, {
+            ...spec.attrs,
+            overall: spec.overall,
+          })
+        : spec.gkAttrs
+          ? { ...spec.gkAttrs }
+          : {},
     // EA-style attacking/defensive work rates, defaulted sensibly by position.
     workRates: spec.workRates ?? {
       attacking: spec.attackingWorkRate ?? defaultWorkRate(spec.position, "attacking"),
@@ -970,6 +1039,10 @@ export function createPlayer(spec) {
       }),
     baseOverall: spec.baseOverall ?? null,
     overallAdjustment: spec.overallAdjustment ?? null,
+    // Verified identity: full name, display name, common nickname. Old saves fall back
+    // to the legacy first/last split rather than losing their players.
+    fullName: spec.fullName ?? `${spec.first ?? ""} ${spec.last ?? ""}`.trim(),
+    nickname: spec.nickname ?? null,
     traits: spec.traits ? [...spec.traits] : [],
     personality: spec.personality
       ? (Array.isArray(spec.personality) ? [...spec.personality] : [spec.personality])
@@ -1046,6 +1119,17 @@ export function createPlayer(spec) {
   applyPhysique(player);
   if (player.isLegend) player.potential = LEGEND_OVERALL;
   ensureStamina(player);
+  // Keepers must always carry a complete goalkeeping line, even when a spec (or an old
+  // save) only supplied the historical four attributes. This is where imported and
+  // generated goalkeepers converge on the same rating standard.
+  if (position === "GK") {
+    player.gkAttrs = ensureGoalkeeperAttributes(player.gkAttrs ?? {}, {
+      ...player.attrs,
+      overall: player.overall,
+    });
+    player.overall = calculateOverall(player);
+    player.baseOverall = player.baseOverall ?? player.overall;
+  }
   if (!player.contract || Number(player.contract.wage ?? 0) <= 0) {
     const fallbackWage = Math.round(
       900 +
@@ -1140,6 +1224,9 @@ export function emptyStats() {
     cleanSheets: 0,
     goalsConceded: 0,
     saves: 0,
+    shotsFaced: 0,
+    penaltySaves: 0,
+    savePercentage: 0,
     penaltiesScored: 0,
     penaltiesMissed: 0,
     ratingSum: 0,

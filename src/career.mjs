@@ -121,6 +121,7 @@ import {
   applyPhysique,
   createPlayer,
   deriveSubAttrsFromGroups,
+  ensureGoalkeeperAttributes,
   GK_WEIGHTS,
   physiqueProfile,
   physicalProfileFor,
@@ -133,6 +134,13 @@ import {
   updatePlayerOverall,
   recordOverallChange,
 } from "./model/player.mjs";
+import {
+  DIRECT_GOALKEEPER_ATTRIBUTES,
+  GOALKEEPER_ATTRIBUTES,
+  goalkeeperOverall,
+  goalkeeperQuality,
+  goalkeeperSaveFactor,
+} from "./model/goalkeeper.mjs";
 import { primeProfileFor } from "./model/legends.mjs";
 import { eliteProfileFor } from "./model/elite.mjs";
 import {
@@ -227,7 +235,8 @@ import {
 } from "./model/champions-league.mjs";
 
 const TRAINABLE_SUB_ATTRIBUTES = new Set(ALL_SUB_ATTRIBUTES);
-const TRAINABLE_GK_ATTRIBUTES = new Set(GK_ATTRIBUTES);
+// A keeper trains every goalkeeper attribute, not just the historical four.
+const TRAINABLE_GK_ATTRIBUTES = new Set(GOALKEEPER_ATTRIBUTES);
 
 function normalizedTrainingFocus(attribute, position) {
   if (normalizePosition(position) === "GK") {
@@ -1122,7 +1131,13 @@ export class Career {
                 );
               const attrs = previous?.attrs ?? (hasCsvAttrs ? record.attrs : (model?.attrs ?? null));
               const subAttrs = previous?.subAttrs ?? (hasCsvAttrs ? (record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs)) : (model?.subAttrs ?? null));
-              const gkAttrs = previous?.gkAttrs ?? (hasCsvAttrs ? (record.gkAttrs ?? model?.gkAttrs ?? null) : (model?.gkAttrs ?? null));
+              const gkAttrs = previous?.gkAttrs ??
+                (hasCsvAttrs && record.position === "GK"
+                  ? ensureGoalkeeperAttributes(record.gkAttrs ?? {}, {
+                      ...record.attrs,
+                      overall: record.overall,
+                    })
+                  : (model?.gkAttrs ?? null));
               const overallAdjustment = hasCsvAttrs ? Number(record.overall) - calculateOverall({ position: record.position, attrs, subAttrs, gkAttrs, overallAdjustment: 0 }) : null;
               const calculatedOverall = hasCsvAttrs
                 ? Number(record.overall)
@@ -1137,6 +1152,8 @@ export class Career {
                 id,
                 first: record.first,
                 last: record.last,
+                fullName: record.fullName ?? `${record.first} ${record.last}`.trim(),
+                nickname: record.nickname ?? null,
                 nationality: record.nationality,
                 dob: record.dob,
                 shirtNumber: legend?.shirtNumber ?? record.shirtNumber,
@@ -1230,7 +1247,13 @@ export class Career {
                       deriveSubAttrsFromGroups(record.attrs))
                     : model?.subAttrs),
                 gkAttrs:
-                  previous?.gkAttrs ?? record.gkAttrs ?? model?.gkAttrs ?? {},
+                  previous?.gkAttrs ??
+                  (record.position === "GK"
+                    ? ensureGoalkeeperAttributes(record.gkAttrs ?? {}, {
+                        ...record.attrs,
+                        overall: record.overall,
+                      })
+                    : (record.gkAttrs ?? model?.gkAttrs ?? {})),
                 overallAdjustment:
                   previous?.overallAdjustment ?? overallAdjustment,
                 matchHistory: previous?.matchHistory ?? [],
@@ -3987,11 +4010,13 @@ export class Career {
       .filter(Boolean);
     const quality = (player) => {
       if (unit === "goalkeeping")
-        return (
-          (player.gkAttrs?.reflexes ?? player.overall ?? 60) * 0.42 +
-          (player.gkAttrs?.positioning ?? player.overall ?? 60) * 0.3 +
-          (player.gkAttrs?.handling ?? player.overall ?? 60) * 0.28
-        );
+        // Shared goalkeeper quality; never a re-derived blend of attributes.
+        return player.position === "GK"
+          ? goalkeeperQuality(player.gkAttrs, {
+              kind: "shotStopping",
+              overall: Number(player.overall) || 60,
+            })
+          : Number(player.overall) || 60;
       const stats = player.attrs ?? {};
       if (unit === "attack")
         return (
@@ -4037,6 +4062,7 @@ export class Career {
       "RW",
     ];
     const alternatives = {
+      GK: ["GK"],
       LB: ["LB", "RB", "CB"],
       RB: ["RB", "LB", "CB"],
       CB: ["CB", "LB", "RB"],
@@ -4050,22 +4076,39 @@ export class Career {
       ST: ["ST", "LW", "RW", "AM", "CAM"],
     };
     const available = [...squad];
-    return slots.flatMap((slot) => {
+    // Fill the goalkeeper slot first and only from natural goalkeepers: a keeper is not
+    // interchangeable with an outfielder, and an outfielder must never be selected there.
+    const keeperSlotIndex = slots.findIndex(
+      (slot) => (slot ?? "").toUpperCase() === "GK",
+    );
+    const chosen = new Array(slots.length).fill(null);
+    if (keeperSlotIndex >= 0) {
+      const keepers = available
+        .filter((player) => (player.position ?? "").toUpperCase() === "GK")
+        .sort((a, b) => (b.overall ?? 60) - (a.overall ?? 60));
+      const keeper = keepers[0];
+      if (keeper) {
+        chosen[keeperSlotIndex] = keeper;
+        available.splice(available.indexOf(keeper), 1);
+      }
+    }
+    slots.forEach((slot, slotIndex) => {
+      if (chosen[slotIndex]) return;
       const options = available
+        .filter((player) => (player.position ?? "").toUpperCase() !== "GK")
         .map((player) => ({
           player,
           score:
             (player.overall ?? 60) +
-            ((alternatives[slot] ?? [slot]).includes(player.position)
-              ? 0
-              : -18),
+            ((alternatives[slot] ?? [slot]).includes(player.position) ? 0 : -18),
         }))
         .sort((left, right) => right.score - left.score);
       const selected = options[0]?.player;
-      if (!selected) return [];
+      if (!selected) return;
       available.splice(available.indexOf(selected), 1);
-      return [selected];
+      chosen[slotIndex] = selected;
     });
+    return chosen.filter(Boolean);
   }
 
   /**
@@ -4382,6 +4425,30 @@ export class Career {
         player.ratingSum += rating;
         player.lastMatchRating = rating;
         player.lastMatchPerformance = { ...performance, rating };
+        // Goalkeeper statistics are recorded only for a goalkeeper, and only from the
+        // shots the opposing side actually had on target.
+        if ((player.position ?? "").toUpperCase() === "GK") {
+          const shotsFaced = Math.max(conceded, 0);
+          const saves = Number(performance.saves ?? 0);
+          player.stats.saves = (player.stats.saves ?? 0) + saves;
+          player.careerStats.saves = (player.careerStats.saves ?? 0) + saves;
+          player.stats.shotsFaced = (player.stats.shotsFaced ?? 0) + shotsFaced;
+          player.careerStats.shotsFaced =
+            (player.careerStats.shotsFaced ?? 0) + shotsFaced;
+          player.stats.goalsConceded =
+            (player.stats.goalsConceded ?? 0) + conceded;
+          player.careerStats.goalsConceded =
+            (player.careerStats.goalsConceded ?? 0) + conceded;
+          if (conceded === 0) {
+            player.stats.cleanSheets = (player.stats.cleanSheets ?? 0) + 1;
+            player.careerStats.cleanSheets =
+              (player.careerStats.cleanSheets ?? 0) + 1;
+          }
+          const faced = player.stats.shotsFaced ?? shotsFaced;
+          player.stats.savePercentage = faced
+            ? round(((player.stats.saves ?? 0) / faced) * 100, 1)
+            : 0;
+        }
         player.matchHistory ??= [];
         player.matchHistory.push({
           season: this.season,
@@ -8646,12 +8713,17 @@ export class Career {
             : null;
         const derivedGkAttrs =
           hasCsvAttrs && record.position === "GK"
-            ? { ...record.attrs }
+            ? ensureGoalkeeperAttributes(record.gkAttrs ?? {}, {
+                ...record.attrs,
+                overall: record.overall,
+              })
             : null;
         const player = createPlayer({
           id: record.playerId ?? `real-${club.id}-${record.id}`,
           first: record.first,
           last: record.last,
+          fullName: record.fullName ?? `${record.first} ${record.last}`.trim(),
+          nickname: record.nickname ?? null,
           nationality: record.nationality || templates.nationality,
           dob: legend
             ? toDayIndex(2001, 6, 24)
@@ -8742,6 +8814,21 @@ export class Career {
           player.baseOverall = player.overall;
           player.previousOverall = player.overall;
           player.overallAdjustment = 0;
+          // Keepers are rated on their goalkeeping line: preserve the CSV OVR exactly and
+          // carry the full attribute set through, so import and generation agree.
+          if (record.position === "GK") {
+            player.gkAttrs = ensureGoalkeeperAttributes(record.gkAttrs ?? {}, {
+              ...record.attrs,
+              overall: player.overall,
+            });
+            player.overall = clamp(
+              Math.round(goalkeeperOverall(player.gkAttrs, player.overall)),
+              48,
+              99,
+            );
+            player.baseOverall = player.overall;
+            player.previousOverall = player.overall;
+          }
         }
         players.push(player);
         club.addPlayer(player.id);
@@ -8826,7 +8913,7 @@ export class Career {
     // player would show with a normal build", and divided by his physique multiplier
     // here â€” so a heavy winger still ends up visibly slower than a lean one.
     const physique = physiqueProfile(position, height, weight);
-    const sliderGroups = position === "GK" ? GK_ATTRIBUTES : ATTRIBUTES;
+    const sliderGroups = position === "GK" ? GOALKEEPER_ATTRIBUTES : ATTRIBUTES;
     let customised = false;
     const customisedGroups = new Set();
     for (const group of sliderGroups) {
@@ -10712,8 +10799,33 @@ export class Career {
     }
 
     const opponentGoals = side === "home" ? match.awayGoals : match.homeGoals;
-    this.player.stats.goalsConceded += opponentGoals;
-    this.player.careerStats.goalsConceded += opponentGoals;
+    // Conceding is only a goalkeeper statistic when the player is a goalkeeper.
+    if ((this.player.position ?? "").toUpperCase() === "GK") {
+      this.player.stats.goalsConceded += opponentGoals;
+      this.player.careerStats.goalsConceded += opponentGoals;
+      const shotsFaced = Math.max(0, Number(matchStats.shotsFaced ?? opponentGoals));
+      this.player.stats.shotsFaced =
+        (this.player.stats.shotsFaced ?? 0) + shotsFaced;
+      this.player.careerStats.shotsFaced =
+        (this.player.careerStats.shotsFaced ?? 0) + shotsFaced;
+      const saves = Number(matchStats.saves ?? 0);
+      this.player.stats.saves = (this.player.stats.saves ?? 0) + saves;
+      this.player.careerStats.saves = (this.player.careerStats.saves ?? 0) + saves;
+      const penaltySaves = Number(matchStats.penaltySaves ?? 0);
+      this.player.stats.penaltySaves =
+        (this.player.stats.penaltySaves ?? 0) + penaltySaves;
+      this.player.careerStats.penaltySaves =
+        (this.player.careerStats.penaltySaves ?? 0) + penaltySaves;
+      if (opponentGoals === 0) {
+        this.player.stats.cleanSheets = (this.player.stats.cleanSheets ?? 0) + 1;
+        this.player.careerStats.cleanSheets =
+          (this.player.careerStats.cleanSheets ?? 0) + 1;
+      }
+      const faced = this.player.stats.shotsFaced ?? shotsFaced;
+      this.player.stats.savePercentage = faced
+        ? round(((this.player.stats.saves ?? 0) / faced) * 100, 1)
+        : 0;
+    }
   }
 
   applyPerformanceDevelopment(rating) {
@@ -12146,6 +12258,11 @@ export class Career {
         Math.max(1, players.length);
       const teamGoals = side === "home" ? match.homeGoals : match.awayGoals;
       const opponentGoals = side === "home" ? match.awayGoals : match.homeGoals;
+      // Goalkeeping statistics belong to the goalkeeper on the pitch for this side,
+      // never to an outfielder who happened to make a block.
+      const sideKeeper = players.find(
+        (player) => (player.position ?? "").toUpperCase() === "GK",
+      );
       for (const player of players) {
         player.careerStats ??= { ...player.stats };
         const rating =
@@ -12222,6 +12339,31 @@ export class Career {
           player.leaguePerformance.ratingSum += rating;
         }
         if (side === match.side && player.id !== this.player.id) {
+          // Goalkeeping statistics belong to the side's goalkeeper only.
+          if (player.position === "GK" && sideKeeper?.id === player.id) {
+            const shotsFaced = Math.max(opponentGoals, 0);
+            const saves = Number(
+              player.lastMatchPerformance?.saves ??
+                Math.max(0, shotsFaced - opponentGoals),
+            );
+            player.stats.saves = (player.stats.saves ?? 0) + saves;
+            player.careerStats.saves = (player.careerStats.saves ?? 0) + saves;
+            player.stats.shotsFaced = (player.stats.shotsFaced ?? 0) + shotsFaced;
+            player.careerStats.shotsFaced =
+              (player.careerStats.shotsFaced ?? 0) + shotsFaced;
+            player.stats.goalsConceded = (player.stats.goalsConceded ?? 0) + opponentGoals;
+            player.careerStats.goalsConceded =
+              (player.careerStats.goalsConceded ?? 0) + opponentGoals;
+            if (opponentGoals === 0) {
+              player.stats.cleanSheets = (player.stats.cleanSheets ?? 0) + 1;
+              player.careerStats.cleanSheets =
+                (player.careerStats.cleanSheets ?? 0) + 1;
+            }
+            const faced = player.stats.shotsFaced ?? shotsFaced;
+            player.stats.savePercentage = faced
+              ? round(((player.stats.saves ?? 0) / faced) * 100, 1)
+              : 0;
+          }
           teamRatings.push({
             id: player.id,
             name: `${player.first} ${player.last}`,
@@ -12658,7 +12800,7 @@ export class Career {
       );
     const supportedAttributes =
       this.player.position === "GK"
-        ? [...ATTRIBUTES, ...GK_ATTRIBUTES]
+        ? [...ATTRIBUTES, ...GOALKEEPER_ATTRIBUTES]
         : ATTRIBUTES;
     if (!supportedAttributes.includes(attribute))
       throw new Error(`Unsupported player attribute: ${attribute}`);
@@ -12669,7 +12811,7 @@ export class Career {
         "Enable developer mode before editing player attributes.",
       );
 
-    if (GK_ATTRIBUTES.includes(attribute)) {
+    if (GOALKEEPER_ATTRIBUTES.includes(attribute)) {
       this.player.gkAttrs[attribute] = value;
     } else {
       this.player.attrs[attribute] = value;

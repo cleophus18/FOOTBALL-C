@@ -27,6 +27,7 @@ import {
   RATING_MAX,
 } from "../core/constants.mjs";
 import { physiqueFactors } from "../model/player.mjs";
+import { goalkeeperQuality } from "../model/goalkeeper.mjs";
 import {
   playStyleEffect,
   awardPlayStyleEvidence,
@@ -582,62 +583,88 @@ export function simulatePlayerMatch(opts) {
     const conceded = side === "home" ? match.awayGoals : match.homeGoals;
     stats.goalsConceded = conceded;
     stats.cleanSheets = conceded === 0 ? 1 : 0;
+    stats.shotsFaced = conceded + Number(stats.saves ?? 0);
+    // Every goalkeeping facet comes from the shared quality model, so this engine, the
+    // strength ratings and the team ratings all describe the same goalkeeper.
+    const overall = Number(player.overall) || 60;
+    const shotStopping = goalkeeperQuality(player.gkAttrs, { kind: "shotStopping", overall });
+    const reflexes = goalkeeperQuality(player.gkAttrs, { kind: "reflexes", overall });
+    const handling = goalkeeperQuality(player.gkAttrs, { kind: "handling", overall });
+    const positioning = goalkeeperQuality(player.gkAttrs, { kind: "positioning", overall });
+    const distribution = goalkeeperQuality(player.gkAttrs, { kind: "distribution", overall });
     // A keeper makes roughly one save per goal conceded, plus routine work.
     const expectedSaves = 2.0 + conceded * 0.8;
     const fatigueRelief = playStyleEffect(player, "fatigue", {
       position: "GK",
-      attribute: player.gkAttrs?.reflexes,
+      attribute: reflexes,
       suitability: clamp((player.fatigue ?? 0) / 100, 0, 1),
     });
     const keeperDistribution =
       playStyleEffect(player, "farThrow", {
         position: "GK",
-        attribute: player.gkAttrs?.kicking,
+        attribute: distribution,
         suitability: 0.4,
       }) *
       playStyleEffect(player, "crossClaim", {
         position: "GK",
-        attribute: player.gkAttrs?.handling,
+        attribute: handling,
         suitability: 0.45,
       }) *
       playStyleEffect(player, "rushOut", {
         position: "GK",
-        attribute: player.gkAttrs?.positioning,
+        attribute: positioning,
         suitability: 0.4,
       }) *
       playStyleEffect(player, "sweeper", {
         position: "GK",
-        attribute: player.gkAttrs?.positioning,
+        attribute: positioning,
         suitability: opts.teamStyle === "High Press" ? 0.8 : 0.35,
       }) *
       playStyleEffect(player, "deflect", {
         position: "GK",
-        attribute: player.gkAttrs?.handling,
+        attribute: handling,
         suitability: 0.4,
       }) *
       playStyleEffect(player, "footwork", {
         position: "GK",
-        attribute: player.gkAttrs?.reflexes,
+        attribute: reflexes,
         suitability: 0.35,
       }) *
       playStyleEffect(player, "farReach", {
         position: "GK",
-        attribute: player.gkAttrs?.reflexes,
+        attribute: shotStopping,
         suitability: 0.4,
       });
     stats.saves = drawCount(
       rng,
       expectedSaves *
-        attrFactor(player.gkAttrs?.reflexes ?? 60, 0.6, 1.5) *
+        attrFactor(reflexes, 0.6, 1.5) *
         playStyleEffect(player, "reflex", {
           position: "GK",
-          attribute: player.gkAttrs?.reflexes,
+          attribute: reflexes,
           suitability: 0.7,
         }) *
         keeperDistribution *
         (fatigueRelief < 1 ? 1 : Math.min(1.08, fatigueRelief)) *
         roleMod.saveVolume,
     );
+    // A shootout save is rare but real: keepers with strong reflexes, diving and
+    // composure are the ones who guess right. Recorded separately from open-play saves.
+    const penaltyAttempts = Number(match.penaltyShootout?.[side === "home" ? "home" : "away"] ?? 0);
+    const penaltySkill = goalkeeperQuality(player.gkAttrs, {
+      kind: "penaltySaves",
+      overall,
+    });
+    stats.penaltySaves = penaltyAttempts
+      ? binomial(
+          penaltyAttempts,
+          clamp(0.08 + (penaltySkill - 45) * 0.006, 0.03, 0.55),
+          rng,
+        )
+      : 0;
+    stats.savePercentage = stats.shotsFaced > 0
+      ? round((stats.saves / stats.shotsFaced) * 100, 1)
+      : 0;
   }
 
   // --- Shooting ------------------------------------------------------------
@@ -824,10 +851,10 @@ export function simulatePlayerMatch(opts) {
     (opponent) => opponent.position === "GK",
   );
   const opposingKeeperQuality = opposingKeeper
-    ? ["reflexes", "handling", "positioning"].reduce(
-        (sum, attribute) => sum + (opposingKeeper.gkAttrs?.[attribute] ?? 60),
-        0,
-      ) / 3
+    ? goalkeeperQuality(opposingKeeper.gkAttrs, {
+        kind: "shotStopping",
+        overall: Number(opposingKeeper.overall) || 60,
+      })
     : 60;
   const defensivePressure = clamp(
     (Math.max(
@@ -1420,14 +1447,20 @@ function assignGoals(player, match, side, rng) {
 /** Chance that an attribute-driven resolution of a key moment succeeds. */
 export function autoSuccessChance(player, position, kind, keeperQuality = 60) {
   const a = player.attrs;
+  const isKeeper = normalizePosition(position) === "GK";
+  // A keeper's own save chance scales directly with his goalkeeper quality; an outfield
+  // player's finishing chance scales down against a better opposing keeper.
+  const keeperSkill = isKeeper
+    ? goalkeeperQuality(player.gkAttrs, {
+        kind: kind === "penalty" ? "penaltySaves" : kind === "oneOnOne" ? "oneOnOne" : "shotStopping",
+        overall: Number(player.overall) || 60,
+      })
+    : 60;
   const goalkeeperModifier = (75 - keeperQuality) * 0.004;
   switch (kind) {
     case "keeperSave":
       return clamp(
-        0.48 +
-          ((player.gkAttrs?.reflexes ?? 60) - 60) * 0.008 +
-          ((player.gkAttrs?.positioning ?? 60) - 60) * 0.005 +
-          ((player.gkAttrs?.handling ?? 60) - 60) * 0.003,
+        0.18 + (keeperSkill - 40) * 0.0095,
         0.15,
         0.92,
       );
@@ -1440,14 +1473,8 @@ export function autoSuccessChance(player, position, kind, keeperQuality = 60) {
         0.65,
       );
     case "penalty":
-      if (normalizePosition(position) === "GK") {
-        return clamp(
-          0.3 +
-            ((player.gkAttrs?.reflexes ?? 60) - 60) * 0.007 +
-            ((player.gkAttrs?.positioning ?? 60) - 60) * 0.004,
-          0.12,
-          0.78,
-        );
+      if (isKeeper) {
+        return clamp(0.12 + (keeperSkill - 40) * 0.0085, 0.12, 0.78);
       }
       return clamp(
         (0.68 + ((a.shooting - 60) / 39) * 0.22) *
@@ -1457,15 +1484,8 @@ export function autoSuccessChance(player, position, kind, keeperQuality = 60) {
         0.97,
       );
     case "oneOnOne":
-      if (normalizePosition(position) === "GK") {
-        return clamp(
-          0.4 +
-            ((player.gkAttrs?.reflexes ?? 60) - 60) * 0.007 +
-            ((player.gkAttrs?.positioning ?? 60) - 60) * 0.004 +
-            ((player.gkAttrs?.handling ?? 60) - 60) * 0.003,
-          0.15,
-          0.84,
-        );
+      if (isKeeper) {
+        return clamp(0.16 + (keeperSkill - 40) * 0.0092, 0.15, 0.84);
       }
       return clamp(
         0.22 +
@@ -2064,15 +2084,26 @@ export function resolveMomentDecision(
   }
   if (!action) throw new Error(`Unsupported key-moment action: ${decision}`);
 
-  const goalkeeper = ["reflexes", "positioning", "handling"].includes(
+  const goalkeeperAttribute = ["reflexes", "diving", "handling", "positioning", "kicking", "speed", "reactions", "jumping", "composure"].includes(
     action.attribute,
   );
-  const selectedSkill = goalkeeper
-    ? (player.gkAttrs?.[action.attribute] ?? 60)
+  const selectedSkill = goalkeeperAttribute
+    ? goalkeeperQuality(
+        player.gkAttrs,
+        action.attribute === "diving"
+          ? { kind: "diving", overall: player.overall }
+          : action.attribute === "handling"
+            ? { kind: "handling", overall: player.overall }
+            : action.attribute === "positioning"
+              ? { kind: "positioning", overall: player.overall }
+              : action.attribute === "kicking"
+                ? { kind: "distribution", overall: player.overall }
+                : { kind: "reflexes", overall: player.overall },
+      )
     : (player.attrs?.[action.attribute] ?? 60);
   const baselineSkill =
     moment.kind === "keeperSave"
-      ? (player.gkAttrs?.reflexes ?? 60)
+      ? goalkeeperQuality(player.gkAttrs, { kind: "shotStopping", overall: player.overall })
       : moment.kind === "bigPass"
         ? (player.attrs?.passing ?? 60)
         : moment.kind === "lastDitch"

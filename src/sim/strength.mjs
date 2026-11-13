@@ -6,6 +6,7 @@
  */
 
 import { clamp, round } from "../core/util.mjs";
+import { goalkeeperQuality } from "../model/goalkeeper.mjs";
 
 /** League-average strength. All club ratings are expressed relative to this. */
 export const LEAGUE_BASELINE = 68;
@@ -154,18 +155,10 @@ export function matchStrength(club, players, dayIndex) {
     .filter((p) => p.position === "GK")
     .sort((a, b) => (b.overall ?? 0) - (a.overall ?? 0))[0];
   const goalkeeping = goalkeeper
-    ? (["reflexes", "diving", "handling", "positioning", "reactions"]
-      .reduce(
-        (sum, attribute) =>
-          sum +
-          (goalkeeper.gkAttrs?.[attribute] ??
-            goalkeeper.subAttrs?.[attribute] ??
-            (attribute === "diving" || attribute === "reactions"
-              ? goalkeeper.gkAttrs?.reflexes
-              : null) ??
-            60),
-        0,
-      ) / 5)
+    ? goalkeeperQuality(goalkeeper.gkAttrs, {
+        kind: "shotStopping",
+        overall: Number(goalkeeper.overall) || LEAGUE_BASELINE,
+      })
     : (base.goalkeeping ?? LEAGUE_BASELINE);
 
   const avgFatigue = key.length

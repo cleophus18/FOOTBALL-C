@@ -23,6 +23,7 @@ import {
   staminaPerformanceFactor,
 } from "../model/stamina.mjs";
 import { groupOf } from "../core/constants.mjs";
+import { goalkeeperQuality } from "../model/goalkeeper.mjs";
 
 /**
  * Simulate a background match using the shared event engine.
@@ -250,7 +251,11 @@ function keeperQuality(team) {
   if (!team.xi || !team.xi.length) return 65;
   const gk = team.xi.find((p) => p.position === "GK");
   if (!gk) return 55;
-  return ((gk.gkAttrs?.reflexes ?? 60) + (gk.gkAttrs?.positioning ?? 60)) / 2;
+  // One definition of goalkeeper quality, shared by every simulation path.
+  return goalkeeperQuality(gk.gkAttrs, {
+    kind: "shotStopping",
+    overall: Number(gk.overall) || 60,
+  });
 }
 
 /**
@@ -614,7 +619,11 @@ function teamUnitQuality(xi, unit) {
   if (!xi?.length) return 1;
   const scores = xi.map((player) => {
     const position = player.position;
-    const relevant = unit === "attack" ? (position === "GK" ? 35 : (player.attrs?.shooting ?? 55) * 0.26 + (player.attrs?.passing ?? 55) * 0.24 + (player.attrs?.dribbling ?? 55) * 0.22 + (player.attrs?.pace ?? 55) * 0.12 + (player.overall ?? 60) * 0.16) : (position === "GK" ? (Object.values(player.gkAttrs ?? {}).reduce((sum,value)=>sum+value,0) / Math.max(1,Object.keys(player.gkAttrs ?? {}).length)) : (player.attrs?.defending ?? 55) * 0.38 + (player.attrs?.physical ?? 55) * 0.18 + (player.attrs?.pace ?? 55) * 0.08 + (player.overall ?? 60) * 0.36);
+    const relevant = unit === "attack"
+      ? (position === "GK" ? 35 : (player.attrs?.shooting ?? 55) * 0.26 + (player.attrs?.passing ?? 55) * 0.24 + (player.attrs?.dribbling ?? 55) * 0.22 + (player.attrs?.pace ?? 55) * 0.12 + (player.overall ?? 60) * 0.16)
+      : (position === "GK"
+          ? goalkeeperQuality(player.gkAttrs, { kind: "shotStopping", overall: player.overall })
+          : (player.attrs?.defending ?? 55) * 0.38 + (player.attrs?.physical ?? 55) * 0.18 + (player.attrs?.pace ?? 55) * 0.08 + (player.overall ?? 60) * 0.36);
     const form = clamp(1 + ((player.form ?? 50) - 50) * 0.0015, 0.9, 1.08);
     const fatigue = clamp(1 - (player.fatigue ?? 0) * 0.001, 0.82, 1);
     const stamina = staminaPerformanceFactor(player);

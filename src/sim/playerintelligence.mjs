@@ -1,5 +1,6 @@
 import { clamp, round } from "../core/util.mjs";
 import { playStyleEffect, ensurePlayStyles } from "../model/playstyles.mjs";
+import { goalkeeperSaveFactor } from "../model/goalkeeper.mjs";
 
 export const PLAYER_LEVELS = Object.freeze([
   { min: 90, label: "world-class", decision: 0.15, consistency: 0.94 },
@@ -465,16 +466,20 @@ export function simulateNpcPerformance(player, context = {}, rng) {
     clamp(0.3 + aerialAbility * 0.48, 0.15, 0.86),
     rng,
   );
+  // Goalkeeping statistics are only ever credited to a goalkeeper. An outfielder who
+  // happens to make a last-ditch block does not accumulate saves, clean sheets or a
+  // save percentage.
+  const shotsOnTarget = draw(context.opponentShotsOnTarget ?? 3);
   const saves =
     position === "GK"
       ? binomial(
-          draw(context.opponentShotsOnTarget ?? 3),
+          shotsOnTarget,
           clamp(
-            0.42 +
-              attribute(player, "reflexes") * 0.004 +
-              attribute(player, "positioning") * 0.001 -
-              pressure * 0.08,
-            0.25,
+            goalkeeperSaveFactor(player.gkAttrs, {
+              kind: "shotStopping",
+              overall: Number(player.overall) || 60,
+            }) * (1 - pressure * 0.12),
+            0.2,
             0.88,
           ),
           rng,
@@ -498,6 +503,16 @@ export function simulateNpcPerformance(player, context = {}, rng) {
     aerials: aerialCount,
     aerialsWon,
     saves,
+    ...(position === "GK"
+      ? {
+          shotsFaced: shotsOnTarget,
+          goalsConceded: Math.max(0, shotsOnTarget - saves),
+          cleanSheets: shotsOnTarget === 0 ? 1 : 0,
+          penaltySaves: 0,
+          savePercentage:
+            shotsOnTarget > 0 ? round((saves / shotsOnTarget) * 100, 1) : 0,
+        }
+      : {}),
     decisionQuality: round(
       (passDecision.decisionQuality +
         attackDecision.decisionQuality +

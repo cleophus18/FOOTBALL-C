@@ -1,11 +1,11 @@
 import {
-  GK_ATTRIBUTES,
   SUB_ATTRIBUTES,
   SUB_ATTRIBUTE_GROUP,
   normalizePosition,
 } from "./constants.mjs";
 import { clamp } from "./util.mjs";
 import { recordClubTransaction, ensureClubFinance } from "./finance.mjs";
+import { GOALKEEPER_ATTRIBUTES } from "../model/goalkeeper.mjs";
 import {
   calculateOverall,
   createPlayer,
@@ -21,7 +21,7 @@ export const TRAINING_DEPARTMENTS = {
   midfield: ["shortPassing", "longPassing", "vision", "ballControl", "composure"],
   defensive: ["defensiveAwareness", "interceptions", "standingTackle", "slidingTackle", "headingAccuracy"],
   physical: ["acceleration", "sprintSpeed", "strength", "stamina", "jumping"],
-  goalkeeper: ["reflexes", "handling", "positioning", "diving", "kicking"],
+  goalkeeper: GOALKEEPER_ATTRIBUTES,
   youth: [],
 };
 
@@ -383,16 +383,18 @@ function attributeForDevelopment(player, training, rng, decline = false) {
   if (player.position === "GK" && programme !== "Goalkeeper development") departments = ["goalkeeper"];
   if (programme === "Recovery-focused training") departments = ["physical"];
   const map = player.position === "GK"
-    ? { goalkeeper: GK_ATTRIBUTES }
+    ? { goalkeeper: GOALKEEPER_ATTRIBUTES }
     : Object.fromEntries(Object.entries(SUB_ATTRIBUTES).flatMap(([group, attributes]) => attributes.map((attribute) => [attribute, attribute])));
   let candidates = departments.flatMap((department) => {
-    if (department === "goalkeeper") return player.position === "GK" ? GK_ATTRIBUTES : [];
+    if (department === "goalkeeper") return player.position === "GK" ? GOALKEEPER_ATTRIBUTES : [];
     const names = TRAINING_DEPARTMENTS[department] ?? [];
     return names.filter((attribute) => player.position !== "GK" && map[attribute]);
   });
-  if (!candidates.length) candidates = player.position === "GK" ? GK_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
-  if (decline && Number(player.age) >= 30 && rng.chance(0.7)) {
-    const physical = player.position === "GK" ? ["reflexes", "kicking", "positioning"] : [
+  if (!candidates.length) candidates = player.position === "GK" ? GOALKEEPER_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
+  if (decline && Number(player.age) >= (player.position === "GK" ? 33 : 30) && rng.chance(0.7)) {
+    // Keepers lose their athletic attributes first; their positioning, handling and
+    // reflexes age far more slowly, which is how real goalkeeping careers last.
+    const physical = player.position === "GK" ? ["speed", "jumping", "diving"] : [
       ...SUB_ATTRIBUTES.pace,
       ...SUB_ATTRIBUTES.physical,
     ];
@@ -400,7 +402,7 @@ function attributeForDevelopment(player, training, rng, decline = false) {
     if (filtered.length) candidates = filtered;
   }
   const focus = plan.focus ?? player.trainingFocus;
-  const validAttributes = player.position === "GK" ? GK_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
+  const validAttributes = player.position === "GK" ? GOALKEEPER_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
   if (focus && validAttributes.includes(focus) && !candidates.includes(focus)) candidates.push(focus);
   return rng.weightedPick(candidates, (attribute) => {
     const values = player.position === "GK" ? player.gkAttrs : player.subAttrs;
@@ -479,6 +481,14 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
   // high, 20-23 strong, 24-27 gradual, 28-30 peak, 31-33 decline, 34+ decline). It
   // only causes growth when the player has played and rated above par.
   const ageRate = age <= 19 ? 1.1 : age <= 23 ? 0.85 : age <= 27 ? 0.5 : age <= 30 ? 0.25 : age <= 33 ? 0 : -0.4;
+  const isGoalkeeper = normalizePosition(player.position) === "GK";
+  // Keepers peak later and decline more slowly than outfielders: they rely on
+  // positioning, handling and reading the game, which mature with experience, and lose
+  // less of it to raw athletic decline.
+  const gkPeakAge = 32;
+  const gkAgeRate = age <= 19 ? 1.15 : age <= 23 ? 0.95 : age <= 27 ? 0.65 : age <= 30 ? 0.45 : age <= 33 ? 0.2 : -0.2;
+  void gkPeakAge;
+  const effectiveAgeRate = isGoalkeeper ? gkAgeRate : ageRate;
   const gap = Math.max(0, potential - current);
   const playingTime = clamp(Math.max(apps / 24, playedMinutes / 1800), 0, 1);
   const performance = clamp(avgRating - 6.2, -3.2, 2.8);
@@ -510,7 +520,7 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
   void trajectory;
   const environment = clamp(((Number(club.prestige ?? 50) - 55) * 0.002), -0.08, 0.08);
   const boyhoodBoost = age <= 21 && specialistAbilityFor(youthCoach, "youth") >= 60 ? 0.4 : 0;
-  let developmentScore = ageRate + performance * 1.5 + playingTime * 0.9 + Math.min(1.2, gap * 0.035) + contribution + professionalism + environment + trajectory;
+  let developmentScore = effectiveAgeRate + performance * 1.5 + playingTime * 0.9 + Math.min(1.2, gap * 0.035) + contribution + professionalism + environment + trajectory;
   developmentScore *= coachFactor * facilities * intensity * morale * fitness * (attendance <= 0 ? 0.55 : 0.72 + attendance * 0.28);
   developmentScore *= age <= 21 ? youthFacilities : facilities;
   if (player.injury) developmentScore *= 0.65;
@@ -530,14 +540,24 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
   const ratingEdge = Math.max(0, avgRating - 6.45) * 4.2;
   const minutesEdge = playingTime * 3.2;
   const headroom = Math.min(1, gap / 10);
+  // Keepers peak later, so their growth window extends into their thirties instead of
+  // closing at 28. Their saves and clean sheets are the performance signal, not goals.
+  const gkSaveBonus = isGoalkeeper
+    ? Math.min(0.8, (Number(player.stats?.saves ?? 0) / 60) * 0.4 +
+        (Number(player.stats?.cleanSheets ?? 0) / 12) * 0.4)
+    : 0;
+  const growthAgeBonus = isGoalkeeper
+    ? (age <= 19 ? 1.3 : age <= 23 ? 1.1 : age <= 27 ? 0.75 : age <= 31 ? 0.45 : 0)
+    : (age <= 19 ? 1.3 : age <= 23 ? 1 : age <= 27 ? 0.5 : age <= 30 ? 0.2 : 0);
   let growthScore =
     ratingEdge +
     minutesEdge +
     headroom * 2 +
-    (age <= 19 ? 1.3 : age <= 23 ? 1 : age <= 27 ? 0.5 : age <= 30 ? 0.2 : 0) +
+    growthAgeBonus +
+    gkSaveBonus +
     professionalism +
     boyhoodBoost -
-    (age > 28 ? (age - 28) * 0.55 : 0);
+    (age > (isGoalkeeper ? 33 : 28) ? (age - (isGoalkeeper ? 33 : 28)) * (isGoalkeeper ? 0.35 : 0.55) : 0);
   growthScore *= coachFactor * facilities * intensity * morale * fitness;
   growthScore *= attendance <= 0 ? 0.5 : 0.7 + attendance * 0.3;
   // Round only at the end, so a borderline season lands on 1 or 2 rather than 0.
@@ -584,9 +604,12 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
     // one chronologically past his peak. A truly good season protects a veteran for that
     // year, but average seasons still allow age-related decline.
     const belowPar = playingTime > 0 && avgRating < 6.4;
-    const ageing = age >= 29;
-    const unused = playingTime === 0 && age >= 24;
-    const protectedVeteran = age >= 29 && avgRating >= 7.0 && playingTime >= 0.35;
+    const ageing = isGoalkeeper ? age >= 33 : age >= 29;
+    const unused = playingTime === 0 && age >= (isGoalkeeper ? 28 : 24);
+    const protectedVeteran =
+      (isGoalkeeper ? age >= 33 : age >= 29) &&
+      avgRating >= 7.0 &&
+      playingTime >= 0.35;
     const agePressure = age >= 31 && playingTime > 0 && avgRating < 6.8;
     const declineAllowed =
       !protectedVeteran &&
@@ -595,12 +618,16 @@ export function developPlayer(player, club, rng, season, { appearances, minutes,
     if (declineAllowed) {
       // Poor seasons decline faster; ageing alone is gradual (1 OVR, 2 for 34+ in bad years).
       const poorSeason = belowPar ? Math.max(1, Math.round((6.4 - avgRating) * 1.6)) : 0;
-      const ageDecline = age >= 34 ? (avgRating < 6.6 ? 1 : 0) + (age >= 36 && avgRating < 6.8 ? 1 : 0) : age >= 31 && avgRating < 6.7 ? 1 : 0;
-      const unusedDecline = unused ? (age >= 29 ? 1 : 0) : 0;
+      // Keepers decline later and more gently, and only lose their athletic attributes;
+      // positioning, handling and reflexes hold up far longer.
+      const ageDecline = isGoalkeeper
+        ? (age >= 36 ? (avgRating < 6.4 ? 1 : 0) : age >= 34 && avgRating < 6.4 ? 1 : 0)
+        : age >= 34 ? (avgRating < 6.6 ? 1 : 0) + (age >= 36 && avgRating < 6.8 ? 1 : 0) : age >= 31 && avgRating < 6.7 ? 1 : 0;
+      const unusedDecline = unused ? ((isGoalkeeper ? age >= 33 : age >= 29) ? 1 : 0) : 0;
       const targetDecline = clamp(
-        Math.max(poorSeason, ageDecline, unusedDecline, (age >= 29 && avgRating < 6.5) ? 1 : 0),
+        Math.max(poorSeason, ageDecline, unusedDecline, (age >= (isGoalkeeper ? 33 : 29) && avgRating < 6.5) ? 1 : 0),
         1,
-        age >= 34 ? 2 : 1,
+        isGoalkeeper ? 1 : age >= 34 ? 2 : 1,
       );
       const targetOverall = Math.max(1, current - targetDecline);
       let attempts = 0;
