@@ -62,6 +62,10 @@ import {
   resolveContractNegotiation,
   signPlayerContract,
   wageCommitmentForPlayers,
+  aiContractDecision,
+  aiRenewalOffer,
+  priorityRecruitmentPosition,
+  squadRecruitmentPriority,
 } from "./core/contracts.mjs";
 import { Agent } from "./model/agent.mjs";
 import {
@@ -649,6 +653,8 @@ export class Career {
     this.lastContractProcessDay = null;
     this.contractNegotiations = [];
     this.freeAgentOffers = [];
+    this.userContractDecision = null;
+    this.freeAgentOpportunities = [];
     this.players.push(this.player);
     for (const player of this.players) {
       player.careerStats = { ...player.stats };
@@ -9646,7 +9652,7 @@ export class Career {
     const expired = [];
 
     for (const player of this.players) {
-      if (!player || player === this.player || player.source === "academy") continue;
+      if (!player || player.source === "academy" || player === this.player) continue;
       if (player.contract?.status === CONTRACT_STATUSES.RETIRED) continue;
       const contract = normalizeContract(player, {
         club: player.clubId ? clubsById.get(player.clubId) ?? null : null,
@@ -9703,12 +9709,62 @@ export class Career {
       }
     }
 
+    // The USER's own contract expiring pauses the whole simulation until he
+    // renews or walks away as a free agent (FC26 contract-expiry screen).
+    // Evaluated against the current day cursor so a mid-week expiry is caught
+    // as soon as the day passes, not only on the exact finance day.
+    const userContract = this.player.contract;
+    const userExpiryDay = contractExpiryDay(userContract);
+    if (
+      this.player.clubId &&
+      userContract &&
+      userContract.status !== CONTRACT_STATUSES.RETIRED &&
+      userExpiryDay != null &&
+      day >= userExpiryDay &&
+      this.lastContractProcessDay !== day
+    ) {
+      const formerClubId = this.player.clubId;
+      const formerClubName = clubsById.get(formerClubId)?.name ?? "his club";
+      const previousWeeklyWage = Number(userContract.weeklyWage ?? userContract.wage ?? 0);
+      expirePlayerContract(this.player, clubsById.get(formerClubId) ?? null, {
+        currentDay: day,
+        season: this.season,
+        reason: "Contract expired",
+      });
+      expired.push({ playerId: this.player.id, previousClubId: formerClubId, date: day, reason: "Contract expired" });
+      this.recentlyExpiredContracts.push({
+        playerId: this.player.id,
+        playerName: `${this.player.first} ${this.player.last}`,
+        previousClubId: formerClubId,
+        previousClubName: formerClubName,
+        previousWeeklyWage,
+        day,
+        season: this.season,
+      });
+      if (!this.userContractDecision) {
+        this.userContractDecision = {
+          kind: "contract-expiry",
+          resolved: false,
+          day,
+          season: this.season,
+          formerClubId,
+          formerClubName,
+          previousWeeklyWage,
+          clubOffer: this.userContractRenewalOffer(formerClubName, previousWeeklyWage),
+        };
+        notifications.push(`CONTRACT EXPIRED: Your ${formerClubName} contract has run out. The season is paused until you renew or walk away as a free agent.`);
+      }
+    }
+
     if (this.recentlyExpiredContracts.length > 200) {
       this.recentlyExpiredContracts.splice(0, this.recentlyExpiredContracts.length - 200);
     }
     if (this.contractEvents.length > 2000) {
       this.contractEvents.splice(0, this.contractEvents.length - 2000);
     }
+
+    // AI managers decide what to do with contracts inside their renewal window.
+    const decisions = this.processAIContractManagement(day, clubsById);
 
     // Complete any pre-contract agreements whose expiry day has arrived.
     const completedPre = this.completeDuePreContracts(day, clubsById);
@@ -9722,7 +9778,163 @@ export class Career {
       this.contractNotifications.splice(0, this.contractNotifications.length - 200);
     }
     void previousDay;
-    return { expired, completedPre, aiSignings, notifications: notifications.length };
+    return { expired, completedPre, aiSignings, decisions, notifications: notifications.length };
+  }
+
+  /**
+   * FC26 AI contract management: every AI manager evaluates the players whose
+   * contracts enter (or sit inside) the renewal window once per decision
+   * cycle and either renews, transfer-lists or lets them run down. Each
+   * player is evaluated at most once per stage via contract.lastManagedDay.
+   */
+  processAIContractManagement(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+    const rng = this.rng.stream(`ai-contract-mgmt-${Math.floor(day / 7)}`);
+    const decisions = [];
+    const candidates = this.players.filter(
+      (player) =>
+        player &&
+        player !== this.player &&
+        player.clubId &&
+        player.clubId !== this.club.id &&
+        player.source !== "academy" &&
+        player.contract?.status !== CONTRACT_STATUSES.RETIRED &&
+        !(player.contract?.preContract?.status === "agreed"),
+    );
+    for (const player of candidates) {
+      const contract = player.contract;
+      if (!contract) continue;
+      // Only players in the 12-month renewal window are managed, once per week.
+      const remaining = daysUntilExpiry(contract, day);
+      if (remaining == null || remaining > RENEWAL_WINDOW_DAYS) continue;
+      const lastManaged = Number(contract.lastManagedDay ?? -999);
+      if (day - lastManaged < 7) continue;
+      contract.lastManagedDay = day;
+      const club = clubsById.get(player.clubId) ?? null;
+      if (!club || club.isUserClub) continue;
+      const finance = ensureClubFinance(club);
+      const squadPlayers = this.players.filter((entry) => entry.clubId === club.id);
+      const positionalDepth = squadPlayers.filter(
+        (entry) => normalizePosition(entry.position) === normalizePosition(player.position),
+      ).length;
+      const decision = aiContractDecision(player, club, {
+        currentDay: day,
+        wageBill: club.wageBill(this.players),
+        squadSize: squadPlayers.length,
+        positionalDepth,
+        ageOfPlayer: ageOn(player.dob, day),
+        rng,
+      });
+      decisions.push({ playerId: player.id, clubId: club.id, action: decision.action, reason: decision.reason });
+      if (decision.action === "renew") {
+        const offer = aiRenewalOffer(player, club, { wageBill: club.wageBill(this.players) });
+        // AI renewals are usually agreed; a demanding star can still stall.
+        const negotiation = createContractNegotiation({
+          playerId: player.id,
+          clubId: club.id,
+          offer,
+          currentDay: day,
+          season: this.season,
+          kind: "renewal",
+        });
+        const outcome = resolveContractNegotiation(player, club, negotiation, {
+          currentDay: day,
+          managerTrust: club.manager?.trust?.[player.id] ?? 50,
+          rng,
+        });
+        if (outcome.kind === "accepted") {
+          signPlayerContract(player, club, offer, {
+            currentDay: day,
+            season: this.season,
+            isFreeAgent: false,
+          });
+          this.news.push(`${club.name} have renewed ${player.first} ${player.last}'s contract until ${fromDayIndex(player.contract.expiryDate)?.year}.`);
+        } else if (outcome.kind === "wants-to-leave") {
+          contract.transferListed = true;
+          this.news.push(`${player.first} ${player.last} has told ${club.name} he will not sign a new deal and has been transfer-listed.`);
+        }
+      } else if (decision.action === "transfer-list") {
+        contract.transferListed = true;
+        contract.transferListedDay = day;
+        this.news.push(`${club.name} have placed ${player.first} ${player.last} on the transfer list.${decision.reason ? ` ${decision.reason}` : ""}`);
+      } else {
+        contract.renewalRejected = true;
+        contract.releaseAtExpiry = true;
+        this.news.push(`${club.name} will not renew ${player.first} ${player.last}; he leaves on a free transfer at the end of his contract.${decision.reason ? ` ${decision.reason}` : ""}`);
+      }
+    }
+    return decisions.slice(-80);
+  }
+
+  /**
+   * AI squad-management controller: keeps every AI club at a playable size.
+   * Urgent recruitment (short squads, no keeper cover) runs outside transfer
+   * windows through free agents; ordinary depth-building happens in-window.
+   */
+  processAISquadManagement(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+    const signings = [];
+    for (const club of this.clubs) {
+      if (club.isUserClub || club.id === this.club.id) continue;
+      const priority = squadRecruitmentPriority(club, this.players);
+      if (priority <= 1 && !this.isTransferWindowWeek(day)) continue;
+      if (priority <= 0) continue;
+      const finance = ensureClubFinance(club);
+      const squadPlayers = this.players.filter((entry) => entry.clubId === club.id);
+      const needs = assessClubSquadNeeds(club, this.players, { dayIndex: day });
+      const wantedPosition = priorityRecruitmentPosition(needs, this.players, club);
+      const limit = Number(club.registrationLimit ?? 25);
+      const urgency = priority >= 3;
+      // Even urgent clubs respect registration limits and wage budgets.
+      for (const agent_ of this.freeAgents({ position: wantedPosition ?? undefined })) {
+        if (club.squad.length >= limit) break;
+        const player = agent_.player;
+        if (player.contract?.preContract?.status === "agreed") continue;
+        // A grace period after expiry: clubs take days to scout and negotiate,
+        // so a player who just became a free agent is not swooped the same week.
+        const freeSince = player.contract?.freeSinceDay ?? day - 21;
+        if (Number.isFinite(Number(freeSince)) && day - Number(freeSince) < 14) continue;
+        const wageBill = club.wageBill(this.players);
+        const wage = freeAgentExpectedWage(player);
+        if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
+        const positionalNeed = Number(needs?.[normalizePosition(player.position)]?.demand ?? 0);
+        const score = freeAgentClubInterest(player, club, {
+          currentWageBill: wageBill,
+          leagueReputation: this.clubLeagueEntry(club.id)?.league?.tier === 1 ? 80 : 55,
+          positionalNeed: urgency ? Math.max(positionalNeed, 70) : positionalNeed,
+          squadSize: club.squad.length,
+        });
+        // Urgent recruitment lowers the quality bar; depth recruitment keeps it high.
+        const threshold = urgency ? 35 : 55;
+        if (score < threshold) continue;
+        const offer = freeAgentOpeningOffer(player, club, { currentWageBill: wageBill });
+        const contract_ = signPlayerContract(player, club, offer, {
+          currentDay: day,
+          season: this.season,
+          isFreeAgent: true,
+          agentFee: agentFeeFor(offer.weeklyWage),
+        });
+        ensureSquadRegistration(club, this.players);
+        this.transferHistory.unshift({
+          playerId: player.id,
+          playerName: `${player.first} ${player.last}`,
+          fromClub: this.clubs.find((entry) => entry.id === player.formerClubId)?.name ?? "Free agent",
+          toClub: club.name,
+          toClubId: club.id,
+          fee: 0,
+          type: "free-transfer",
+          contractYears: contract_.years,
+          wage: contract_.weeklyWage,
+          date: day,
+          source: urgency ? "squad-protection" : "squad-depth",
+        });
+        this.news.push(`${club.name} have signed ${player.first} ${player.last} on a free transfer to address ${normalizePosition(player.position)} depth.`);
+        signings.push({ playerId: player.id, clubId: club.id, priority });
+        if (!urgency) break; // depth signings are limited to one per cycle
+      }
+    }
+    // A critically short squad with no free-agent option gets a generated
+    // replacement so registration never collapses below a playable floor.
+    if (signings.length >= 0) this.ensureSquadSizes();
+    return signings;
   }
 
   /** Move every player with a completed pre-contract into his destination club. */
@@ -9766,6 +9978,277 @@ export class Career {
       completed.push(agreement);
     }
     return completed;
+  }
+
+  /* ============ USER contract-expiry pause & free-agency ============ */
+
+  /**
+   * The club's opening renewal offer shown on the contract-expiry screen:
+   * grounded in the user's quality, form and the club's wage structure.
+   */
+  userContractRenewalOffer(clubName = this.club?.name, previousWage = 0) {
+    const player = this.player;
+    const club = this.clubs.find((entry) => entry.id === (this.player.formerClubId ?? this.club?.id)) ?? this.club;
+    const base = Math.max(
+      Math.round(Number(previousWage) || 0),
+      desiredWeeklyWage(player, club, { offeredRole: "Important Player" }),
+    );
+    // Performance nudges the opening position, within what the wage budget allows.
+    const finance = club ? ensureClubFinance(club) : { wageBudget: base * 80 };
+    const wageBill = club ? club.wageBill(this.players) : 0;
+    const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
+    const form = Number(player.lastMatchRating ?? 6.5);
+    const factor = clamp(1 + (form - 6.6) * 0.06, 0.95, 1.3);
+    const wage = Math.min(Math.max(500, Math.round((base * factor) / 50) * 50), Math.max(base, Math.floor(room * 0.4) || base));
+    const overall = Number(player.overall ?? 60);
+    return createContractOffer({
+      weeklyWage: wage,
+      years: overall >= 78 ? 4 : 3,
+      squadRole: overall >= 76 ? "Key Player" : "Important Player",
+      signingBonus: Math.round(wage * 6),
+    });
+  }
+
+  /** View model for the contract-expiry pause screen. */
+  userContractExpiryView() {
+    const decision = this.userContractDecision;
+    if (!decision || decision.resolved) return null;
+    return {
+      kind: decision.kind,
+      formerClubId: decision.formerClubId,
+      formerClubName: decision.formerClubName,
+      previousWeeklyWage: decision.previousWeeklyWage,
+      clubOffer: decision.clubOffer,
+      negotiation: decision.negotiation ?? null,
+      freeAgentOpportunities: this.freeAgentOpportunities ?? [],
+      paused: true,
+    };
+  }
+
+  /**
+   * OPTION A — the user counters/accepts during the expiry pause. The club
+   * evaluates the ask against its finances, his performance and importance.
+   * Resolves to {status: "accepted"} (contract updated, sim resumes), a
+   * counteroffer from the club, or {status: "rejected"}.
+   */
+  negotiateUserContract(offer = {}) {
+    const decision = this.userContractDecision;
+    if (!decision || decision.resolved)
+      throw new Error("There is no contract decision to negotiate.");
+    const club = this.clubs.find((entry) => entry.id === decision.formerClubId) ?? this.club;
+    if (!club) throw new Error("Your former club is no longer available.");
+    const requested = createContractOffer(offer);
+    const finance = ensureClubFinance(club);
+    const wageBill = club.wageBill(this.players);
+    const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
+    const opening = decision.clubOffer ?? this.userContractRenewalOffer(club.name, decision.previousWeeklyWage);
+    const fairWage = desiredWeeklyWage(this.player, club, { offeredRole: requested.squadRole });
+    const overall = Number(this.player.overall ?? 60);
+    const performance = Number(this.player.lastMatchRating ?? 6.5);
+    const importance = overall >= 76 ? 1.15 : overall >= 70 ? 1.05 : 1;
+    const ceiling = Math.max(opening.weeklyWage, Math.floor(Math.min(room * 0.6, fairWage * 1.35 * importance) / 50) * 50);
+    const acceptableWage = requested.weeklyWage <= ceiling;
+    const acceptableYears = requested.years >= 1 && requested.years <= 5;
+    const bonusAffordable = Number(requested.signingBonus ?? 0) <= Math.max(0, Number(finance.balance ?? 0)) * 0.1;
+    if (acceptableWage && acceptableYears && bonusAffordable) {
+      const contract = signPlayerContract(this.player, club, requested, {
+        currentDay: this.currentDay(),
+        season: this.season,
+        isFreeAgent: false,
+        loyaltyBonus: (this.player.contract?.years ?? 0) >= 3 ? Math.round(requested.weeklyWage * 4) : 0,
+      });
+      this.player.squadStatus = "Contracted";
+      ensureSquadRegistration(club, this.players);
+      decision.resolved = true;
+      decision.outcome = "renewed";
+      this.reconcileSquadMembership();
+      this.news.push(`You have signed a new ${club.name} contract: ${contract.years} years at ${contract.weeklyWage.toLocaleString()} per week.`);
+      return { status: "accepted", contract, message: `You have signed a new ${club.name} contract.` };
+    }
+    // The club counters with the best it can justify.
+    const counter = createContractOffer({
+      weeklyWage: ceiling,
+      years: acceptableYears ? requested.years : opening.years,
+      squadRole: requested.squadRole,
+      signingBonus: bonusAffordable ? requested.signingBonus : Math.round(ceiling * 4),
+    });
+    decision.clubOffer = counter;
+    decision.negotiation = {
+      rounds: (decision.negotiation?.rounds ?? 0) + 1,
+      requested,
+      respondedWith: counter,
+      reasons: [
+        !acceptableWage ? `the wage ask exceeds what the wage budget can justify` : null,
+        !bonusAffordable ? `the signing bonus is beyond the transfer budget` : null,
+        !acceptableYears ? `the contract length is not offerable` : null,
+      ].filter(Boolean),
+      message: `${club.name} have countered with ${counter.weeklyWage.toLocaleString()} per week over ${counter.years} years.`,
+    };
+    return { status: "counteroffer", offer: counter, message: decision.negotiation.message };
+  }
+
+  /**
+   * OPTION B — decline and become a free agent. The club relationship ends,
+   * registration is removed, stats and honours are preserved, and the agent
+   * search opens immediately. The simulation stays paused until the user
+   * accepts a new club (or explicitly resumes as a free agent).
+   */
+  declineUserContract() {
+    const decision = this.userContractDecision;
+    if (!decision || decision.resolved)
+      throw new Error("There is no contract decision to decline.");
+    const formerClub = this.clubs.find((entry) => entry.id === decision.formerClubId) ?? this.club;
+    const day = this.currentDay();
+    if (formerClub) {
+      if (typeof formerClub.removePlayer === "function") formerClub.removePlayer(this.player.id);
+      else if (Array.isArray(formerClub.squad)) {
+        const index = formerClub.squad.indexOf(this.player.id);
+        if (index >= 0) formerClub.squad.splice(index, 1);
+      }
+      assignShirtNumbers(this.players, formerClub, true);
+    }
+    this.player.clubId = null;
+    this.player.squadStatus = "Free Agent";
+    this.player.formerClubId = decision.formerClubId;
+    this.player.contract = {
+      ...(this.player.contract ?? {}),
+      status: CONTRACT_STATUSES.FREE_AGENT,
+      weeklyWage: 0,
+      wage: 0,
+      previousWeeklyWage: decision.previousWeeklyWage,
+      squadRole: "Free Agent",
+      expiryDate: day,
+      freeSinceDay: day,
+      releaseClause: null,
+      history: [
+        ...(Array.isArray(this.player.contract?.history) ? this.player.contract.history : []),
+        { date: day, season: this.season, type: "declined-renewal", clubId: decision.formerClubId, reason: "Declined a new contract" },
+      ],
+    };
+    this.reconcileSquadMembership();
+    decision.resolved = true;
+    decision.outcome = "free-agent";
+    this.news.push(`You declined a new ${decision.formerClubName ?? "club"} contract and are now a free agent. Your agent is finding clubs immediately.`);
+    // The agent gets to work the moment free agency begins.
+    this.freeAgentOpportunities = this.searchFreeAgentClubs();
+    return { status: "free-agent", opportunities: this.freeAgentOpportunities.length };
+  }
+
+  /**
+   * The agent's free-agency search across every playable league. No transfer
+   * window, no cooldown, no arbitrary cap: reputation shapes the quality of
+   * the opportunities, never whether a search can happen.
+   */
+  searchFreeAgentClubs() {
+    if (this.isManagerCareer)
+      throw new Error("Manager careers negotiate contracts directly with the board.");
+    if (this.player.clubId)
+      throw new Error("You are under contract; renew through your club instead.");
+    const agent = this.agent ?? this.agentPool[0] ?? null;
+    const agentQuality = Number(agent?.quality ?? agent?.rating ?? 50);
+    const day = this.currentDay();
+    const marketPlayers = [
+      ...new Map(
+        [
+          ...(this.players ?? []),
+          ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
+        ].map((entry) => [entry.id, entry]),
+      ).values(),
+    ];
+    const opportunities = [];
+    for (const club of this.clubs) {
+      if (club.id === this.player.formerClubId && this.clubs.length > 1) {
+        // A declined club rarely returns immediately; it is still evaluated
+        // like any other so a desperate club can re-sign its own free agent.
+      }
+      if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
+      const needs = this.transferNeedAssessment(club, day, marketPlayers);
+      const finance = ensureClubFinance(club);
+      const wageBill = club.wageBill(this.players);
+      const wage = freeAgentExpectedWage(this.player);
+      if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
+      const positionalNeed = Number(needs?.[normalizePosition(this.player.position)]?.demand ?? 0);
+      const leagueEntry = this.clubLeagueEntry(club.id);
+      const score = freeAgentClubInterest(this.player, club, {
+        currentWageBill: wageBill,
+        leagueReputation: leagueEntry?.league?.tier === 1 ? 80 : 55,
+        positionalNeed,
+        squadSize: club.squad.length,
+      });
+      // The agent's reputation widens the net: better agents surface more,
+      // and better, clubs. Weak agents still find opportunities.
+      const threshold = clamp(60 - agentQuality * 0.25, 30, 55);
+      if (score < threshold) continue;
+      const offer = freeAgentOpeningOffer(this.player, club, { currentWageBill: wageBill });
+      const identity = leagueEntry?.clubIdentities?.[club.id] ?? club;
+      opportunities.push({
+        clubId: club.id,
+        clubName: identity.name ?? club.name,
+        leagueId: leagueEntry?.league?.id ?? club.leagueId,
+        leagueName: leagueEntry?.league?.name ?? this.league.name,
+        reputation: Number(club.prestige ?? 50),
+        interest: score,
+        offer,
+        expectedPlayingTime: clamp(40 + positionalNeed * 0.5, 20, 95),
+        reason:
+          positionalNeed >= 65
+            ? `a critical need at ${normalizePosition(this.player.position)}`
+            : score >= 75
+              ? `a clear upgrade on their current options`
+              : `added squad depth`,
+      });
+    }
+    opportunities.sort((left, right) => right.interest - left.interest);
+    this.freeAgentOpportunities = opportunities;
+    const agentName = agent?.name ?? "Your agent";
+    this.news.unshift(
+      `${agentName} found ${opportunities.length} club${opportunities.length === 1 ? "" : "s"} interested in signing you as a free agent.`,
+    );
+    return opportunities;
+  }
+
+  /**
+   * Accept one of the agent's free-agency opportunities: joins the club,
+   * registers him, records the transfer and un-pauses the career.
+   */
+  acceptFreeAgentOffer(clubId, override = {}) {
+    if (this.player.clubId)
+      throw new Error("You are already under contract.");
+    const opportunity = (this.freeAgentOpportunities ?? []).find((entry) => entry.clubId === clubId);
+    if (!opportunity) throw new Error("That club is no longer interested.");
+    const club = this.clubs.find((entry) => entry.id === clubId);
+    if (!club) throw new Error("That club is no longer available.");
+    if (club.squad.length >= (club.registrationLimit ?? 25))
+      throw new Error(`${club.name} no longer has a squad place.`);
+    const offer = createContractOffer({ ...opportunity.offer, ...override });
+    const wage = Math.max(500, Math.round(Number(offer.weeklyWage) || freeAgentExpectedWage(this.player)));
+    const contract = signPlayerContract(this.player, club, { ...offer, weeklyWage: wage }, {
+      currentDay: this.currentDay(),
+      season: this.season,
+      isFreeAgent: true,
+      agentFee: agentFeeFor(wage),
+    });
+    ensureSquadRegistration(club, this.players);
+    this.club = club;
+    this.player.formerClubId = this.player.formerClubId ?? null;
+    assignShirtNumbers(this.players, club, true);
+    this.transferHistory.unshift({
+      playerId: this.player.id,
+      playerName: `${this.player.first} ${this.player.last}`,
+      fromClub: this.clubs.find((entry) => entry.id === this.player.formerClubId)?.name ?? "Free agent",
+      toClub: club.name,
+      toClubId: club.id,
+      fee: 0,
+      type: "free-transfer",
+      contractYears: contract.years,
+      wage,
+      date: this.currentDay(),
+      source: "agent-free-agency",
+    });
+    this.reconcileSquadMembership();
+    this.freeAgentOpportunities = [];
+    this.news.push(`${this.player.first} ${this.player.last} has joined ${club.name} on a free transfer.`);
+    return { status: "signed", contract, club };
   }
 
   /** The searchable free-agent market: every unattached professional player. */
@@ -10854,6 +11337,10 @@ export class Career {
 
   advanceWeek() {
     if (this.careerEnded) throw new Error("This career has ended.");
+    if (this.userContractDecision && !this.userContractDecision.resolved)
+      throw new Error(
+        "Your contract has expired: renew it or become a free agent before the season can continue.",
+      );
     if (this.seasonComplete) return this.lastReport;
     if (
       this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
@@ -10918,6 +11405,22 @@ export class Career {
 
     const progression = this.data.careerSettings.training;
     const financeDay = this.calendar[this.week]?.day ?? this.currentDay();
+    // The contract lifecycle runs BEFORE finances and matches so a user contract
+    // expiry opens the pause before anything else in the week is processed.
+    this.processContractLifecycle(financeDay);
+    if (this.userContractDecision && !this.userContractDecision.resolved) {
+      const pausedReport = {
+        week: this.week,
+        fixtures: [],
+        userMatch: null,
+        contractExpiryPaused: true,
+        headlines: [
+          `CONTRACT EXPIRED: Your ${this.userContractDecision.formerClubName ?? "club"} contract has run out. Decide your future before the season continues.`,
+        ],
+      };
+      this.lastReport = pausedReport;
+      return pausedReport;
+    }
     for (const club of this.clubs) {
       processWeeklyClubFinances(
         club,
@@ -10965,9 +11468,9 @@ export class Career {
       this.processCpuTransferMarket(financeDay);
       this.evaluateUserTransferInterest(financeDay);
     }
-    // The contract lifecycle runs every week: stage notifications, expiry,
-    // pre-contract completion and AI free-agent recruitment.
-    this.processContractLifecycle(financeDay);
+    // Squad protection: keep every AI club at a playable size (runs weekly so
+    // urgent clubs recruit outside transfer windows; depth moves stay in-window).
+    this.processAISquadManagement(financeDay);
     // Decide the user's involvement BEFORE weekly recovery runs: a planned entrance
     // based on a tired incumbent must survive the fatigue reset between weeks.
     const userMatchWeek = this.league.fixtureWeeks.includes(this.week);
@@ -11318,6 +11821,17 @@ export class Career {
         userMatch: null,
         headlines,
       };
+    }
+
+    // A user contract expiry opened this week takes priority over any result:
+    // surface the pause instead of a match report so the UI shows the decision
+    // screen immediately (the match itself has still been simulated).
+    if (this.userContractDecision && !this.userContractDecision.resolved) {
+      this.lastReport.headlines = [
+        `CONTRACT EXPIRED: Your ${this.userContractDecision.formerClubName ?? "club"} contract has run out. Decide your future before the season continues.`,
+        ...this.lastReport.headlines,
+      ];
+      this.lastReport.contractExpiryPaused = true;
     }
 
     this.simulateWorldLeaguesWeek(this.week);
@@ -14545,6 +15059,8 @@ export class Career {
       lastContractProcessDay: this.lastContractProcessDay ?? null,
       contractNegotiations: this.contractNegotiations ?? [],
       freeAgentOffers: this.freeAgentOffers ?? [],
+      userContractDecision: this.userContractDecision ?? null,
+      freeAgentOpportunities: this.freeAgentOpportunities ?? [],
       pendingPlayerTransfer: this.pendingPlayerTransfer ?? null,
       usedSituationIds: this.usedSituationIds,
       matchSimulation: this.matchSimulation,
@@ -14743,6 +15259,8 @@ export class Career {
     this._forceCpuTransferEvaluation = false;
     this.positionNeedCache = null;
     this.pendingPlayerTransfer = saved.pendingPlayerTransfer ?? null;
+    this.userContractDecision = saved.userContractDecision ?? null;
+    this.freeAgentOpportunities = saved.freeAgentOpportunities ?? [];
     this.transferRefreshCount =
       saved.transferRefreshCount ?? this.transferOffers.length;
     this.usedSituationIds = saved.usedSituationIds ?? [];

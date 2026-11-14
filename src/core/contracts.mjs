@@ -1,4 +1,5 @@
 ﻿import { fromDayIndex, toDayIndex } from "./calendar.mjs";
+import { normalizePosition } from "./constants.mjs";
 import { clamp } from "./util.mjs";
 import { ensureClubFinance, recordClubTransaction, syncLegacyBudgetFields } from "./finance.mjs";
 
@@ -400,6 +401,7 @@ export function expirePlayerContract(player, club, { currentDay = 0, season = nu
     expiryDate: currentDay ?? contract.expiryDate ?? null,
     squadRole: "Free Agent",
     releaseClause: null,
+    freeSinceDay: currentDay,
     renewalRejected: !!contract.renewalRejected,
     preContractAllowed: false,
     pendingOffer: null,
@@ -809,4 +811,202 @@ export function canSignPreContract(player, currentDay) {
   if (player.contract?.preContract?.status === "agreed") return false;
   const remaining = daysUntilExpiry(player.contract, currentDay);
   return remaining != null && remaining > 0 && remaining <= PRE_CONTRACT_WINDOW_DAYS;
+}
+
+/* =====================================================================
+ * FC26-inspired AI contract-management and squad-protection engine.
+ *
+ * Pure, deterministic decision helpers. The career simulation feeds them
+ * real club/player state once per decision cycle and applies whichever
+ * action they recommend. Nothing here mutates the world directly, so the
+ * same save + the same seed always produces the same decisions.
+ * ===================================================================== */
+
+/** Configurable squad-management thresholds (FC26-style squad planning). */
+export const SQUAD_MANAGEMENT_RULES = {
+  criticalSquadSize: 18, // below this a club must recruit urgently
+  activeSquadSize: 20, // 18-20: recruit actively
+  balancedSquadSize: 24, // 21-24: maintain depth, replace leavers only
+  minimumGoalkeepers: 2, // a club can never function with fewer
+  minimumReplacementSquadSize: 15, // never sell below this during a season
+};
+
+/** Squad-priority bands returned by squadPriorityBand(). */
+export function squadPriorityBand(squadSize, registrationLimit = 25) {
+  const size = Number(squadSize) || 0;
+  if (size >= registrationLimit) return "full";
+  if (size < SQUAD_MANAGEMENT_RULES.criticalSquadSize) return "critical";
+  if (size < SQUAD_MANAGEMENT_RULES.activeSquadSize) return "active";
+  if (size < SQUAD_MANAGEMENT_RULES.balancedSquadSize) return "balanced";
+  return "stable";
+}
+
+/**
+ * How urgently should this club recruit this cycle?
+ * 0 = none, 1 = replace departures, 2 = build depth, 3 = urgent recruitment.
+ */
+export function squadRecruitmentPriority(club, players = []) {
+  const squad = Array.isArray(club?.squad)
+    ? club.squad
+    : players.filter((player) => player.clubId === club?.id);
+  const size = squad.length;
+  const limit = Number(club?.registrationLimit ?? 25);
+  const band = squadPriorityBand(size, limit);
+  if (band === "full") return 0;
+  const goalkeepers = squad.filter(
+    (id) => normalizePosition(players.find((p) => p.id === id)?.position) === "GK",
+  ).length;
+  if (goalkeepers < SQUAD_MANAGEMENT_RULES.minimumGoalkeepers) return 3;
+  if (band === "critical") return 3;
+  if (band === "active") return 2;
+  return 1;
+}
+
+/**
+ * The single decision an AI manager takes about one expiring contract:
+ * renew / transfer-list / release. Considers rating, potential, age, form,
+ * squad role, wage room, positional depth, replacement availability and the
+ * club's ambitions. Deterministic through the supplied rng stream.
+ */
+export function aiContractDecision(player, club, context = {}) {
+  const rng = context.rng ?? Math.random;
+  const day = Number(context.currentDay ?? 0);
+  const overall = Number(player?.overall ?? 55);
+  const potential = Number(player?.potential ?? overall);
+  const age = Number(player?.age ?? context.ageOfPlayer ?? 25);
+  const wage = Number(player?.contract?.weeklyWage ?? 0);
+  const prestige = Number(club?.prestige ?? 50);
+  const finance = club?.finances ?? {};
+  const wageBudget = Number(finance.wageBudget ?? club?.wageBudget ?? 0);
+  const wageBill = Number(context.wageBill ?? 0);
+  const squadSize = Number(context.squadSize ?? 0);
+  const positionalDepth = Number(context.positionalDepth ?? 2);
+  const isGoalkeeper = normalizePosition(player?.position) === "GK";
+  const apps = Number(player?.stats?.apps ?? 0);
+  const rating = Number(player?.lastMatchRating ?? 6.5);
+  const role = player?.contract?.squadRole ?? defaultSquadRole(player);
+
+  // Squad protection: never discard a player if the squad is already thin.
+  const squadFloor =
+    context.transferListed === true
+      ? SQUAD_MANAGEMENT_RULES.minimumReplacementSquadSize
+      : SQUAD_MANAGEMENT_RULES.criticalSquadSize;
+  const shortOfFloor = squadSize <= squadFloor;
+
+  // Financial reality: can the club still afford him for another season?
+  const expectedRenewalWage = Math.max(wage, estimateWeeklyWage(player, club) * 1.05);
+  const canAfford = wageBill + (expectedRenewalWage - wage) <= wageBudget;
+
+  // Important starter with room in the budget: renew, always.
+  const starterQualityGap = overall - (46 + prestige * 0.22);
+  const isImportantStarter =
+    starterQualityGap >= -4 &&
+    (role === "Star Player" || role === "Key Player" || role === "Important Player" ||
+      role === "Regular Starter");
+
+  if (!shortOfFloor) {
+    // Declining veterans the club can afford to let go.
+    const declining =
+      age >= 31 && overall <= 74 && potential - overall <= 2 && positionalDepth > 2;
+    if (declining && rng.chance(0.55)) {
+      return {
+        action: "release",
+        reason: `${player.first ?? "Player"} is ${age} and the club will not renew a declining squad player.`,
+        expectedWage: expectedRenewalWage,
+      };
+    }
+    // Fringe players on wages the club would rather spend elsewhere.
+    const expensiveFringe =
+      (role === "Fringe Player" || role === "Squad Rotation") &&
+      wage > estimateWeeklyWage(player, club) * 1.25 &&
+      positionalDepth > 1;
+    if (expensiveFringe && rng.chance(0.4)) {
+      return {
+        action: "transfer-list",
+        reason: `${player.first ?? "Player"} is transfer-listed: his wages no longer match his squad role.`,
+        expectedWage: expectedRenewalWage,
+      };
+    }
+  }
+
+  if (isImportantStarter && (canAfford || shortOfFloor)) {
+    return {
+      action: "renew",
+      reason: `${player.first ?? "Player"} remains an important player at ${age}.`,
+      expectedWage: expectedRenewalWage,
+    };
+  }
+
+  // High-potential youngsters are cheap to keep and rarely sold.
+  if (age <= 23 && potential >= overall + 4) {
+    if (canAfford || shortOfFloor) {
+      return { action: "renew", reason: `${player.first ?? "Player"} is a prospect worth developing.`, expectedWage: expectedRenewalWage };
+    }
+  }
+
+  // Good enough for the squad, affordable: renew quietly.
+  if (canAfford && positionalDepth <= 3 && starterQualityGap >= -8) {
+    return { action: "renew", reason: `${player.first ?? "Player"} provides usable depth.`, expectedWage: expectedRenewalWage };
+  }
+
+  // Goalkeepers are always protected — a club without two keepers is broken.
+  if (isGoalkeeper && positionalDepth <= 1) {
+    return { action: "renew", reason: `Goalkeeper cover must be retained.`, expectedWage: expectedRenewalWage };
+  }
+
+  if (shortOfFloor) {
+    return { action: "renew", reason: `The squad is too small to lose anyone.`, expectedWage: expectedRenewalWage };
+  }
+
+  // Default: not financially or technically justified — let him go.
+  return {
+    action: rng.chance(0.35) ? "transfer-list" : "release",
+    reason: `${player.first ?? "Player"} does not justify a renewal on footballing or financial grounds.`,
+    expectedWage: expectedRenewalWage,
+  };
+}
+
+/**
+ * The contract an AI club offers when renewing: realistic wage, duration,
+ * squad role and signing bonus derived from the player's quality, age and
+ * role, clamped by what the club can afford.
+ */
+export function aiRenewalOffer(player, club, context = {}) {
+  const expected =
+    Math.max(Number(player?.contract?.weeklyWage ?? 0), estimateWeeklyWage(player, club));
+  const overall = Number(player?.overall ?? 60);
+  const age = Number(player?.age ?? 25);
+  const prestige = Number(club?.prestige ?? 50);
+  const finance = club?.finances ?? {};
+  const wageBudget = Number(finance.wageBudget ?? club?.wageBudget ?? 0);
+  const wageBill = Number(context.wageBill ?? 0);
+  const room = Math.max(0, wageBudget - wageBill);
+  const wage = Math.max(500, Math.min(Math.round(expected * 1.08 / 50) * 50, Math.floor(room * 0.55) || expected));
+  const years = age >= 33 ? 1 : age >= 30 ? 2 : overall >= 78 ? 4 : 3;
+  const role = defaultSquadRole(player);
+  const signingBonus = Math.round(wage * (prestige >= 75 ? 8 : 4));
+  return createContractOffer({ weeklyWage: wage, years, squadRole: role, signingBonus });
+}
+
+
+
+/**
+ * Position the AI should recruit for next: the highest-demand role from the
+ * squad assessment, with goalkeepers protected ahead of everything else.
+ */
+export function priorityRecruitmentPosition(needs = {}, players = [], club = null) {
+  const squad = club && Array.isArray(club.squad)
+    ? club.squad.map((id) => players.find((player) => player.id === id)).filter(Boolean)
+    : [];
+  const goalkeepers = squad.filter((p) => normalizePosition(p.position) === "GK");
+  if (goalkeepers.length < SQUAD_MANAGEMENT_RULES.minimumGoalkeepers) return "GK";
+  let best = null;
+  let bestDemand = 45; // below "Moderate Need" the club stands pat
+  for (const need of Object.values(needs)) {
+    if (need.demand > bestDemand) {
+      bestDemand = need.demand;
+      best = need.position;
+    }
+  }
+  return best;
 }
