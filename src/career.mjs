@@ -31,6 +31,7 @@ import {
   processMatchdayRevenue,
   processWeeklyClubFinances,
   recordClubTransaction,
+  reviewBoardTransferAllocation,
   syncPlayerMarketValue,
   transferPlayer,
 } from "./core/finance.mjs";
@@ -40,6 +41,7 @@ import {
   RENEWAL_WINDOW_DAYS,
   URGENT_WINDOW_DAYS,
   agentFeeFor,
+  applyInitialContractTerm,
   canDiscussRenewal,
   canSignPreContract,
   contractExpiryDay,
@@ -56,6 +58,7 @@ import {
   freeAgentClubInterest,
   freeAgentExpectedWage,
   freeAgentOpeningOffer,
+  initialCareerContractYears,
   isContractExpired,
   normalizeContract,
   renewalPhase,
@@ -758,6 +761,16 @@ export class Career {
 
     if (saved) this.restore(saved);
     if (typeof this.normalizeAllContracts === "function") this.normalizeAllContracts({ announce: false, migrate: true, fromRestore: !!saved });
+    if (!saved) {
+      // A brand-new career: opening contract lengths and the board's starting
+      // allocation. Restored saves keep the terms and budgets they were saved with.
+      if (typeof this.applyInitialContractTerms === "function") this.applyInitialContractTerms();
+      for (const club of this.clubs) {
+        const finance = ensureClubFinance(club);
+        finance.allocationSeason ??= this.season;
+        finance.boardAllocationSeason ??= this.season;
+      }
+    }
     // One authority for the base overall: derived from attributes, never above potential.
     this.enforcePotentialCeiling();
     this.enforceGeneratedOverallLimit();
@@ -6958,11 +6971,17 @@ export class Career {
     this.worldLeagues = this.buildWorldLeagues();
     this.applyExpansionSquads();
     this.enforceGeneratedOverallLimit();
+    // New season, new board review: every club's transfer allocation is recalculated
+    // from the cash it actually has, once, and never twice for the same season.
+    const allocationReviews = this.reviewClubTransferAllocations({
+      season: this.season,
+    });
 
     return {
       season: this.season,
       awards: this.seasonHistory.at(-1).awards,
       manager: managerVerdict,
+      allocationReviews,
     };
   }
 
@@ -9591,6 +9610,62 @@ export class Career {
     return { agent: null, offers: [] };
   }
 
+
+  /**
+   * Standard opening contract terms: AI players start on four-year deals and the
+   * human-controlled player on a two-year deal. Runs once, at career creation —
+   * restores keep whatever terms the save already carries.
+   */
+  applyInitialContractTerms() {
+    const season = this.season ?? null;
+    const currentDay = typeof this.currentDay === "function" ? this.currentDay() : null;
+    const clubsById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    let applied = 0;
+    const apply = (player) => {
+      if (!player?.contract || !player.clubId) return;
+      const club = clubsById.get(player.clubId) ?? null;
+      const contract = applyInitialContractTerm(player, {
+        club,
+        season,
+        currentDay,
+      });
+      if (contract) applied += 1;
+    };
+    for (const player of this.players ?? []) apply(player);
+    for (const state of this.worldLeagues ?? []) {
+      for (const performer of state?.performers ?? []) apply(performer);
+    }
+    for (const performer of this.expansionPlayers ?? []) apply(performer);
+    return { applied, season, aiYears: initialCareerContractYears({ isUser: false }), userYears: initialCareerContractYears({ isUser: true }) };
+  }
+
+  /**
+   * Ask every board for its transfer allocation for `season`. Called on season
+   * rollover so budgets follow the club's real finances instead of a fixed number.
+   */
+  reviewClubTransferAllocations({ season = this.season, force = false } = {}) {
+    const clubs = this.clubs ?? [];
+    const players = this.players ?? [];
+    const reviews = [];
+    for (const club of clubs) {
+      const clubPlayers = players.filter((player) => player.clubId === club.id);
+      const review = reviewBoardTransferAllocation(club, {
+        season,
+        players: clubPlayers,
+        force,
+      });
+      if (review.changed) {
+        reviews.push({
+          clubId: club.id,
+          allocation: review.allocation,
+          previousAllocation: review.previousAllocation,
+          policy: review.policy,
+          freeCash: review.freeCash,
+        });
+      }
+    }
+    return reviews;
+  }
 
   normalizeAllContracts({ announce = false, migrate = true, fromRestore = false } = {}) {
     this.contractNotifications = Array.isArray(this.contractNotifications) ? this.contractNotifications : [];

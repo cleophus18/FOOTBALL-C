@@ -4,6 +4,8 @@ import { createCareer } from "../src/career.mjs";
 import { loadData } from "../src/data/loader.mjs";
 import {
   CONTRACT_STATUSES,
+  INITIAL_CAREER_CONTRACT_YEARS,
+  applyInitialContractTerm,
   contractStageLabel,
   createContractNegotiation,
   createPreContractAgreement,
@@ -13,6 +15,7 @@ import {
   freeAgentOpeningOffer,
   agentFeeFor,
   contractRemainingDuration,
+  initialCareerContractYears,
   resolveContractNegotiation,
   daysUntilExpiry,
 } from "../src/core/contracts.mjs";
@@ -90,6 +93,58 @@ test("contract durations are clamped between 1 and 5 years", async () => {
     const years = Number(player.contract?.years ?? 0);
     if (years) assert.ok(years >= 1 && years <= 5);
   }
+});
+
+test("a new career gives AI players four years and the user player two", async () => {
+  const career = createCareer(await loadData(), options(9003));
+  const contracted = career.players.filter((player) => player.clubId && player.contract);
+  assert.ok(contracted.length > 100);
+  const aiPlayers = contracted.filter((player) => !player.isUser);
+  assert.ok(aiPlayers.length > 100);
+  for (const player of aiPlayers) {
+    assert.equal(player.contract.years, INITIAL_CAREER_CONTRACT_YEARS.ai);
+  }
+  assert.equal(career.player.isUser, true);
+  assert.equal(career.player.contract.years, INITIAL_CAREER_CONTRACT_YEARS.user);
+  // The user's deal must genuinely expire inside the standard window.
+  const remaining = daysUntilExpiry(career.player.contract, career.currentDay());
+  assert.ok(remaining > 600 && remaining <= 731);
+});
+
+test("initial contract terms survive a save round-trip and are not re-applied", async () => {
+  const career = createCareer(await loadData(), options(9004));
+  const userContract = career.player.contract;
+  const npc = career.players.find(
+    (player) => player.clubId && !player.isUser && player.contract,
+  );
+  const saved = career.toJSON();
+  const restored = createCareer(
+    await loadData(),
+    options(9004),
+    saved,
+  );
+  assert.equal(restored.player.contract.years, userContract.years);
+  assert.equal(restored.player.contract.expiryDate, userContract.expiryDate);
+  const restoredNpc = restored.players.find((player) => player.id === npc.id);
+  assert.equal(restoredNpc.contract.years, npc.contract.years);
+
+  // Re-running the standardisation on a live contract changes nothing.
+  const before = { ...restoredNpc.contract };
+  const result = applyInitialContractTerm(restoredNpc, {
+    season: restored.season,
+    currentDay: restored.currentDay(),
+  });
+  assert.equal(result, null);
+  assert.deepEqual(
+    { years: restoredNpc.contract.years, expiryDate: restoredNpc.contract.expiryDate },
+    { years: before.years, expiryDate: before.expiryDate },
+  );
+});
+
+test("initial career lengths are the documented four and two years", () => {
+  assert.deepEqual(INITIAL_CAREER_CONTRACT_YEARS, { ai: 4, user: 2 });
+  assert.equal(initialCareerContractYears({ isUser: true }), 2);
+  assert.equal(initialCareerContractYears({ isUser: false }), 4);
 });
 
 test("contract stage labels follow the 12/6/1 month lifecycle", () => {

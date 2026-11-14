@@ -209,6 +209,52 @@ export function createDefaultContract(player, { club = null, currentDay = null, 
   };
 }
 
+/**
+ * Standard career-start contract lengths: AI players sign for four years, the
+ * human-controlled player for two. Only the opening term of a career uses these;
+ * renewals and free-agent deals keep their own negotiation rules.
+ */
+export const INITIAL_CAREER_CONTRACT_YEARS = { ai: 4, user: 2 };
+
+export function initialCareerContractYears(player) {
+  return player?.isUser
+    ? INITIAL_CAREER_CONTRACT_YEARS.user
+    : INITIAL_CAREER_CONTRACT_YEARS.ai;
+}
+
+/**
+ * Apply the standard opening contract length to a player at career creation.
+ * Idempotent: a contract already carrying `initialTermSeason` is left alone, so
+ * renewals, saves and later normalisation never shorten or extend a live deal.
+ */
+export function applyInitialContractTerm(
+  player,
+  { club = null, season = null, currentDay = null, force = false } = {},
+) {
+  const contract = player?.contract;
+  if (!contract || !player?.clubId) return null;
+  if (!force && contract.initialTermSeason != null) return null;
+  const startDay =
+    contractStartDay(contract, season) ??
+    (Number.isFinite(currentDay)
+      ? currentDay
+      : seasonStartDayFor(season ?? fromDayIndex(currentDay ?? 0)?.year ?? 2026));
+  const years = initialCareerContractYears(player);
+  const expiryDay = startDay + years * DAYS_PER_YEAR;
+  contract.startDate = startDay;
+  contract.expiryDate = expiryDay;
+  contract.years = years;
+  contract.contractYears = years;
+  contract.initialTermSeason = season;
+  const expiry = fromDayIndex(expiryDay);
+  if (expiry) {
+    contract.expiresSeason = expiry.month >= 7 ? expiry.year : expiry.year - 1;
+    contract.expires = contract.expiresSeason;
+    contract.endSeason = contract.expires;
+  }
+  return contract;
+}
+
 export function normalizeContract(player, { club = null, currentDay = null, season = null } = {}) {
   if (!player) return null;
   if (!player.clubId) {
