@@ -63,18 +63,32 @@ function npc(career, { clubId = career.club.id, overallMin = 55 } = {}) {
 /* 1. AI renewal decisions */
 test("AI managers renew important affordable players entering the final year", async () => {
   const career = createCareer(await loadData(), options(4001));
-  const player = npc(career, { overallMin: 66 });
-  const club = career.clubs.find((entry) => entry.id === player.clubId);
-  const finance = club.finances;
-  finance.wageBudget = Math.max(
-    finance.wageBudget,
-    player.contract.weeklyWage * 400,
+  // AI contract management only looks at clubs other than the user's, so the
+  // candidates have to come from a rival club and be inside the 12-month window.
+  // Star players price themselves above the AI's renewal offer, so the affordable
+  // cases the board is expected to renew are the important and fringe players.
+  const rivalClub = career.clubs.find((club) => club.id !== career.club.id);
+  const candidates = career.players
+    .filter(
+      (entry) =>
+        entry.clubId === rivalClub.id &&
+        entry.id !== career.player.id &&
+        Number(entry.overall ?? 0) >= 66 &&
+        entry.contract?.squadRole !== "Star Player",
+    )
+    .slice(0, 6);
+  assert.ok(candidates.length > 0, "the rival club needs renewal candidates");
+  rivalClub.finances.wageBudget = Math.max(
+    rivalClub.finances.wageBudget,
+    ...candidates.map((entry) => entry.contract.weeklyWage * 400),
   );
-  player.contract.expiryDate = career.currentDay() + 60;
+  for (const candidate of candidates) {
+    candidate.contract.expiryDate = career.currentDay() + 60;
+  }
   const decisionsBefore = career.players.filter(
     (p) => p.contract?.lastManagedDay != null,
   ).length;
-  career.processAIContractManagement(career.currentDay());
+  const decisions = career.processAIContractManagement(career.currentDay());
   const after = career.players.filter(
     (p) => p.contract?.lastManagedDay != null,
   ).length;

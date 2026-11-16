@@ -7,6 +7,36 @@ import {
   recordChampionsLeagueFixture,
   simulateChampionsLeagueWeek,
 } from "../src/model/champions-league.mjs";
+import { selectLineup } from "../src/model/club.mjs";
+import { normalizePosition } from "../src/core/constants.mjs";
+
+/**
+ * The career player is a 70-rated prospect, so at a full-strength club he is not in
+ * the matchday XI. These live-simulation tests need him on the pitch, so they name
+ * him in his natural slot through the club's custom XI.
+ */
+function forceUserIntoStartingXI(career) {
+  const squad = career.players.filter(
+    (player) => player.clubId === career.club.id,
+  );
+  const lineup = selectLineup(squad, career.club.formation, 0, {
+    customXI: career.club.customXI ?? [],
+  });
+  const slot =
+    lineup.xi.find(
+      (entry) =>
+        normalizePosition(entry.slot) === normalizePosition(career.player.position),
+    ) ?? lineup.xi.at(-1);
+  const assignments = lineup.xi.map(({ slotIndex, slot: slotLabel, player }) => ({
+    slotIndex,
+    slot: slotLabel,
+    playerId: player.id,
+  }));
+  const target = assignments.find((entry) => entry.slotIndex === slot.slotIndex);
+  if (target) target.playerId = career.player.id;
+  career.club.customXI = assignments;
+  return career.player.id;
+}
 
 test("Champions League starts only after the first domestic season", async () => {
   const data = await loadData();
@@ -597,6 +627,7 @@ test("UEFA fixtures can be played through the live match simulation", async () =
     for (const row of league.table.rows.values()) row.played = matches;
   }
   career.advanceSeason();
+  forceUserIntoStartingXI(career);
 
   let report;
   do {

@@ -1,4 +1,4 @@
-ï»¿import { fromDayIndex, toDayIndex } from "./calendar.mjs";
+import { fromDayIndex, toDayIndex } from "./calendar.mjs";
 import { normalizePosition } from "./constants.mjs";
 import { clamp } from "./util.mjs";
 import { ensureClubFinance, recordClubTransaction, syncLegacyBudgetFields } from "./finance.mjs";
@@ -73,7 +73,7 @@ export function freeAgentExpectedWage(player) {
   return Math.round(Math.max(estimate, previous * 0.92) / 50) * 50;
 }
 
-/** Agent fee for signing a player: 5% of one year's wages, floored at â‚¬25k. */
+/** Agent fee for signing a player: 5% of one year's wages, floored at €25k. */
 export function agentFeeFor(wage) {
   return Math.max(25_000, Math.round((Number(wage) || 0) * 52 * 0.05));
 }
@@ -743,7 +743,7 @@ export function resolveContractNegotiation(player, club, negotiation, context = 
     ...outcome,
     kind: evaluation.demands.length ? "wants-improved-wages" : "rejected",
     demands: evaluation.demands,
-    message: `${outcome.playerName} has rejected the offer${evaluation.demands.length ? ` â€” he wants ${evaluation.demands.join(", ")}` : ""}.`,
+    message: `${outcome.playerName} has rejected the offer${evaluation.demands.length ? ` — he wants ${evaluation.demands.join(", ")}` : ""}.`,
   };
   return negotiation.response;
 }
@@ -995,7 +995,7 @@ export function aiContractDecision(player, club, context = {}) {
     return { action: "renew", reason: `${player.first ?? "Player"} provides usable depth.`, expectedWage: expectedRenewalWage };
   }
 
-  // Goalkeepers are always protected â€” a club without two keepers is broken.
+  // Goalkeepers are always protected — a club without two keepers is broken.
   if (isGoalkeeper && positionalDepth <= 1) {
     return { action: "renew", reason: `Goalkeeper cover must be retained.`, expectedWage: expectedRenewalWage };
   }
@@ -1004,7 +1004,7 @@ export function aiContractDecision(player, club, context = {}) {
     return { action: "renew", reason: `The squad is too small to lose anyone.`, expectedWage: expectedRenewalWage };
   }
 
-  // Default: not financially or technically justified â€” let him go.
+  // Default: not financially or technically justified — let him go.
   return {
     action: rng.chance(0.35) ? "transfer-list" : "release",
     reason: `${player.first ?? "Player"} does not justify a renewal on footballing or financial grounds.`,
@@ -1056,3 +1056,5 @@ export function priorityRecruitmentPosition(needs = {}, players = [], club = nul
   }
   return best;
 }
+
+
