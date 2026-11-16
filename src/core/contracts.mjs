@@ -1,7 +1,11 @@
 import { fromDayIndex, toDayIndex } from "./calendar.mjs";
 import { normalizePosition } from "./constants.mjs";
 import { clamp } from "./util.mjs";
-import { ensureClubFinance, recordClubTransaction, syncLegacyBudgetFields } from "./finance.mjs";
+import {
+  ensureClubFinance,
+  recordClubTransaction,
+  syncLegacyBudgetFields,
+} from "./finance.mjs";
 
 export const CONTRACT_STATUSES = {
   ACTIVE: "active",
@@ -55,7 +59,8 @@ export function contractStageLabel(contract, currentDay) {
 /** Remaining duration as { years, months } for the profile countdown indicator. */
 export function contractRemainingDuration(contract, currentDay) {
   const remaining = daysUntilExpiry(contract, currentDay);
-  if (remaining == null || remaining < 0) return { years: 0, months: 0, days: 0 };
+  if (remaining == null || remaining < 0)
+    return { years: 0, months: 0, days: 0 };
   const months = Math.floor(remaining / 30.44);
   return {
     years: Math.floor(months / 12),
@@ -66,14 +71,16 @@ export function contractRemainingDuration(contract, currentDay) {
 
 /** Expected wage demanded by a free agent, based on his quality and previous wage. */
 export function freeAgentExpectedWage(player) {
-  const previous = Number(player?.contract?.previousWeeklyWage ?? player?.contract?.lastWage ?? 0);
+  const previous = Number(
+    player?.contract?.previousWeeklyWage ?? player?.contract?.lastWage ?? 0,
+  );
   const estimate = estimateWeeklyWage(player);
   if (!previous) return estimate;
   // A player coming off a big wage expects a similar figure, tempered by his age.
   return Math.round(Math.max(estimate, previous * 0.92) / 50) * 50;
 }
 
-/** Agent fee for signing a player: 5% of one year's wages, floored at €25k. */
+/** Agent fee for signing a player: 5% of one year's wages, floored at ï¿½25k. */
 export function agentFeeFor(wage) {
   return Math.max(25_000, Math.round((Number(wage) || 0) * 52 * 0.05));
 }
@@ -110,12 +117,14 @@ export function contractExpiryDay(contract, fallbackSeason = null) {
     // End of that season: 30 June of expiresSeason+1
     return toDayIndex(expiresSeason + 1, 6, 30);
   }
-  if (fallbackSeason != null) return toDayIndex(Number(fallbackSeason) + 1, 6, 30);
+  if (fallbackSeason != null)
+    return toDayIndex(Number(fallbackSeason) + 1, 6, 30);
   return null;
 }
 
 export function contractStartDay(contract, fallbackSeason = null) {
-  if (!contract) return fallbackSeason != null ? seasonStartDayFor(fallbackSeason) : null;
+  if (!contract)
+    return fallbackSeason != null ? seasonStartDayFor(fallbackSeason) : null;
   const direct = dayIndexFromDateInput(
     contract.startDate ?? contract.contractStartDate ?? contract.signedDate,
     null,
@@ -137,7 +146,11 @@ export function daysUntilExpiry(contract, currentDay) {
   return expiry - currentDay;
 }
 
-export function contractYearsRemaining(contract, currentDay, currentSeason = null) {
+export function contractYearsRemaining(
+  contract,
+  currentDay,
+  currentSeason = null,
+) {
   if (!contract) return 0;
   const remainingDays = daysUntilExpiry(contract, currentDay);
   if (remainingDays != null) return Math.max(0, remainingDays / DAYS_PER_YEAR);
@@ -145,7 +158,9 @@ export function contractYearsRemaining(contract, currentDay, currentSeason = nul
   if (expiry != null && Number.isFinite(currentDay)) {
     return Math.max(0, (expiry - currentDay) / DAYS_PER_YEAR);
   }
-  const season = Number(contract.expiresSeason ?? contract.expires ?? contract.endSeason);
+  const season = Number(
+    contract.expiresSeason ?? contract.expires ?? contract.endSeason,
+  );
   if (Number.isFinite(season) && Number.isFinite(currentSeason)) {
     return Math.max(0, season - currentSeason + 0.5);
   }
@@ -166,7 +181,9 @@ export function defaultSquadRole(player) {
 
 function normalizedWage(value, fallback = 0) {
   const wage = Number(value);
-  return Number.isFinite(wage) && wage >= 0 ? Math.round(wage) : Math.max(0, Math.round(fallback));
+  return Number.isFinite(wage) && wage >= 0
+    ? Math.round(wage)
+    : Math.max(0, Math.round(fallback));
 }
 
 export function estimateWeeklyWage(player, club = null) {
@@ -174,7 +191,8 @@ export function estimateWeeklyWage(player, club = null) {
   const potential = Number(player?.potential ?? overall);
   const age = Number(player?.age ?? 25);
   const prestige = Number(club?.prestige ?? club?.reputation ?? 50);
-  let wage = 700 + overall * overall * 8 + Math.max(0, potential - overall) * 120;
+  let wage =
+    700 + overall * overall * 8 + Math.max(0, potential - overall) * 120;
   wage *= 0.85 + prestige / 140;
   if (age <= 21) wage *= 0.92;
   if (age >= 31) wage *= 0.95;
@@ -182,7 +200,10 @@ export function estimateWeeklyWage(player, club = null) {
   return Math.max(500, Math.round(wage / 50) * 50);
 }
 
-export function createDefaultContract(player, { club = null, currentDay = null, season = null, years = 3 } = {}) {
+export function createDefaultContract(
+  player,
+  { club = null, currentDay = null, season = null, years = 3 } = {},
+) {
   const startDay = Number.isFinite(currentDay)
     ? currentDay
     : Number.isFinite(season)
@@ -190,7 +211,10 @@ export function createDefaultContract(player, { club = null, currentDay = null, 
       : seasonStartDayFor(fromDayIndex(currentDay ?? 0)?.year ?? 2026);
   const safeYears = clamp(Math.round(Number(years) || 3), 1, 6);
   const expiryDay = startDay + safeYears * DAYS_PER_YEAR;
-  const wage = normalizedWage(player?.contract?.wage, estimateWeeklyWage(player, club));
+  const wage = normalizedWage(
+    player?.contract?.wage,
+    estimateWeeklyWage(player, club),
+  );
   return {
     startDate: startDay,
     expiryDate: expiryDay,
@@ -200,7 +224,9 @@ export function createDefaultContract(player, { club = null, currentDay = null, 
     squadRole: defaultSquadRole(player),
     releaseClause: player?.contract?.releaseClause ?? null,
     status: CONTRACT_STATUSES.ACTIVE,
-    history: Array.isArray(player?.contract?.history) ? [...player.contract.history] : [],
+    history: Array.isArray(player?.contract?.history)
+      ? [...player.contract.history]
+      : [],
     renewalRejected: false,
     preContractAllowed: false,
     pendingOffer: null,
@@ -238,7 +264,9 @@ export function applyInitialContractTerm(
     contractStartDay(contract, season) ??
     (Number.isFinite(currentDay)
       ? currentDay
-      : seasonStartDayFor(season ?? fromDayIndex(currentDay ?? 0)?.year ?? 2026));
+      : seasonStartDayFor(
+          season ?? fromDayIndex(currentDay ?? 0)?.year ?? 2026,
+        ));
   const years = initialCareerContractYears(player);
   const expiryDay = startDay + years * DAYS_PER_YEAR;
   contract.startDate = startDay;
@@ -255,7 +283,10 @@ export function applyInitialContractTerm(
   return contract;
 }
 
-export function normalizeContract(player, { club = null, currentDay = null, season = null } = {}) {
+export function normalizeContract(
+  player,
+  { club = null, currentDay = null, season = null } = {},
+) {
   if (!player) return null;
   if (!player.clubId) {
     player.squadStatus = "Free Agent";
@@ -264,10 +295,13 @@ export function normalizeContract(player, { club = null, currentDay = null, seas
       status: CONTRACT_STATUSES.FREE_AGENT,
       weeklyWage: 0,
       wage: 0,
-      expiryDate: contractExpiryDay(player.contract, season) ?? currentDay ?? null,
+      expiryDate:
+        contractExpiryDay(player.contract, season) ?? currentDay ?? null,
       startDate: contractStartDay(player.contract, season),
       squadRole: player.contract?.squadRole ?? "Free Agent",
-      history: Array.isArray(player.contract?.history) ? player.contract.history : [],
+      history: Array.isArray(player.contract?.history)
+        ? player.contract.history
+        : [],
       renewalRejected: false,
       preContractAllowed: false,
       pendingOffer: null,
@@ -275,14 +309,32 @@ export function normalizeContract(player, { club = null, currentDay = null, seas
     return player.contract;
   }
 
-  const existing = player.contract && typeof player.contract === "object" ? player.contract : {};
-  const base = createDefaultContract(player, { club, currentDay, season, years: existing.years ?? 3 });
+  const existing =
+    player.contract && typeof player.contract === "object"
+      ? player.contract
+      : {};
+  const base = createDefaultContract(player, {
+    club,
+    currentDay,
+    season,
+    years: existing.years ?? 3,
+  });
   const startDate = contractStartDay(existing, season) ?? base.startDate;
   const expiryDate = contractExpiryDay(existing, season) ?? base.expiryDate;
-  const weeklyWage = normalizedWage(existing.weeklyWage ?? existing.wage, base.weeklyWage);
+  const weeklyWage = normalizedWage(
+    existing.weeklyWage ?? existing.wage,
+    base.weeklyWage,
+  );
   const years = Math.max(
     1,
-    Math.round(Number(existing.years ?? existing.contractYears ?? yearsBetweenDays(startDate, expiryDate) ?? base.years) || base.years),
+    Math.round(
+      Number(
+        existing.years ??
+          existing.contractYears ??
+          yearsBetweenDays(startDate, expiryDate) ??
+          base.years,
+      ) || base.years,
+    ),
   );
   const normalized = {
     ...base,
@@ -290,6 +342,7 @@ export function normalizeContract(player, { club = null, currentDay = null, seas
     startDate,
     expiryDate,
     years,
+    durationYears: years,
     weeklyWage,
     wage: weeklyWage,
     squadRole: existing.squadRole ?? base.squadRole,
@@ -303,13 +356,21 @@ export function normalizeContract(player, { club = null, currentDay = null, seas
     preContractAllowed: !!existing.preContractAllowed,
     pendingOffer: existing.pendingOffer ?? null,
     lastProcessedDay: existing.lastProcessedDay ?? null,
-    signingBonus: Math.max(0, Math.round(Number(existing.signingBonus ?? 0) || 0)),
+    signingBonus: Math.max(
+      0,
+      Math.round(Number(existing.signingBonus ?? 0) || 0),
+    ),
   };
 
   // Keep legacy fields in sync for existing code paths.
   const expiry = fromDayIndex(expiryDate);
-  normalized.expiresSeason = expiry ? (expiry.month >= 7 ? expiry.year : expiry.year - 1) : normalized.expiresSeason;
-  normalized.expires = normalized.expiresSeason ?? existing.expires ?? season ?? null;
+  normalized.expiresSeason = expiry
+    ? expiry.month >= 7
+      ? expiry.year
+      : expiry.year - 1
+    : normalized.expiresSeason;
+  normalized.expires =
+    normalized.expiresSeason ?? existing.expires ?? season ?? null;
   normalized.endSeason = normalized.expires;
   normalized.contractYears = normalized.years;
 
@@ -338,53 +399,92 @@ export function canDiscussRenewal(contract, currentDay) {
 function addContractHistory(contract, entry) {
   contract.history ??= [];
   contract.history.push(entry);
-  if (contract.history.length > 20) contract.history.splice(0, contract.history.length - 20);
+  if (contract.history.length > 20)
+    contract.history.splice(0, contract.history.length - 20);
 }
 
-export function desiredWeeklyWage(player, club = null, { offeredRole = null } = {}) {
+export function desiredWeeklyWage(
+  player,
+  club = null,
+  { offeredRole = null } = {},
+) {
   const base = estimateWeeklyWage(player, club);
   const role = offeredRole ?? defaultSquadRole(player);
   const roleFactor =
-    role === "Star Player" ? 1.35 :
-    role === "Key Player" ? 1.2 :
-    role === "Important Player" ? 1.1 :
-    role === "Regular Starter" ? 1.0 :
-    role === "Squad Rotation" ? 0.9 :
-    role === "Prospect" ? 0.8 :
-    0.75;
+    role === "Star Player"
+      ? 1.35
+      : role === "Key Player"
+        ? 1.2
+        : role === "Important Player"
+          ? 1.1
+          : role === "Regular Starter"
+            ? 1.0
+            : role === "Squad Rotation"
+              ? 0.9
+              : role === "Prospect"
+                ? 0.8
+                : 0.75;
   const form = Number(player?.lastMatchRating ?? 6.6);
   const formFactor = clamp(1 + (form - 6.6) * 0.05, 0.9, 1.2);
   const age = Number(player?.age ?? 25);
   const ageFactor = age <= 23 ? 0.95 : age >= 32 ? 0.92 : 1;
-  return Math.max(500, Math.round((base * roleFactor * formFactor * ageFactor) / 50) * 50);
+  return Math.max(
+    500,
+    Math.round((base * roleFactor * formFactor * ageFactor) / 50) * 50,
+  );
 }
 
 export function evaluateContractOffer(player, club, offer) {
-  const desiredWage = desiredWeeklyWage(player, club, { offeredRole: offer.squadRole });
+  const desiredWage = desiredWeeklyWage(player, club, {
+    offeredRole: offer.squadRole,
+  });
   const offeredWage = normalizedWage(offer.weeklyWage ?? offer.wage, 0);
-  const years = clamp(Math.round(Number(offer.years ?? offer.contractYears ?? 2) || 2), 1, 5);
+  const years = clamp(
+    Math.round(Number(offer.years ?? offer.contractYears ?? 2) || 2),
+    1,
+    5,
+  );
   const overall = Number(player?.overall ?? 60);
   const potential = Number(player?.potential ?? overall);
   const age = Number(player?.age ?? 25);
   const prestige = Number(club?.prestige ?? club?.reputation ?? 50);
-  const apps = Number(player?.stats?.apps ?? player?.leaguePerformance?.apps ?? 0);
+  const apps = Number(
+    player?.stats?.apps ?? player?.leaguePerformance?.apps ?? 0,
+  );
   const playingTimeFit =
-    offer.squadRole === "Star Player" || offer.squadRole === "Key Player" ? 1 :
-    offer.squadRole === "Important Player" || offer.squadRole === "Regular Starter" ? 0.9 :
-    offer.squadRole === "Squad Rotation" ? 0.7 :
-    0.5;
-  const performance = clamp(Number(player?.lastMatchRating ?? 6.5) / 10, 0.45, 0.95);
-  const interest = Number(player?.transferInterest ?? player?.marketDemand ?? 0);
-  const loyalty = clamp(Number(player?.loyalty ?? (prestige >= 75 ? 65 : 55)), 0, 100);
+    offer.squadRole === "Star Player" || offer.squadRole === "Key Player"
+      ? 1
+      : offer.squadRole === "Important Player" ||
+          offer.squadRole === "Regular Starter"
+        ? 0.9
+        : offer.squadRole === "Squad Rotation"
+          ? 0.7
+          : 0.5;
+  const performance = clamp(
+    Number(player?.lastMatchRating ?? 6.5) / 10,
+    0.45,
+    0.95,
+  );
+  const interest = Number(
+    player?.transferInterest ?? player?.marketDemand ?? 0,
+  );
+  const loyalty = clamp(
+    Number(player?.loyalty ?? (prestige >= 75 ? 65 : 55)),
+    0,
+    100,
+  );
 
   let score = 0;
   score += (offeredWage / Math.max(1, desiredWage)) * 38;
   score += (prestige / 100) * 18;
   score += playingTimeFit * 14;
   score += performance * 10;
-  score += (years >= 2 && years <= 4 ? 8 : years === 1 ? 4 : 5);
+  score += years >= 2 && years <= 4 ? 8 : years === 1 ? 4 : 5;
   score += (loyalty / 100) * 8;
-  score += Math.min(6, (Number(offer.signingBonus ?? 0) || 0) / Math.max(25000, desiredWage * 20));
+  score += Math.min(
+    6,
+    (Number(offer.signingBonus ?? 0) || 0) / Math.max(25000, desiredWage * 20),
+  );
   score -= Math.min(18, interest / 8);
   if (age <= 22 && potential >= overall + 6 && playingTimeFit < 0.8) score -= 8;
   if (age >= 30 && years >= 4) score -= 4;
@@ -392,12 +492,16 @@ export function evaluateContractOffer(player, club, offer) {
 
   const demandedWage = Math.max(offeredWage, desiredWage);
   const minYears = age >= 32 ? 1 : age <= 22 ? 2 : 2;
-  const acceptable = score >= 52 && offeredWage >= desiredWage * 0.92 && years >= minYears;
+  const acceptable =
+    score >= 52 && offeredWage >= desiredWage * 0.92 && years >= minYears;
   const demands = [];
-  if (offeredWage < desiredWage * 0.92) demands.push(`weekly wage closer to ${demandedWage}`);
+  if (offeredWage < desiredWage * 0.92)
+    demands.push(`weekly wage closer to ${demandedWage}`);
   if (years < minYears) demands.push(`at least ${minYears} years`);
-  if (playingTimeFit < 0.7 && overall >= 72) demands.push("an improved squad role");
-  if (Number(offer.signingBonus ?? 0) < desiredWage * 4 && overall >= 78) demands.push("a signing bonus");
+  if (playingTimeFit < 0.7 && overall >= 72)
+    demands.push("an improved squad role");
+  if (Number(offer.signingBonus ?? 0) < desiredWage * 4 && overall >= 78)
+    demands.push("a signing bonus");
 
   return {
     acceptable,
@@ -424,13 +528,18 @@ function ensurePlayerDetachedFromClub(player, club) {
   }
   if (Array.isArray(club.customXI)) {
     club.customXI = club.customXI.filter((entry) => {
-      const id = typeof entry === "string" ? entry : entry?.playerId ?? entry?.id;
+      const id =
+        typeof entry === "string" ? entry : (entry?.playerId ?? entry?.id);
       return id !== player.id;
     });
   }
 }
 
-export function expirePlayerContract(player, club, { currentDay = 0, season = null, reason = "Contract expired" } = {}) {
+export function expirePlayerContract(
+  player,
+  club,
+  { currentDay = 0, season = null, reason = "Contract expired" } = {},
+) {
   if (!player) return null;
   const previousClubId = player.clubId ?? club?.id ?? null;
   const contract = normalizeContract(player, { club, currentDay, season });
@@ -452,7 +561,8 @@ export function expirePlayerContract(player, club, { currentDay = 0, season = nu
     preContractAllowed: false,
     pendingOffer: null,
     // An agreed pre-contract survives expiry so the destination club can collect him.
-    preContract: contract.preContract?.status === "agreed" ? contract.preContract : null,
+    preContract:
+      contract.preContract?.status === "agreed" ? contract.preContract : null,
   };
   addContractHistory(player.contract, {
     date: currentDay,
@@ -469,14 +579,46 @@ export function expirePlayerContract(player, club, { currentDay = 0, season = nu
   };
 }
 
-export function signPlayerContract(player, club, offer, { currentDay = 0, season = null, isFreeAgent = false, loyaltyBonus = 0, agentFee = 0 } = {}) {
+export function signPlayerContract(
+  player,
+  club,
+  offer,
+  {
+    currentDay = 0,
+    season = null,
+    isFreeAgent = false,
+    loyaltyBonus = 0,
+    agentFee = 0,
+  } = {},
+) {
   if (!player || !club) throw new Error("Player and club are required.");
   const normalized = normalizeContract(player, { club, currentDay, season });
-  const years = clamp(Math.round(Number(offer.years ?? offer.contractYears ?? 2) || 2), 1, 5);
-  const startDate = Number.isFinite(currentDay) ? currentDay : normalized.startDate ?? seasonStartDayFor(season ?? 2026);
+  const years = clamp(
+    Math.round(Number(offer.years ?? offer.contractYears ?? 2) || 2),
+    1,
+    5,
+  );
+  const startDate = Number.isFinite(currentDay)
+    ? currentDay
+    : (normalized.startDate ?? seasonStartDayFor(season ?? 2026));
   const expiryDate = startDate + years * DAYS_PER_YEAR;
-  const weeklyWage = normalizedWage(offer.weeklyWage ?? offer.wage, normalized.weeklyWage);
-  const signingBonus = Math.max(0, Math.round(Number(offer.signingBonus ?? 0) || 0));
+  const weeklyWage = normalizedWage(
+    offer.weeklyWage ?? offer.wage,
+    normalized.weeklyWage,
+  );
+  const signingBonus = Math.max(
+    0,
+    Math.round(Number(offer.signingBonus ?? 0) || 0),
+  );
+  const offerId =
+    offer.id ??
+    `${club.id}-${player.id}-${currentDay}-${years}-${weeklyWage}-${signingBonus}`;
+  if (
+    player.contract?.pendingOffer?.status === "signed" &&
+    player.contract.pendingOffer.offerId === offerId &&
+    player.clubId === club.id
+  )
+    return player.contract;
 
   if (isFreeAgent) {
     if (player.clubId && player.clubId !== club.id) {
@@ -489,13 +631,15 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
   player.clubId = club.id;
   player.squadStatus = "Contracted";
   if (typeof club.addPlayer === "function") club.addPlayer(player.id);
-  else if (Array.isArray(club.squad) && !club.squad.includes(player.id)) club.squad.push(player.id);
+  else if (Array.isArray(club.squad) && !club.squad.includes(player.id))
+    club.squad.push(player.id);
 
   player.contract = {
     ...normalized,
     startDate,
     expiryDate,
     years,
+    durationYears: years,
     contractYears: years,
     weeklyWage,
     wage: weeklyWage,
@@ -507,14 +651,24 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
     status: CONTRACT_STATUSES.ACTIVE,
     renewalRejected: false,
     preContractAllowed: false,
-    pendingOffer: null,
     preContract: null,
     signingBonus,
+    signingBonusPaid: signingBonus <= 0,
+    signingBonusPaymentId:
+      signingBonus > 0
+        ? `signing-bonus-${club.id}-${player.id}-${currentDay}-${isFreeAgent ? "free" : "renewal"}`
+        : null,
     loyaltyBonus: Math.max(0, Math.round(Number(loyaltyBonus) || 0)),
     signedSeason: season ?? normalized.signedSeason ?? null,
+    pendingOffer: null,
+    signedOfferId: offerId,
   };
   const expiry = fromDayIndex(expiryDate);
-  player.contract.expiresSeason = expiry ? (expiry.month >= 7 ? expiry.year : expiry.year - 1) : season;
+  player.contract.expiresSeason = expiry
+    ? expiry.month >= 7
+      ? expiry.year
+      : expiry.year - 1
+    : season;
   player.contract.expires = player.contract.expiresSeason;
   player.contract.endSeason = player.contract.expiresSeason;
   addContractHistory(player.contract, {
@@ -530,15 +684,26 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
 
   if (signingBonus > 0) {
     const finance = ensureClubFinance(club);
-    const eventId = `signing-bonus-${club.id}-${player.id}-${currentDay}-${isFreeAgent ? "free" : "renewal"}`;
-    if (!finance.processedEvents.includes(eventId)) {
-      recordClubTransaction(club, {
+    const eventId = player.contract.signingBonusPaymentId;
+    if (
+      !player.contract.signingBonusPaid &&
+      !finance.processedEvents.includes(eventId)
+    ) {
+      const transaction = recordClubTransaction(club, {
         id: eventId,
         date: currentDay,
         category: "wages",
-        description: `Signing bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
+        description:
+          `Signing bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
         expense: signingBonus,
       });
+      if (!transaction)
+        throw new Error(
+          "The signing bonus could not be recorded in the club ledger.",
+        );
+      player.contract.signingBonusPaid = true;
+    } else if (finance.processedEvents.includes(eventId)) {
+      player.contract.signingBonusPaid = true;
     }
     syncLegacyBudgetFields(club);
   }
@@ -550,7 +715,8 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
         id: eventId,
         date: currentDay,
         category: "wages",
-        description: `Loyalty bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
+        description:
+          `Loyalty bonus for ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
         expense: loyaltyBonus,
       });
     }
@@ -564,7 +730,8 @@ export function signPlayerContract(player, club, offer, { currentDay = 0, season
         id: eventId,
         date: currentDay,
         category: "agent fees",
-        description: `Agent fee for signing ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
+        description:
+          `Agent fee for signing ${player.first ?? ""} ${player.last ?? player.name ?? "player"}`.trim(),
         expense: agentFee,
       });
     }
@@ -582,7 +749,11 @@ export function wageCommitmentForPlayers(players = []) {
   return players.reduce((total, player) => {
     if (!player || player.clubId == null) return total;
     const contract = player.contract ?? {};
-    if (contract.status === CONTRACT_STATUSES.FREE_AGENT || contract.status === CONTRACT_STATUSES.EXPIRED) return total;
+    if (
+      contract.status === CONTRACT_STATUSES.FREE_AGENT ||
+      contract.status === CONTRACT_STATUSES.EXPIRED
+    )
+      return total;
     const wage = Number(contract.weeklyWage ?? contract.wage ?? 0);
     if (!Number.isFinite(wage) || wage <= 0) return total;
     return total + wage;
@@ -677,11 +848,18 @@ export function createContractNegotiation({
  * club reputation and performance, playing time, squad role, manager
  * relationship, personality and interest from other clubs.
  */
-export function resolveContractNegotiation(player, club, negotiation, context = {}) {
+export function resolveContractNegotiation(
+  player,
+  club,
+  negotiation,
+  context = {},
+) {
   const evaluation = evaluateContractOffer(player, club, negotiation.offer);
   const rng = context.rng ?? Math.random;
   const remaining = daysUntilExpiry(player.contract, context.currentDay ?? 0);
-  const personality = Array.isArray(player.personality) ? player.personality[0] : player.personality;
+  const personality = Array.isArray(player.personality)
+    ? player.personality[0]
+    : player.personality;
   const ambitious = personality === "Ambitious" || personality === "Determined";
   const loyal = personality === "Loyal";
   const managerTrust = Number(
@@ -708,7 +886,11 @@ export function resolveContractNegotiation(player, club, negotiation, context = 
 
   if (evaluation.acceptable && score >= 52) {
     negotiation.status = "accepted";
-    negotiation.response = { ...outcome, kind: "accepted", message: `${outcome.playerName} has agreed to the new contract.` };
+    negotiation.response = {
+      ...outcome,
+      kind: "accepted",
+      message: `${outcome.playerName} has agreed to the new contract.`,
+    };
     return negotiation.response;
   }
   if (score >= 46 && evaluation.demands.length && negotiation.rounds < 3) {
@@ -743,7 +925,7 @@ export function resolveContractNegotiation(player, club, negotiation, context = 
     ...outcome,
     kind: evaluation.demands.length ? "wants-improved-wages" : "rejected",
     demands: evaluation.demands,
-    message: `${outcome.playerName} has rejected the offer${evaluation.demands.length ? ` — he wants ${evaluation.demands.join(", ")}` : ""}.`,
+    message: `${outcome.playerName} has rejected the offer${evaluation.demands.length ? ` ï¿½ he wants ${evaluation.demands.join(", ")}` : ""}.`,
   };
   return negotiation.response;
 }
@@ -760,7 +942,8 @@ export function freeAgentClubInterest(player, club, context = {}) {
   const finance = club?.finances ?? {};
   const wageSpace = Math.max(
     0,
-    Number(finance.wageBudget ?? club?.wageBudget ?? 0) - Number(context.currentWageBill ?? 0),
+    Number(finance.wageBudget ?? club?.wageBudget ?? 0) -
+      Number(context.currentWageBill ?? 0),
   );
   const leagueReputation = Number(context.leagueReputation ?? prestige);
   const positionalNeed = Number(context.positionalNeed ?? 50);
@@ -774,9 +957,17 @@ export function freeAgentClubInterest(player, club, context = {}) {
   // The gap is deliberately quadratic so a 55-rated squad player prefers a
   // modest club while an 88-rated star will only move to a major one.
   const reputationGap = Math.abs(prestige - (overall + 6));
-  const reputationFit = clamp(100 - reputationGap * reputationGap * 0.35, 0, 100);
+  const reputationFit = clamp(
+    100 - reputationGap * reputationGap * 0.35,
+    0,
+    100,
+  );
   const ageFit = age <= 23 ? 88 : age <= 30 ? 95 : 70;
-  const affordability = clamp((wageSpace / Math.max(1, wage * 1.5)) * 100, 0, 100);
+  const affordability = clamp(
+    (wageSpace / Math.max(1, wage * 1.5)) * 100,
+    0,
+    100,
+  );
   const score =
     reputationFit * 0.42 +
     ageFit * 0.12 +
@@ -795,17 +986,26 @@ export function freeAgentOpeningOffer(player, club, context = {}) {
   const finance = club?.finances ?? {};
   const wageSpace = Math.max(
     0,
-    Number(finance.wageBudget ?? club?.wageBudget ?? 0) - Number(context.currentWageBill ?? 0),
+    Number(finance.wageBudget ?? club?.wageBudget ?? 0) -
+      Number(context.currentWageBill ?? 0),
   );
   // Clubs lowball slightly; richer clubs can be more generous.
   const ratio = prestige >= 75 ? 1 : prestige >= 55 ? 0.95 : 0.88;
   const wage = Math.min(wageSpace, Math.round((expected * ratio) / 50) * 50);
-  const years = Number(player.age ?? 25) >= 31 ? 1 : Number(player.overall ?? 60) <= 68 ? 2 : 3;
+  const years =
+    Number(player.age ?? 25) >= 31
+      ? 1
+      : Number(player.overall ?? 60) <= 68
+        ? 2
+        : 3;
   const role =
-    Number(player.overall ?? 60) >= 80 ? "Key Player"
-    : Number(player.overall ?? 60) >= 74 ? "Important Player"
-    : Number(player.overall ?? 60) >= 68 ? "Regular Starter"
-    : "Squad Rotation";
+    Number(player.overall ?? 60) >= 80
+      ? "Key Player"
+      : Number(player.overall ?? 60) >= 74
+        ? "Important Player"
+        : Number(player.overall ?? 60) >= 68
+          ? "Regular Starter"
+          : "Squad Rotation";
   return createContractOffer({
     weeklyWage: Math.max(500, wage),
     years,
@@ -820,10 +1020,18 @@ export function freeAgentOpeningOffer(player, club, context = {}) {
  * months at his current club; he joins the destination club for free when
  * the existing contract expires. One player can hold only one agreement.
  */
-export function createPreContractAgreement({ player, club, offer, currentDay, season = null }) {
+export function createPreContractAgreement({
+  player,
+  club,
+  offer,
+  currentDay,
+  season = null,
+}) {
   const existing = player.contract?.preContract;
   if (existing && existing.status === "agreed") {
-    throw new Error(`${player.first ?? "Player"} already has a pre-contract agreement.`);
+    throw new Error(
+      `${player.first ?? "Player"} already has a pre-contract agreement.`,
+    );
   }
   if (player.clubId === club?.id) {
     throw new Error("A pre-contract is only for joining another club.");
@@ -834,7 +1042,10 @@ export function createPreContractAgreement({ player, club, offer, currentDay, se
     fromClubId: player.clubId ?? null,
     toClubId: club.id,
     toClubName: club.name,
-    weeklyWage: Math.max(0, Math.round(Number(offer.weeklyWage ?? offer.wage ?? 0))),
+    weeklyWage: Math.max(
+      0,
+      Math.round(Number(offer.weeklyWage ?? offer.wage ?? 0)),
+    ),
     years: clamp(Math.round(Number(offer.years ?? 3) || 3), 1, 5),
     signingBonus: Math.max(0, Math.round(Number(offer.signingBonus ?? 0) || 0)),
     squadRole: offer.squadRole ?? "Regular Starter",
@@ -845,7 +1056,10 @@ export function createPreContractAgreement({ player, club, offer, currentDay, se
   player.contract ??= {};
   player.contract.preContract = agreement;
   player.contract.preContractAllowed = true;
-  if (player.contract.status === CONTRACT_STATUSES.ACTIVE || player.contract.status === CONTRACT_STATUSES.EXPIRING) {
+  if (
+    player.contract.status === CONTRACT_STATUSES.ACTIVE ||
+    player.contract.status === CONTRACT_STATUSES.EXPIRING
+  ) {
     player.contract.status = CONTRACT_STATUSES.PRE_CONTRACT_AGREED;
   }
   return agreement;
@@ -856,7 +1070,9 @@ export function canSignPreContract(player, currentDay) {
   if (!player?.clubId) return false;
   if (player.contract?.preContract?.status === "agreed") return false;
   const remaining = daysUntilExpiry(player.contract, currentDay);
-  return remaining != null && remaining > 0 && remaining <= PRE_CONTRACT_WINDOW_DAYS;
+  return (
+    remaining != null && remaining > 0 && remaining <= PRE_CONTRACT_WINDOW_DAYS
+  );
 }
 
 /* =====================================================================
@@ -900,7 +1116,8 @@ export function squadRecruitmentPriority(club, players = []) {
   const band = squadPriorityBand(size, limit);
   if (band === "full") return 0;
   const goalkeepers = squad.filter(
-    (id) => normalizePosition(players.find((p) => p.id === id)?.position) === "GK",
+    (id) =>
+      normalizePosition(players.find((p) => p.id === id)?.position) === "GK",
   ).length;
   if (goalkeepers < SQUAD_MANAGEMENT_RULES.minimumGoalkeepers) return 3;
   if (band === "critical") return 3;
@@ -940,20 +1157,28 @@ export function aiContractDecision(player, club, context = {}) {
   const shortOfFloor = squadSize <= squadFloor;
 
   // Financial reality: can the club still afford him for another season?
-  const expectedRenewalWage = Math.max(wage, estimateWeeklyWage(player, club) * 1.05);
+  const expectedRenewalWage = Math.max(
+    wage,
+    estimateWeeklyWage(player, club) * 1.05,
+  );
   const canAfford = wageBill + (expectedRenewalWage - wage) <= wageBudget;
 
   // Important starter with room in the budget: renew, always.
   const starterQualityGap = overall - (46 + prestige * 0.22);
   const isImportantStarter =
     starterQualityGap >= -4 &&
-    (role === "Star Player" || role === "Key Player" || role === "Important Player" ||
+    (role === "Star Player" ||
+      role === "Key Player" ||
+      role === "Important Player" ||
       role === "Regular Starter");
 
   if (!shortOfFloor) {
     // Declining veterans the club can afford to let go.
     const declining =
-      age >= 31 && overall <= 74 && potential - overall <= 2 && positionalDepth > 2;
+      age >= 31 &&
+      overall <= 74 &&
+      potential - overall <= 2 &&
+      positionalDepth > 2;
     if (declining && rng.chance(0.55)) {
       return {
         action: "release",
@@ -986,25 +1211,41 @@ export function aiContractDecision(player, club, context = {}) {
   // High-potential youngsters are cheap to keep and rarely sold.
   if (age <= 23 && potential >= overall + 4) {
     if (canAfford || shortOfFloor) {
-      return { action: "renew", reason: `${player.first ?? "Player"} is a prospect worth developing.`, expectedWage: expectedRenewalWage };
+      return {
+        action: "renew",
+        reason: `${player.first ?? "Player"} is a prospect worth developing.`,
+        expectedWage: expectedRenewalWage,
+      };
     }
   }
 
   // Good enough for the squad, affordable: renew quietly.
   if (canAfford && positionalDepth <= 3 && starterQualityGap >= -8) {
-    return { action: "renew", reason: `${player.first ?? "Player"} provides usable depth.`, expectedWage: expectedRenewalWage };
+    return {
+      action: "renew",
+      reason: `${player.first ?? "Player"} provides usable depth.`,
+      expectedWage: expectedRenewalWage,
+    };
   }
 
-  // Goalkeepers are always protected — a club without two keepers is broken.
+  // Goalkeepers are always protected ï¿½ a club without two keepers is broken.
   if (isGoalkeeper && positionalDepth <= 1) {
-    return { action: "renew", reason: `Goalkeeper cover must be retained.`, expectedWage: expectedRenewalWage };
+    return {
+      action: "renew",
+      reason: `Goalkeeper cover must be retained.`,
+      expectedWage: expectedRenewalWage,
+    };
   }
 
   if (shortOfFloor) {
-    return { action: "renew", reason: `The squad is too small to lose anyone.`, expectedWage: expectedRenewalWage };
+    return {
+      action: "renew",
+      reason: `The squad is too small to lose anyone.`,
+      expectedWage: expectedRenewalWage,
+    };
   }
 
-  // Default: not financially or technically justified — let him go.
+  // Default: not financially or technically justified ï¿½ let him go.
   return {
     action: rng.chance(0.35) ? "transfer-list" : "release",
     reason: `${player.first ?? "Player"} does not justify a renewal on footballing or financial grounds.`,
@@ -1018,8 +1259,10 @@ export function aiContractDecision(player, club, context = {}) {
  * role, clamped by what the club can afford.
  */
 export function aiRenewalOffer(player, club, context = {}) {
-  const expected =
-    Math.max(Number(player?.contract?.weeklyWage ?? 0), estimateWeeklyWage(player, club));
+  const expected = Math.max(
+    Number(player?.contract?.weeklyWage ?? 0),
+    estimateWeeklyWage(player, club),
+  );
   const overall = Number(player?.overall ?? 60);
   const age = Number(player?.age ?? 25);
   const prestige = Number(club?.prestige ?? 50);
@@ -1027,25 +1270,44 @@ export function aiRenewalOffer(player, club, context = {}) {
   const wageBudget = Number(finance.wageBudget ?? club?.wageBudget ?? 0);
   const wageBill = Number(context.wageBill ?? 0);
   const room = Math.max(0, wageBudget - wageBill);
-  const wage = Math.max(500, Math.min(Math.round(expected * 1.08 / 50) * 50, Math.floor(room * 0.55) || expected));
+  const wage = Math.max(
+    500,
+    Math.min(
+      Math.round((expected * 1.08) / 50) * 50,
+      Math.floor(room * 0.55) || expected,
+    ),
+  );
   const years = age >= 33 ? 1 : age >= 30 ? 2 : overall >= 78 ? 4 : 3;
   const role = defaultSquadRole(player);
   const signingBonus = Math.round(wage * (prestige >= 75 ? 8 : 4));
-  return createContractOffer({ weeklyWage: wage, years, squadRole: role, signingBonus });
+  return createContractOffer({
+    weeklyWage: wage,
+    years,
+    squadRole: role,
+    signingBonus,
+  });
 }
-
-
 
 /**
  * Position the AI should recruit for next: the highest-demand role from the
  * squad assessment, with goalkeepers protected ahead of everything else.
  */
-export function priorityRecruitmentPosition(needs = {}, players = [], club = null) {
-  const squad = club && Array.isArray(club.squad)
-    ? club.squad.map((id) => players.find((player) => player.id === id)).filter(Boolean)
-    : [];
-  const goalkeepers = squad.filter((p) => normalizePosition(p.position) === "GK");
-  if (goalkeepers.length < SQUAD_MANAGEMENT_RULES.minimumGoalkeepers) return "GK";
+export function priorityRecruitmentPosition(
+  needs = {},
+  players = [],
+  club = null,
+) {
+  const squad =
+    club && Array.isArray(club.squad)
+      ? club.squad
+          .map((id) => players.find((player) => player.id === id))
+          .filter(Boolean)
+      : [];
+  const goalkeepers = squad.filter(
+    (p) => normalizePosition(p.position) === "GK",
+  );
+  if (goalkeepers.length < SQUAD_MANAGEMENT_RULES.minimumGoalkeepers)
+    return "GK";
   let best = null;
   let bestDemand = 45; // below "Moderate Need" the club stands pat
   for (const need of Object.values(needs)) {
@@ -1056,5 +1318,3 @@ export function priorityRecruitmentPosition(needs = {}, players = [], club = nul
   }
   return best;
 }
-
-

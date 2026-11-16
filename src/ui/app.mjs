@@ -52,10 +52,7 @@ import {
   PLAYSTYLE_CATEGORIES,
   ensurePlayStyles,
 } from "../model/playstyles.mjs";
-import {
-  COACHING_ATTRIBUTES,
-  ensureCoachProfile,
-} from "../core/coaching.mjs";
+import { COACHING_ATTRIBUTES, ensureCoachProfile } from "../core/coaching.mjs";
 import {
   buildPlayableCareerLeagues,
   parseCompetitionMetadataCsv,
@@ -65,6 +62,38 @@ import {
 import { parsePlayerDatabaseCsv } from "../data/player-database.mjs";
 
 const $app = document.querySelector("#app");
+const PERF_METRICS_KEY = "touchline-performance-metrics";
+const perfMetricSamples = new Map();
+function measurePerformance(name, operation) {
+  const started = performance.now();
+  try {
+    return operation();
+  } finally {
+    const duration = performance.now() - started;
+    const samples = perfMetricSamples.get(name) ?? [];
+    samples.push(duration);
+    if (samples.length > 50) samples.shift();
+    perfMetricSamples.set(name, samples);
+    try {
+      window.__touchlinePerf = {
+        ...(window.__touchlinePerf ?? {}),
+        [name]: {
+          latestMs: duration,
+          averageMs:
+            samples.reduce((sum, value) => sum + value, 0) / samples.length,
+          sampleCount: samples.length,
+          heapUsedBytes: performance.memory?.usedJSHeapSize ?? null,
+        },
+      };
+      localStorage.setItem(
+        PERF_METRICS_KEY,
+        JSON.stringify(window.__touchlinePerf),
+      );
+    } catch {
+      /* Optional browser metrics only. */
+    }
+  }
+}
 const SAVE_PREFIX = "touchline-career-slot-";
 const AUTOSAVE_KEY = "touchline-career-autosave";
 const DEVELOPER_MODE_PASSWORD = "cleothegoat";
@@ -160,19 +189,38 @@ let playerDirectoryPage = 0;
 let expandedFixtureStatsId = null;
 let fixtureFilter = "all";
 let transfersTab = "market";
-let freeAgentFilters = { query: "", position: "", nationality: "", minOverall: "", minPotential: "", maxAge: "", minAge: "", maxExpectedWage: "", sort: "overall" };
+let freeAgentFilters = {
+  query: "",
+  position: "",
+  nationality: "",
+  minOverall: "",
+  minPotential: "",
+  maxAge: "",
+  minAge: "",
+  maxExpectedWage: "",
+  sort: "overall",
+};
 let openNegotiationForm = null; // { playerId, kind: "renewal" | "free-agent" | "pre-contract" }
 let lastAutosaveAt = 0;
 let autosaveUnavailable = false;
+let autosaveTimer = null;
+let autosaveBusy = false;
+let pendingCriticalAutosave = false;
+let lastSerializedSave = null;
+let loadedGameDataPromise = null;
 let matchSimulationTimer = null;
 let simulationProgressTimer = null;
 let simulationProgressCompleteTimer = null;
 
 function serializeCareerSave(compact = false) {
-  return JSON.stringify(
-    compact && typeof career.toCompactJSON === "function"
-      ? career.toCompactJSON()
-      : career.toJSON(),
+  return measurePerformance(
+    compact ? "compactSaveSerialization" : "saveSerialization",
+    () =>
+      JSON.stringify(
+        compact && typeof career.toCompactJSON === "function"
+          ? career.toCompactJSON()
+          : career.toJSON(),
+      ),
   );
 }
 
@@ -201,17 +249,36 @@ function writeCareerStorage(key, value) {
   }
 }
 
-function persistAutosave() {
+function persistAutosave({ critical = false, immediate = false } = {}) {
   if (!career || autosaveUnavailable) return;
+  if (autosaveBusy) {
+    pendingCriticalAutosave ||= critical;
+    return;
+  }
+  const now = Date.now();
+  if (!critical && !immediate && now - lastAutosaveAt < 2500) {
+    if (autosaveTimer != null) window.clearTimeout(autosaveTimer);
+    autosaveTimer = window.setTimeout(() => {
+      autosaveTimer = null;
+      persistAutosave({ immediate: true });
+    }, 500);
+    return;
+  }
+  autosaveBusy = true;
   const previous = localStorage.getItem(AUTOSAVE_KEY);
   try {
-    writeCareerStorage(AUTOSAVE_KEY, serializeCareerSave(false));
+    const serialized = serializeCareerSave(false);
+    if (serialized === lastSerializedSave) return;
+    writeCareerStorage(AUTOSAVE_KEY, serialized);
+    lastSerializedSave = serialized;
     lastAutosaveAt = Date.now();
     autosaveUnavailable = false;
   } catch (error) {
     if (error?.name === "QuotaExceededError") {
       try {
-        writeCareerStorage(AUTOSAVE_KEY, serializeCareerSave(true));
+        const compact = serializeCareerSave(true);
+        writeCareerStorage(AUTOSAVE_KEY, compact);
+        lastSerializedSave = compact;
         lastAutosaveAt = Date.now();
         autosaveUnavailable = false;
         return;
@@ -231,10 +298,22 @@ function persistAutosave() {
       }
     }
     console.error("Could not autosave career:", error);
+  } finally {
+    autosaveBusy = false;
+    if (pendingCriticalAutosave) {
+      pendingCriticalAutosave = false;
+      persistAutosave({ critical: true });
+    }
   }
 }
 
 async function loadData() {
+  if (loadedGameDataPromise) return loadedGameDataPromise;
+  loadedGameDataPromise = loadDataUncached();
+  return loadedGameDataPromise;
+}
+
+async function loadDataUncached() {
   const [
     clubs,
     leagueConfig,
@@ -265,16 +344,22 @@ async function loadData() {
     fetchData("data/config/career-league-teams.json").then(checkJson),
     fetchData("data/config/expanded-leagues.json").then(checkJson),
     fetchData("data/config/europe-access.json").then(checkJson),
-    fetchData("data/squads/touchline_player_database.csv").then(async (response) => {
-      if (!response.ok)
-        throw new Error(`Could not load the central player database (${response.status}).`);
-      return response.text();
-    }),
+    fetchData("data/squads/touchline_player_database.csv").then(
+      async (response) => {
+        if (!response.ok)
+          throw new Error(
+            `Could not load the central player database (${response.status}).`,
+          );
+        return response.text();
+      },
+    ),
     fetchData("data/config/key-moment-options.json").then(checkJson),
   ]);
   leagueConfig.$expandedLeagues = expandedLeagueConfig;
   leagueConfig.$europeanAccess = europeanAccessConfig;
-  const playerDatabase = parsePlayerDatabaseCsv(playerDatabaseCsv);
+  const playerDatabase = measurePerformance("playerDatabaseParsing", () =>
+    parsePlayerDatabaseCsv(playerDatabaseCsv),
+  );
   data = {
     clubs,
     league: leagueConfig["premier-league"],
@@ -366,7 +451,8 @@ async function fetchData(path) {
 function staminaMarkup(player, compact = false) {
   const stamina = ensureStamina(player);
   const tone = stamina >= 75 ? "lime" : stamina >= 40 ? "yellow" : "red";
-  const color = stamina >= 75 ? "#65d46e" : stamina >= 40 ? "#f0c86a" : "#ef6b6b";
+  const color =
+    stamina >= 75 ? "#65d46e" : stamina >= 40 ? "#f0c86a" : "#ef6b6b";
   return `<span class="stamina-meter${compact ? " stamina-compact" : ""}" title="Stamina ${stamina}%"><span class="stamina-meter-label">STAMINA ${stamina}%</span><span class="meter"><span style="width:${stamina}%;background:${color}"></span></span></span>`;
 }
 
@@ -2175,7 +2261,9 @@ function renderCreation() {
       return;
     }
     try {
-      career = createCareer(data, options);
+      career = measurePerformance("careerCreation", () =>
+        createCareer(data, options),
+      );
       creationDraft = null;
       creationTab = null;
       screen = "overview";
@@ -2203,6 +2291,7 @@ function renderGame() {
   if (screen === "credits") return renderCredits();
   if (!career) return renderCreation();
   persistAutosave();
+  const renderStarted = performance.now();
   const previousScreen = renderedScreen;
   const isScreenTransition = previousScreen !== screen;
   if (previousScreen && previousScreen !== screen && !isBackNavigation) {
@@ -2219,6 +2308,34 @@ function renderGame() {
   if (previousScreen === screen) {
     scrollToRestore = captureGameScroll();
     screenScrollPositions.set(screen, scrollToRestore);
+  }
+  if (
+    previousScreen === screen &&
+    !notice &&
+    $app.querySelector(".game-shell")
+  ) {
+    const content = $app.querySelector(".content");
+    if (content) content.innerHTML = renderScreen();
+    const renderDuration = performance.now() - renderStarted;
+    const renderSamples = perfMetricSamples.get("domRender") ?? [];
+    renderSamples.push(renderDuration);
+    if (renderSamples.length > 50) renderSamples.shift();
+    perfMetricSamples.set("domRender", renderSamples);
+    if (window.__touchlinePerf)
+      window.__touchlinePerf.domRender = {
+        latestMs: renderDuration,
+        averageMs:
+          renderSamples.reduce((sum, value) => sum + value, 0) /
+          renderSamples.length,
+        sampleCount: renderSamples.length,
+        heapUsedBytes: performance.memory?.usedJSHeapSize ?? null,
+      };
+    $app.querySelectorAll("[data-screen]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.screen === screen);
+    });
+    bindPlayerLinks(content ?? $app);
+    scheduleMatchSimulationTick();
+    return;
   }
   const navGroups = [
     {
@@ -2321,6 +2438,20 @@ function renderGame() {
       </section>
     </div>`;
   renderedScreen = screen;
+  const renderDuration = performance.now() - renderStarted;
+  const renderSamples = perfMetricSamples.get("domRender") ?? [];
+  renderSamples.push(renderDuration);
+  if (renderSamples.length > 50) renderSamples.shift();
+  perfMetricSamples.set("domRender", renderSamples);
+  if (window.__touchlinePerf)
+    window.__touchlinePerf.domRender = {
+      latestMs: renderDuration,
+      averageMs:
+        renderSamples.reduce((sum, value) => sum + value, 0) /
+        renderSamples.length,
+      sampleCount: renderSamples.length,
+      heapUsedBytes: performance.memory?.usedJSHeapSize ?? null,
+    };
   isBackNavigation = false;
   if (scrollRestoreFrame) cancelAnimationFrame(scrollRestoreFrame);
   scrollRestoreFrame = requestAnimationFrame(() => {
@@ -2358,16 +2489,12 @@ function renderGame() {
   const destinationLeagueSelect = $app.querySelector(
     "#agent-destination-league",
   );
-  const destinationClubSelect = $app.querySelector(
-    "#agent-destination-club",
-  );
+  const destinationClubSelect = $app.querySelector("#agent-destination-club");
   const searchSelectedClubButton = $app.querySelector(
     '[data-action="refresh-offers"][data-search-all="false"]',
   );
   destinationLeagueSelect?.addEventListener("change", () => {
-    destinationClubSelect.replaceChildren(
-      new Option("Choose a club", ""),
-    );
+    destinationClubSelect.replaceChildren(new Option("Choose a club", ""));
     const league = career.worldCareerLeagues.find(
       (entry) => entry.league.id === destinationLeagueSelect.value,
     );
@@ -2416,19 +2543,37 @@ function renderGame() {
         years: Number(values.years),
         squadRole: values.squadRole,
         signingBonus: Number(values.signingBonus) || 0,
-        releaseClause: values.releaseClause ? Number(values.releaseClause) : null,
+        releaseClause: values.releaseClause
+          ? Number(values.releaseClause)
+          : null,
       };
       const kind = contractOfferFormEl.dataset.kind;
       try {
         const decision =
           kind === "pre-contract"
-            ? career.offerPreContract(contractOfferFormEl.dataset.playerId, offer)
+            ? career.offerPreContract(
+                contractOfferFormEl.dataset.playerId,
+                offer,
+              )
             : kind === "renewal"
-              ? career.offerContractRenewal(contractOfferFormEl.dataset.playerId, offer)
-              : (career.signFreeAgent(contractOfferFormEl.dataset.playerId, offer), { kind: "signed" });
+              ? career.offerContractRenewal(
+                  contractOfferFormEl.dataset.playerId,
+                  offer,
+                )
+              : (career.signFreeAgent(
+                  contractOfferFormEl.dataset.playerId,
+                  offer,
+                ),
+                { kind: "signed" });
         openNegotiationForm = null;
-        transfersTab = kind === "renewal" ? "negotiations" : kind === "pre-contract" ? "confirmed" : "free-agents";
-        notice = decision.message ?? decision.kind ?? "The offer was submitted.";
+        transfersTab =
+          kind === "renewal"
+            ? "negotiations"
+            : kind === "pre-contract"
+              ? "confirmed"
+              : "free-agents";
+        notice =
+          decision.message ?? decision.kind ?? "The offer was submitted.";
       } catch (error) {
         notice = error.message;
       }
@@ -2513,7 +2658,10 @@ function renderGame() {
     focus.addEventListener("change", () => {
       try {
         if (career.isManagerCareer) {
-          career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value });
+          career.setClubTrainingPlan({
+            programme: $app.querySelector("#club-training-programme")?.value,
+            intensity: $app.querySelector("#club-training-intensity")?.value,
+          });
         } else career.setTrainingFocus(focus.value);
         persistAutosave();
         notice = `Individual focus set to ${focus.value}.`;
@@ -2696,11 +2844,11 @@ function renderGame() {
       playerDirectoryPage = 0;
       renderGame();
     });
-    const fixtureFilterSelect = $app.querySelector("#fixture-filter");
-    fixtureFilterSelect?.addEventListener("change", () => {
-      fixtureFilter = fixtureFilterSelect.value;
-      renderGame();
-    });
+  const fixtureFilterSelect = $app.querySelector("#fixture-filter");
+  fixtureFilterSelect?.addEventListener("change", () => {
+    fixtureFilter = fixtureFilterSelect.value;
+    renderGame();
+  });
   // The player hub embeds the same directory with suffixed IDs so both pages can
   // bind without clashing.
   const hubSearch = $app.querySelector("#player-directory-search-hub");
@@ -2744,10 +2892,7 @@ function scheduleMatchSimulationTick() {
     window.clearTimeout(matchSimulationTimer);
     matchSimulationTimer = null;
   }
-  if (
-    screen !== "simulation" ||
-    career?.matchSimulation?.status !== "running"
-  )
+  if (screen !== "simulation" || career?.matchSimulation?.status !== "running")
     return;
   matchSimulationTimer = window.setTimeout(() => {
     matchSimulationTimer = null;
@@ -2802,18 +2947,17 @@ function refreshLiveMatchDisplay() {
           : state.status === "running"
             ? "LIVE"
             : "READY";
-    const liveText =
-      liveTag.classList.contains("simulation-competition")
-        ? `${match.competitionName ?? career.league.name} · ${
-            state.status === "finished"
-              ? "FULL TIME"
-              : state.status === "paused"
-                ? "KEY MOMENT"
-                : state.status === "running"
-                  ? `LIVE · ${state.minute}'`
-                  : "READY TO PLAY"
-          }`
-        : statusLabel;
+    const liveText = liveTag.classList.contains("simulation-competition")
+      ? `${match.competitionName ?? career.league.name} · ${
+          state.status === "finished"
+            ? "FULL TIME"
+            : state.status === "paused"
+              ? "KEY MOMENT"
+              : state.status === "running"
+                ? `LIVE · ${state.minute}'`
+                : "READY TO PLAY"
+        }`
+      : statusLabel;
     if (liveTag.textContent !== liveText) liveTag.textContent = liveText;
   }
 
@@ -2932,7 +3076,11 @@ function refreshLivePitch(match, minute) {
       const incidentKey = nextIncident?.getAttribute("aria-label") ?? "";
       if ((currentIncident?.getAttribute("aria-label") ?? "") !== incidentKey) {
         currentIncident?.remove();
-        if (nextIncident) slot.insertBefore(nextIncident.cloneNode(true), slot.querySelector(".pitch-name"));
+        if (nextIncident)
+          slot.insertBefore(
+            nextIncident.cloneNode(true),
+            slot.querySelector(".pitch-name"),
+          );
       }
     }
   }
@@ -3085,10 +3233,12 @@ function updateLiveMatchNotice() {
     content.prepend(toast);
   }
   toast.innerHTML = `${esc(notice)}<button aria-label="Dismiss" data-action="dismiss">×</button>`;
-  toast.querySelector('[data-action="dismiss"]')?.addEventListener("click", () => {
-    notice = "";
-    toast.remove();
-  });
+  toast
+    .querySelector('[data-action="dismiss"]')
+    ?.addEventListener("click", () => {
+      notice = "";
+      toast.remove();
+    });
 }
 
 function currentDate() {
@@ -3122,11 +3272,16 @@ function renderScreen() {
   if (screen === "transfers-list") return renderTransfersList();
   if (screen === "agent") return renderAgent();
   if (screen === "history") return renderHistory();
-  if (screen === "investments") return career.isManagerCareer ? renderInvestments() : renderTraining();
-  if (screen === "scouting") return career.isManagerCareer ? renderScouting() : renderTraining();
-  if (screen === "office") return career.isManagerCareer ? renderClubOffice() : renderTraining();
-  if (screen === "coaching") return career.isManagerCareer ? renderCoaching() : renderTraining();
-  if (screen === "academy") return career.isManagerCareer ? renderAcademy() : renderTraining();
+  if (screen === "investments")
+    return career.isManagerCareer ? renderInvestments() : renderTraining();
+  if (screen === "scouting")
+    return career.isManagerCareer ? renderScouting() : renderTraining();
+  if (screen === "office")
+    return career.isManagerCareer ? renderClubOffice() : renderTraining();
+  if (screen === "coaching")
+    return career.isManagerCareer ? renderCoaching() : renderTraining();
+  if (screen === "academy")
+    return career.isManagerCareer ? renderAcademy() : renderTraining();
   if (screen === "world") return renderWorld();
   return renderTraining();
 }
@@ -3508,10 +3663,26 @@ function renderWorld() {
                     const ratingSum =
                       live?.stats?.ratingSum ?? live?.ratingSum ?? 0;
                     const rating = apps ? ratingSum / apps : null;
-                    const marketValue = live?.marketValue ?? live?.value ?? player.marketValue ?? player.value ?? null;
-                    const prevMarket = live?.previousMarketValue ?? player.previousMarketValue ?? null;
-                    const change = marketValue != null && prevMarket != null ? marketValue - prevMarket : 0;
-                    const changeTag = change > 0 ? ` <small class="positive">▲ ${formatMarketValue(change)}</small>` : change < 0 ? ` <small class="negative">▼ ${formatMarketValue(Math.abs(change))}</small>` : "";
+                    const marketValue =
+                      live?.marketValue ??
+                      live?.value ??
+                      player.marketValue ??
+                      player.value ??
+                      null;
+                    const prevMarket =
+                      live?.previousMarketValue ??
+                      player.previousMarketValue ??
+                      null;
+                    const change =
+                      marketValue != null && prevMarket != null
+                        ? marketValue - prevMarket
+                        : 0;
+                    const changeTag =
+                      change > 0
+                        ? ` <small class="positive">▲ ${formatMarketValue(change)}</small>`
+                        : change < 0
+                          ? ` <small class="negative">▼ ${formatMarketValue(Math.abs(change))}</small>`
+                          : "";
                     return `<tr><td>${playerProfileLink(live?.id ?? runtimeId, player.displayName, "player-directory-name")}<small class="world-nationality">${player.source === "generated" ? "GENERATED PLAYER" : player.source === "user-supplied-estimate" ? "SUPPLIED PLAYER" : "IMPORTED PLAYER"}</small></td><td>${esc(player.position)}</td><td>${player.age ?? "—"}</td><td class="world-rating">${player.overall}</td><td>${player.potential ?? "—"}</td><td>${goals}</td><td>${assists}</td><td>${apps}</td><td>${rating == null ? "—" : formatDecimal(rating)}</td><td>${marketValue ? `${formatMarketValue(marketValue)}${changeTag}` : "—"}</td></tr>`;
                   })
                   .join("")
@@ -3547,9 +3718,11 @@ function contractCountdownMarkup(player) {
   const remaining = player.clubId
     ? contractRemainingDuration(player.contract, currentDay())
     : null;
-  if (!remaining) return '<span class="contract-countdown is-free">Free agent</span>';
+  if (!remaining)
+    return '<span class="contract-countdown is-free">Free agent</span>';
   const totalMonths = remaining.years * 12 + remaining.months;
-  const tone = totalMonths <= 1 ? "urgent" : totalMonths <= 6 ? "warning" : "ok";
+  const tone =
+    totalMonths <= 1 ? "urgent" : totalMonths <= 6 ? "warning" : "ok";
   const label = remaining.years
     ? `${remaining.years}y ${remaining.months}m`
     : `${Math.max(0, totalMonths)}m`;
@@ -3580,27 +3753,45 @@ function contractOfferForm(playerId, kind, defaults = {}) {
 function renderTransfersList() {
   const tabs = [
     ["market", "Transfer Market"],
+    ["transfer-list", "Transfer List"],
+    ["offers", "Transfer Offers"],
     ["free-agents", "Free Agents"],
     ["expiries", "Contract Expiries"],
     ["negotiations", "Negotiations"],
-    ["confirmed", "Confirmed Transfers"],
+    ["confirmed", "Transfer History"],
   ];
   const heading = `<div class="page-heading"><div><div class="eyebrow lime">TRANSFER CENTRE</div><h1>Transfers</h1><p>The market, the free-agent pool, expiring contracts and your negotiations in one hub.</p></div><span class="live-tag">${esc(career.league.name)}</span></div>
     <nav class="transfer-tabs">${tabs.map(([key, label]) => `<button class="transfer-tab ${transfersTab === key ? "active" : ""}" data-action="transfers-tab" data-tab="${key}">${label}</button>`).join("")}</nav>`;
   const body =
-    transfersTab === "free-agents" ? renderFreeAgentsTab()
-    : transfersTab === "expiries" ? renderContractExpiriesTab()
-    : transfersTab === "negotiations" ? renderNegotiationsTab()
-    : transfersTab === "confirmed" ? renderConfirmedTransfersTab()
-    : renderTransferMarketTab();
+    transfersTab === "transfer-list"
+      ? renderTransferListTab()
+      : transfersTab === "offers"
+        ? renderTransferListOffersTab()
+        : transfersTab === "free-agents"
+          ? renderFreeAgentsTab()
+          : transfersTab === "expiries"
+            ? renderContractExpiriesTab()
+            : transfersTab === "negotiations"
+              ? renderNegotiationsTab()
+              : transfersTab === "confirmed"
+                ? renderConfirmedTransfersTab()
+                : renderTransferMarketTab();
   const dialog = openNegotiationForm
-    ? contractOfferForm(openNegotiationForm.playerId, openNegotiationForm.kind, openNegotiationForm.defaults ?? {})
+    ? contractOfferForm(
+        openNegotiationForm.playerId,
+        openNegotiationForm.kind,
+        openNegotiationForm.defaults ?? {},
+      )
     : "";
   return `${heading}${body}${dialog}`;
 }
 
 function renderTransferMarketTab() {
-  const market = career.transferMarket();
+  const market = career.transferMarket({
+    minOverall: 50,
+    excludeClubId: career.club.id,
+    limit: 120,
+  });
   return `
     <section class="panel table-panel transfer-market-panel">
       <div class="panel-heading">
@@ -3609,12 +3800,13 @@ function renderTransferMarketTab() {
       </div>
       <table class="world-roster-table">
         <thead><tr><th>PLAYER</th><th>AGE</th><th>POSITION</th><th>OVR</th><th>CURRENT CLUB</th><th>CONTRACT</th><th>TRANSFER VALUE</th><th></th></tr></thead>
-        <tbody>${market
-          .map(
-            ({ player, club, marketValue }) => `
+        <tbody>${
+          market
+            .map(
+              ({ player, club, marketValue }) => `
               <tr>
                 <td><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b></td>
-                <td>${player.dob != null ? ageOn(player.dob, currentDay()) : player.age ?? "—"}</td>
+                <td>${player.dob != null ? ageOn(player.dob, currentDay()) : (player.age ?? "—")}</td>
                 <td>${esc(player.position)}</td>
                 <td class="world-rating">${player.overall}</td>
                 <td>${esc(club?.name ?? "Free agent")}</td>
@@ -3623,19 +3815,37 @@ function renderTransferMarketTab() {
                 <td><button class="button-primary" data-action="${career.isManagerCareer ? "buy-player" : "player-request"}" data-request-type="better-teammates" data-player-id="${esc(player.id)}">${career.isManagerCareer ? "Enquire" : "Ask manager to sign"}</button></td>
               </tr>
             `,
-          )
-          .join("") || '<tr><td colspan="8" class="scorer-empty">No players are currently listed.</td></tr>'}</tbody>
+            )
+            .join("") ||
+          '<tr><td colspan="8" class="scorer-empty">No players are currently listed.</td></tr>'
+        }</tbody>
       </table>
     </section>
   `;
 }
 
+function renderTransferListTab() {
+  const listed = career.transferList ?? [];
+  const listing = listed.some((entry) => entry.playerId === career.player.id);
+  return `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">YOUR TRANSFER STATUS</div><h2>Transfer list</h2></div><span class="live-tag">${listing ? "LISTED" : "NOT LISTED"}</span></div><p class="muted">Clubs can scout and make offers during transfer windows. Listing creates interest, not guaranteed bids; your registration and contract remain unchanged until you accept and complete a move.</p><button class="button-primary" data-action="${listing ? "remove-transfer-list" : "add-transfer-list"}">${listing ? "Remove from transfer list" : "Place me on transfer list"}</button><div class="transfer-list">${listed.map((entry) => `<article class="transfer-agent"><div><b>${esc(entry.playerName ?? `${career.player.first} ${career.player.last}`)}</b><small>${entry.offers ?? 0} credible offers · listed ${esc(entry.listedAt ?? "")}</small></div></article>`).join("") || '<p class="muted">No players are listed by your career.</p>'}</div></section>`;
+}
+
+function renderTransferListOffersTab() {
+  const offers = career.transferListOffers ?? [];
+  return `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB INTEREST</div><h2>Transfer offers</h2></div><span class="live-tag">${offers.length} OFFERS</span></div><div class="transfer-list">${offers.map((offer) => `<article class="transfer-agent"><div><b>${esc(offer.clubName)}</b><small>Fee €${formatDecimal(offer.fee)} · €${formatDecimal(offer.weeklyWage)}/wk · ${offer.years} years · €${formatDecimal(offer.signingBonus)} bonus · ${esc(offer.squadRole)}</small><small>${esc(offer.reason ?? "Position and squad need identified")}</small></div><div class="agent-actions"><button class="button-primary" data-action="accept-listed-offer" data-offer-id="${esc(offer.id)}">Accept</button><button class="button-quiet" data-action="negotiate-listed-offer" data-offer-id="${esc(offer.id)}">Negotiate</button><button class="button-quiet" data-action="reject-listed-offer" data-offer-id="${esc(offer.id)}">Reject</button></div></article>`).join("") || '<p class="muted">No clubs have made an offer yet. Leave yourself listed and continue the season to allow clubs to scout.</p>'}</div></section>`;
+}
+
 function renderFreeAgentsTab() {
   const f = freeAgentFilters;
-  const agents = career.freeAgents({ ...f, maxAge: f.maxAge, minAge: f.minAge });
+  const agents = career.freeAgents({
+    ...f,
+    maxAge: f.maxAge,
+    minAge: f.minAge,
+  });
   const sorters = {
     overall: (a, b) => b.player.overall - a.player.overall,
-    age: (a, b) => ageOn(a.player.dob, currentDay()) - ageOn(b.player.dob, currentDay()),
+    age: (a, b) =>
+      ageOn(a.player.dob, currentDay()) - ageOn(b.player.dob, currentDay()),
     potential: (a, b) => b.player.potential - a.player.potential,
     value: (a, b) => b.marketValue - a.marketValue,
     wage: (a, b) => a.expectedWage - b.expectedWage,
@@ -3647,19 +3857,37 @@ function renderFreeAgentsTab() {
       <div class="panel-heading"><div><div class="eyebrow">FREE AGENTS</div><h2>Available without a fee</h2></div><span class="live-tag">${agents.length} AVAILABLE</span></div>
       <form id="free-agent-filter-form" class="free-agent-filters">
         <input name="query" placeholder="Search name…" value="${esc(f.query)}">
-        <select name="position"><option value="">All positions</option>${[...new Set(["GK","CB","LB","RB","CDM","CM","AM","LW","RW","ST"])].map((p) => `<option ${f.position === p ? "selected" : ""}>${p}</option>`).join("")}</select>
+        <select name="position"><option value="">All positions</option>${[...new Set(["GK", "CB", "LB", "RB", "CDM", "CM", "AM", "LW", "RW", "ST"])].map((p) => `<option ${f.position === p ? "selected" : ""}>${p}</option>`).join("")}</select>
         <input name="nationality" placeholder="Nationality (e.g. ENG)" value="${esc(f.nationality)}">
         <input name="minAge" type="number" placeholder="Min age" value="${f.minAge}" min="15" max="45">
         <input name="maxAge" type="number" placeholder="Max age" value="${f.maxAge}" min="15" max="45">
         <input name="minOverall" type="number" placeholder="Min OVR" value="${f.minOverall}" min="40" max="99">
         <input name="minPotential" type="number" placeholder="Min POT" value="${f.minPotential}" min="40" max="99">
         <input name="maxExpectedWage" type="number" placeholder="Max wage €/wk" value="${f.maxExpectedWage}" min="0" step="1000">
-        <select name="sort">${[["overall","Sort: Overall"],["age","Sort: Age"],["potential","Sort: Potential"],["value","Sort: Market value"],["wage","Sort: Wage demand"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <select name="sort">${[
+          ["overall", "Sort: Overall"],
+          ["age", "Sort: Age"],
+          ["potential", "Sort: Potential"],
+          ["value", "Sort: Market value"],
+          ["wage", "Sort: Wage demand"],
+        ]
+          .map(
+            ([v, l]) =>
+              `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`,
+          )
+          .join("")}</select>
         <button class="button-primary" type="submit">Apply</button>
       </form>
-      <div class="free-agent-grid">${agents
-        .map(
-          ({ player, formerClub, expectedWage, marketValue, preContract }) => `
+      <div class="free-agent-grid">${
+        agents
+          .map(
+            ({
+              player,
+              formerClub,
+              expectedWage,
+              marketValue,
+              preContract,
+            }) => `
           <article class="free-agent-card ${preContract ? "is-pending" : ""}">
             <header><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b><span class="status-pill">FREE AGENT</span></header>
             <div class="free-agent-meta">
@@ -3676,8 +3904,10 @@ function renderFreeAgentsTab() {
             </div>
             ${canAct && !preContract && !player.contract?.preContract?.status ? `<footer><button class="button-primary" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="free-agent" data-wage="${expectedWage}">Offer contract</button></footer>` : ""}
           </article>`,
-        )
-        .join("") || '<div class="empty-report"><p>No free agents match these filters.</p></div>'}</div>
+          )
+          .join("") ||
+        '<div class="empty-report"><p>No free agents match these filters.</p></div>'
+      }</div>
     </section>
   `;
 }
@@ -3689,9 +3919,10 @@ function renderContractExpiriesTab() {
       <div class="panel-heading"><div><div class="eyebrow">COUNTDOWN</div><h2>Contract expiries</h2></div><span class="live-tag">${expiries.length} INSIDE 18 MONTHS</span></div>
       <table class="world-roster-table">
         <thead><tr><th>PLAYER</th><th>CLUB</th><th>POSITION</th><th>OVR</th><th>AGE</th><th>EXPIRES IN</th><th>STAGE</th><th></th></tr></thead>
-        <tbody>${expiries
-          .map(
-            ({ player, club, remaining, stage }) => `
+        <tbody>${
+          expiries
+            .map(
+              ({ player, club, remaining, stage }) => `
             <tr>
               <td><b>${playerProfileLink(player, `${player.first} ${player.last}`)}</b></td>
               <td>${esc(club?.name ?? "—")}</td>
@@ -3702,8 +3933,10 @@ function renderContractExpiriesTab() {
               <td><span class="contract-stage is-${esc(stage)}">${{ "twelve-months": "Renewal window", "six-months": "Pre-contract window", "final-month": "Final month", expired: "Expired", normal: "—" }[stage] ?? stage}</span></td>
               <td>${career.isManagerCareer && stage === "six-months" && player.clubId !== career.club.id ? `<button class="button-quiet" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="pre-contract" data-wage="${freeAgentExpectedWage(player)}">Pre-contract</button>` : career.isManagerCareer && player.clubId === career.club.id && stage !== "normal" ? `<button class="button-quiet" data-action="open-contract-offer" data-player-id="${esc(player.id)}" data-kind="renewal" data-wage="${player.contract?.weeklyWage ?? 5000}">Renew</button>` : ""}</td>
             </tr>`,
-          )
-          .join("") || '<tr><td colspan="8" class="scorer-empty">No contracts are expiring inside the next 18 months.</td></tr>'}</tbody>
+            )
+            .join("") ||
+          '<tr><td colspan="8" class="scorer-empty">No contracts are expiring inside the next 18 months.</td></tr>'
+        }</tbody>
       </table>
     </section>
   `;
@@ -3714,9 +3947,10 @@ function renderNegotiationsTab() {
   return `
     <section class="panel">
       <div class="panel-heading"><div><div class="eyebrow">INBOX</div><h2>Contract negotiations</h2></div><span class="live-tag">${negotiations.length} RECORDED</span></div>
-      <div class="transfer-list">${negotiations
-        .map(
-          (negotiation) => `
+      <div class="transfer-list">${
+        negotiations
+          .map(
+            (negotiation) => `
         <article class="transfer-agent negotiation-item is-${esc(negotiation.status)}">
           <div>
             <b>${esc(negotiation.playerName)}</b>
@@ -3728,8 +3962,10 @@ function renderNegotiationsTab() {
             ${["awaiting-response", "counteroffer"].includes(negotiation.status) ? `<button class="button-quiet" data-action="withdraw-negotiation" data-negotiation-id="${esc(negotiation.id)}">Withdraw</button>` : ""}
           </div>
         </article>`,
-        )
-        .join("") || '<div class="empty-report"><p>No contract negotiations yet. Open a player in Contract Expiries or Free Agents to make an offer.</p></div>'}</div>
+          )
+          .join("") ||
+        '<div class="empty-report"><p>No contract negotiations yet. Open a player in Contract Expiries or Free Agents to make an offer.</p></div>'
+      }</div>
     </section>
   `;
 }
@@ -3741,9 +3977,10 @@ function renderConfirmedTransfersTab() {
       <div class="panel-heading"><div><div class="eyebrow">RECORD</div><h2>Confirmed transfers</h2></div><span class="live-tag">${career.transferHistory?.length ?? 0} TOTAL</span></div>
       <table class="world-roster-table">
         <thead><tr><th>DATE</th><th>PLAYER</th><th>FROM</th><th>TO</th><th>TYPE</th><th>FEE</th><th>WAGE</th></tr></thead>
-        <tbody>${confirmed
-          .map(
-            (item) => `
+        <tbody>${
+          confirmed
+            .map(
+              (item) => `
           <tr class="${item.future ? "is-future-transfer" : ""}">
             <td>${item.date != null ? esc(formatDate(item.date)) : "—"}${item.future ? ' <span class="status-pill">FUTURE</span>' : ""}</td>
             <td><b>${esc(item.playerName ?? "—")}</b></td>
@@ -3753,8 +3990,10 @@ function renderConfirmedTransfersTab() {
             <td>${item.fee ? `€${formatDecimal(item.fee)}` : "Free"}</td>
             <td>${item.wage ? `€${formatDecimal(item.wage)}/wk` : "—"}</td>
           </tr>`,
-          )
-          .join("") || '<tr><td colspan="7" class="scorer-empty">No transfers have been completed yet.</td></tr>'}</tbody>
+            )
+            .join("") ||
+          '<tr><td colspan="7" class="scorer-empty">No transfers have been completed yet.</td></tr>'
+        }</tbody>
       </table>
     </section>
   `;
@@ -3770,11 +4009,11 @@ function renderAgent() {
     lastSearchDay: null,
   };
   const agentStats = career.agent
-    ? career.agentPerformance?.[career.agent.id] ?? {
+    ? (career.agentPerformance?.[career.agent.id] ?? {
         searches: 0,
         offers: 0,
         deals: 0,
-      }
+      })
     : { searches: 0, offers: 0, deals: 0 };
   const conversionRate = agentStats.offers
     ? Math.round((agentStats.deals / agentStats.offers) * 100)
@@ -3949,13 +4188,14 @@ function renderOverview() {
           )
           .sort((left, right) => left.scheduledDay - right.scheduledDay)[0]
       : null;
-  const worldCupUserStats =
-    worldCupTournament?.playerStats?.[career.player.id] ?? {
-      apps: 0,
-      goals: 0,
-      assists: 0,
-      ratingSum: 0,
-    };
+  const worldCupUserStats = worldCupTournament?.playerStats?.[
+    career.player.id
+  ] ?? {
+    apps: 0,
+    goals: 0,
+    assists: 0,
+    ratingSum: 0,
+  };
   const worldCupUserGroup = worldCupTournament?.groups?.find((group) =>
     group.teams.some((team) => team.id === worldCupUserTeam?.id),
   );
@@ -3988,17 +4228,17 @@ function renderOverview() {
   const userStatus = userOnWorldCupDuty
     ? "INTERNATIONAL DUTY"
     : userIsStarter
-    ? "STARTER"
-    : userIsSub
-      ? "ON THE BENCH"
-      : "NOT SELECTED";
+      ? "STARTER"
+      : userIsSub
+        ? "ON THE BENCH"
+        : "NOT SELECTED";
   const userStatusClass = userOnWorldCupDuty
     ? "overview-lineup-status is-international"
     : userIsStarter
-    ? "overview-lineup-status is-starter"
-    : userIsSub
-      ? "overview-lineup-status is-bench"
-      : "overview-lineup-status is-out";
+      ? "overview-lineup-status is-starter"
+      : userIsSub
+        ? "overview-lineup-status is-bench"
+        : "overview-lineup-status is-out";
   function renderLineupStatus() {
     return `<div class="${userStatusClass}"><span class="overview-lineup-dot"></span><div><small>${userOnWorldCupDuty ? "NATIONAL TEAM" : "THIS WEEK'S SQUAD"}</small><b>${esc(userStatus)}</b></div></div>`;
   }
@@ -4070,7 +4310,7 @@ function renderMatchReport(match) {
   const moments = revealedKeyMoments(match)
     .map(
       ({ moment }) =>
-        `<div class="key-moment"><div class="moment-copy"><span>${matchMinuteLabel(moment.minute)}' · KEY MOMENT</span><b>${moment.kind === "oneOnOne" && moment.position === "GK" ? "One-on-one save" : momentLabels[moment.kind] ?? "Key moment"}</b></div>${moment.resolved ? (moment.resolved.subbedOff ? `<span class="moment-outcome">SUBBED OFF</span>` : `<span class="moment-outcome ${moment.resolved.success ? "success" : "failure"}">${moment.resolved.success ? "SUCCESS" : "MISSED"} · ${Math.round(moment.resolved.probability * 100)}%</span>`) : `<span class="moment-outcome">PENDING IN MATCH SIM</span>`}</div>`,
+        `<div class="key-moment"><div class="moment-copy"><span>${matchMinuteLabel(moment.minute)}' · KEY MOMENT</span><b>${moment.kind === "oneOnOne" && moment.position === "GK" ? "One-on-one save" : (momentLabels[moment.kind] ?? "Key moment")}</b></div>${moment.resolved ? (moment.resolved.subbedOff ? `<span class="moment-outcome">SUBBED OFF</span>` : `<span class="moment-outcome ${moment.resolved.success ? "success" : "failure"}">${moment.resolved.success ? "SUCCESS" : "MISSED"} · ${Math.round(moment.resolved.probability * 100)}%</span>`) : `<span class="moment-outcome">PENDING IN MATCH SIM</span>`}</div>`,
     )
     .join("");
   const standoutBadge =
@@ -4286,7 +4526,10 @@ function renderMatchFormations(match, minute = Number.POSITIVE_INFINITY) {
       };
     });
     const averageStamina = entries.length
-      ? Math.round(entries.reduce((sum, entry) => sum + ensureStamina(entry.player), 0) / entries.length)
+      ? Math.round(
+          entries.reduce((sum, entry) => sum + ensureStamina(entry.player), 0) /
+            entries.length,
+        )
       : 100;
     const isUserSide = side === match.side;
     const clubName =
@@ -4303,10 +4546,9 @@ function matchLineupSignature(match) {
   return ["home", "away"]
     .map((side) => {
       const team = match[side];
-      const entries =
-        team?.xiSlots?.length
-          ? team.xiSlots
-          : (team?.xi ?? []).map((id) => ({ id }));
+      const entries = team?.xiSlots?.length
+        ? team.xiSlots
+        : (team?.xi ?? []).map((id) => ({ id }));
       return entries
         .map((entry, index) => `${entry.slotIndex ?? index}:${entry.id}`)
         .join(",");
@@ -4321,14 +4563,16 @@ function matchMinuteLabel(minute) {
 function matchMomentLabel(moment) {
   if (moment.kind === "oneOnOne" && moment.position === "GK")
     return "One-on-one save";
-  return {
-    chance: "Chance in the box",
-    penalty: "Penalty opportunity",
-    oneOnOne: "One-on-one",
-    bigPass: "Key pass or distribution",
-    lastDitch: "Defensive action",
-    keeperSave: "Goalkeeper save",
-  }[moment.kind] ?? "Key moment";
+  return (
+    {
+      chance: "Chance in the box",
+      penalty: "Penalty opportunity",
+      oneOnOne: "One-on-one",
+      bigPass: "Key pass or distribution",
+      lastDitch: "Defensive action",
+      keeperSave: "Goalkeeper save",
+    }[moment.kind] ?? "Key moment"
+  );
 }
 
 function renderSimulation({ embedded = false } = {}) {
@@ -4420,7 +4664,13 @@ function renderSimulation({ embedded = false } = {}) {
     </section>`;
 }
 
-function renderSimulationLiveEvent(match, state, activeMoment, decisionButtons, nextAction) {
+function renderSimulationLiveEvent(
+  match,
+  state,
+  activeMoment,
+  decisionButtons,
+  nextAction,
+) {
   if (state.status === "paused" && activeMoment) {
     return `<div class="simulation-event"><span class="eyebrow">MATCH CLOCK STOPPED · ${matchMinuteLabel(activeMoment.minute)}'</span><h2>${esc(matchMomentLabel(activeMoment))}</h2><p>Choose how to handle it. The clock will remain paused until you decide.</p>${decisionButtons}</div>`;
   }
@@ -4534,8 +4784,9 @@ function renderStats() {
       id: state.league?.id,
       league: state.league,
     })),
-  ].filter((entry, index, entries) =>
-    entry?.id && entries.findIndex((item) => item?.id === entry.id) === index
+  ].filter(
+    (entry, index, entries) =>
+      entry?.id && entries.findIndex((item) => item?.id === entry.id) === index,
   );
   const worldState = career.worldLeagues.find(
     ({ league }) => league.id === selected,
@@ -4549,10 +4800,11 @@ function renderStats() {
   const userLeagueClubIds = new Set(career.clubs.map((club) => club.id));
   const pool = isUserLeague
     ? career.players.filter((player) => userLeagueClubIds.has(player.clubId))
-    : (worldState?.performers ?? career.players).filter((player) =>
-        worldState?.clubIds?.includes(player.clubId) ||
-        worldState?.league?.teamIds?.includes(player.clubId) ||
-        player.leagueId === selected
+    : (worldState?.performers ?? career.players).filter(
+        (player) =>
+          worldState?.clubIds?.includes(player.clubId) ||
+          worldState?.league?.teamIds?.includes(player.clubId) ||
+          player.leagueId === selected,
       );
 
   const statValue = (player, key) =>
@@ -4579,8 +4831,7 @@ function renderStats() {
   const clubOf = (player) =>
     career.clubs.find((club) => club.id === player.clubId) ??
     worldState?.clubIdentities?.[player.clubId] ??
-    career.worldCareerLeagues
-      ?.find((entry) => entry.league.id === selected)
+    career.worldCareerLeagues?.find((entry) => entry.league.id === selected)
       ?.clubIdentities?.[player.clubId] ??
     career.data?.clubs?.[selected]?.[player.clubId];
   return `<div class="page-heading"><div><div class="eyebrow lime">${esc(leagueName.toUpperCase())}</div><h1>Stats</h1><p>Every player's goals, assists and disciplinary record in this league, updated after each completed fixture.</p></div><label class="table-league-picker">League<select id="stats-league">${leagueEntries.map((entry) => `<option value="${esc(entry.id)}" ${entry.id === selected ? "selected" : ""}>${esc(entry.league?.name ?? entry.name ?? entry.id)}${entry.id === career.league.id ? " · Your league" : ""}</option>`).join("")}</select></label></div>
@@ -4651,10 +4902,12 @@ function renderChampionsLeague() {
       ? `<section class="panel tournament-bracket"><h3>Knockout bracket</h3><div class="bracket-grid">${bracketRounds}${finalBracket}</div></section>`
       : "";
   const topScorers = Object.values(competition.stats ?? {})
-    .filter((row) =>
-      row.apps > 0 &&
-      (row.competitionId == null || row.competitionId === "champions-league") &&
-      (row.season == null || row.season === competition.season),
+    .filter(
+      (row) =>
+        row.apps > 0 &&
+        (row.competitionId == null ||
+          row.competitionId === "champions-league") &&
+        (row.season == null || row.season === competition.season),
     )
     .sort((a, b) => b.goals - a.goals || b.assists - a.assists)
     .slice(0, 10);
@@ -4678,8 +4931,10 @@ function renderWorldCup() {
   const renderStandings = (table, teamNames = {}) =>
     `<table class="league-standings-table"><thead><tr><th>POS</th><th>NATION</th><th>PL</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>PTS</th></tr></thead><tbody>${(table ?? []).map((row, index) => `<tr><td class="position-cell">${String(index + 1).padStart(2, "0")}</td><td class="team-cell">${esc(teamNames[row.teamId] ?? row.name)}</td><td>${row.played}</td><td>${row.won}</td><td>${row.drawn}</td><td>${row.lost}</td><td>${row.goalsFor}</td><td>${row.goalsAgainst}</td><td>${row.goalDifference > 0 ? "+" : ""}${row.goalDifference}</td><td class="points-cell">${row.points}</td></tr>`).join("")}</tbody></table>`;
   const renderResults = (fixtures, teams) => {
-    const names = Object.fromEntries((teams ?? []).map((team) => [team.id, team.name]));
-    return `<table class="data-table"><thead><tr><th>DATE</th><th>STAGE</th><th>FIXTURE</th><th>SCORE</th><th>STATUS</th></tr></thead><tbody>${(fixtures ?? []).map((fixture) => `<tr><td>${Number.isFinite(fixture.scheduledDay) ? formatDate(fixture.scheduledDay) : "—"}</td><td>${esc(fixture.stage === "group" ? `${fixture.groupId} · Matchday ${fixture.round + 1}` : fixture.round ?? fixture.groupId ?? "Group stage")}</td><td>${esc(names[fixture.homeId] ?? fixture.homeId)} vs ${esc(names[fixture.awayId] ?? fixture.awayId)}</td><td>${fixture.homeGoals == null ? "—" : `${fixture.homeGoals}–${fixture.awayGoals}`}</td><td>${esc(fixture.decidedBy ?? fixture.status)}</td></tr>`).join("") || '<tr><td colspan="5" class="scorer-empty">Fixtures will appear as qualification and tournament stages are reached.</td></tr>'}</tbody></table>`;
+    const names = Object.fromEntries(
+      (teams ?? []).map((team) => [team.id, team.name]),
+    );
+    return `<table class="data-table"><thead><tr><th>DATE</th><th>STAGE</th><th>FIXTURE</th><th>SCORE</th><th>STATUS</th></tr></thead><tbody>${(fixtures ?? []).map((fixture) => `<tr><td>${Number.isFinite(fixture.scheduledDay) ? formatDate(fixture.scheduledDay) : "—"}</td><td>${esc(fixture.stage === "group" ? `${fixture.groupId} · Matchday ${fixture.round + 1}` : (fixture.round ?? fixture.groupId ?? "Group stage"))}</td><td>${esc(names[fixture.homeId] ?? fixture.homeId)} vs ${esc(names[fixture.awayId] ?? fixture.awayId)}</td><td>${fixture.homeGoals == null ? "—" : `${fixture.homeGoals}–${fixture.awayGoals}`}</td><td>${esc(fixture.decidedBy ?? fixture.status)}</td></tr>`).join("") || '<tr><td colspan="5" class="scorer-empty">Fixtures will appear as qualification and tournament stages are reached.</td></tr>'}</tbody></table>`;
   };
   const qualificationGroups = (qualification?.groups ?? [])
     .map(
@@ -4694,17 +4949,15 @@ function renderWorldCup() {
     )
     .join("");
   const teams = tournament?.qualified ?? qualification?.qualified ?? [];
-  const userTeam =
-    currentUserSelection?.selected
-      ? teams.find((team) => team.squadIds?.includes(career.player.id)) ??
-        teams.find((team) => team.code === career.player.nationality)
-      : null;
+  const userTeam = currentUserSelection?.selected
+    ? (teams.find((team) => team.squadIds?.includes(career.player.id)) ??
+      teams.find((team) => team.code === career.player.nationality))
+    : null;
   const userTournamentFixtures =
     userTeam && tournament?.fixtures
       ? tournament.fixtures.filter(
           (fixture) =>
-            fixture.homeId === userTeam.id ||
-            fixture.awayId === userTeam.id,
+            fixture.homeId === userTeam.id || fixture.awayId === userTeam.id,
         )
       : [];
   const internationalPlayers = career.internationalPlayers();
@@ -4718,21 +4971,26 @@ function renderWorldCup() {
     .join("");
   const playerStats = Object.values(tournament?.playerStats ?? {});
   const topScorers = [...playerStats]
-    .sort((left, right) => right.goals - left.goals || right.assists - left.assists)
+    .sort(
+      (left, right) => right.goals - left.goals || right.assists - left.assists,
+    )
     .slice(0, 10);
   const historyRows = [...(worldCup.history ?? [])]
     .reverse()
-    .map((entry) => `<tr><td>${entry.year}</td><td>${esc(entry.winner ?? entry.winnerId ?? "—")}</td><td>${esc(entry.runnerUp ?? entry.runnerUpId ?? "—")}</td><td>${esc(entry.thirdPlace ?? entry.thirdPlaceId ?? "—")}</td><td>${esc(entry.goldenBoot?.player ?? "—")}</td><td>${esc(entry.goldenBall?.player ?? "—")}</td></tr>`)
+    .map(
+      (entry) =>
+        `<tr><td>${entry.year}</td><td>${esc(entry.winner ?? entry.winnerId ?? "—")}</td><td>${esc(entry.runnerUp ?? entry.runnerUpId ?? "—")}</td><td>${esc(entry.thirdPlace ?? entry.thirdPlaceId ?? "—")}</td><td>${esc(entry.goldenBoot?.player ?? "—")}</td><td>${esc(entry.goldenBall?.player ?? "—")}</td></tr>`,
+    )
     .join("");
   const matchCount = tournament?.fixtures?.length ?? 0;
-  const completed = tournament?.fixtures?.filter(
-    (fixture) => fixture.status === "completed",
-  ).length ?? 0;
+  const completed =
+    tournament?.fixtures?.filter((fixture) => fixture.status === "completed")
+      .length ?? 0;
   return `<div class="page-heading"><div><div class="eyebrow lime">INTERNATIONAL FOOTBALL · FIFA</div><h1>World Cup</h1><p>National selection, qualification, the finals and the history of international football are part of this career.</p></div><span class="live-tag">${worldCup.nextYear} · EVERY FOUR YEARS</span></div>
     <div class="stat-grid">
       <article class="stat-card"><div class="card-label">NEXT WORLD CUP</div><div class="big-number">${worldCup.nextYear}</div><div class="muted">${yearsToGo === 0 ? "Scheduled this season" : `${yearsToGo} season${yearsToGo === 1 ? "" : "s"} away`} · schedule locked to the four-year cycle</div></article>
       <article class="stat-card"><div class="card-label">QUALIFICATION</div><div class="big-number">${qualification?.status === "complete" ? `${qualification.qualified.length} NATIONS` : qualification?.status === "in-progress" ? `${qualification.roundsPlayed} ROUNDS` : "PENDING"}</div><div class="muted">${qualification?.message ?? `${qualification?.groups.length ?? 0} groups · results determine the finalists`}</div></article>
-      <article class="stat-card"><div class="card-label">YOUR NATIONAL TEAM</div><div class="big-number">${currentUserSelection ? currentUserSelection.selected ? "CALLED UP" : "NOT SELECTED" : esc(COUNTRY_NAMES[career.player.nationality] ?? career.player.nationality)}</div><div class="muted">${esc(career.player.internationalReputationLevel ?? "Unknown prospect")} · ${career.player.internationalStats?.apps ?? 0} caps</div></article>
+      <article class="stat-card"><div class="card-label">YOUR NATIONAL TEAM</div><div class="big-number">${currentUserSelection ? (currentUserSelection.selected ? "CALLED UP" : "NOT SELECTED") : esc(COUNTRY_NAMES[career.player.nationality] ?? career.player.nationality)}</div><div class="muted">${esc(career.player.internationalReputationLevel ?? "Unknown prospect")} · ${career.player.internationalStats?.apps ?? 0} caps</div></article>
       <article class="stat-card"><div class="card-label">TOURNAMENT PROGRESS</div><div class="big-number">${tournament?.status === "complete" ? "FULL TIME" : tournament?.status === "in-progress" ? `${completed}/${matchCount} MATCHES` : "NOT STARTED"}</div><div class="muted">${tournament?.winner ? `${esc(tournament.winner)} are the reigning champions` : "Qualified countries and final standings appear here"}</div></article>
     </div>
     ${tournament?.status === "cancelled" ? `<section class="panel"><h2>World Cup unavailable</h2><p class="muted">${esc(tournament.reason)}</p></section>` : ""}
@@ -4769,12 +5027,10 @@ function renderAwards() {
     );
   const leagueNameForClub = (clubId) =>
     career.clubs.find((club) => club.id === clubId)?.leagueName ??
-    data.careerLeagues?.find((entry) =>
-      entry.league.teamIds.includes(clubId),
-    )?.league.name ??
-    data.careerLeagues?.find((entry) =>
-      entry.clubIdentities?.[clubId],
-    )?.league.name ??
+    data.careerLeagues?.find((entry) => entry.league.teamIds.includes(clubId))
+      ?.league.name ??
+    data.careerLeagues?.find((entry) => entry.clubIdentities?.[clubId])?.league
+      .name ??
     null;
   const awardLeagueName = (award, winner) => {
     if (award.competition === "UEFA Champions League")
@@ -4805,10 +5061,18 @@ function renderAwards() {
     return { columns, cells, rows };
   })();
   const awardMatrixMarkup = awardMatrix
-    ? `<div class="awards-matrix-wrap"><table class="awards-matrix"><thead><tr><th>AWARD</th>${awardMatrix.columns.map((league) => `<th>${esc(league)}</th>`).join("")}</tr></thead><tbody>${awardMatrix.rows.map((awardName) => `<tr><th>${esc(awardName)}</th>${awardMatrix.columns.map((league) => {
-        const winners = awardMatrix.cells.get(`${awardName}::${league}`) ?? [];
-        return `<td>${winners.length ? winners.map((winner) => winner.coach ? esc(winner.coach) : playerProfileLink(winner.playerId, winner.player)).join("<br>") : '<span class="muted">—</span>'}</td>`;
-      }).join("")}</tr>`).join("")}</tbody></table></div>`
+    ? `<div class="awards-matrix-wrap"><table class="awards-matrix"><thead><tr><th>AWARD</th>${awardMatrix.columns.map((league) => `<th>${esc(league)}</th>`).join("")}</tr></thead><tbody>${awardMatrix.rows
+        .map(
+          (awardName) =>
+            `<tr><th>${esc(awardName)}</th>${awardMatrix.columns
+              .map((league) => {
+                const winners =
+                  awardMatrix.cells.get(`${awardName}::${league}`) ?? [];
+                return `<td>${winners.length ? winners.map((winner) => (winner.coach ? esc(winner.coach) : playerProfileLink(winner.playerId, winner.player))).join("<br>") : '<span class="muted">—</span>'}</td>`;
+              })
+              .join("")}</tr>`,
+        )
+        .join("")}</tbody></table></div>`
     : "";
   const clubNameFor = (player) =>
     career.clubs.find((club) => club.id === player.clubId)?.name ??
@@ -4826,15 +5090,14 @@ function renderAwards() {
           (ceremony) => ceremony.awardPeriod === entry.season,
         )
           ? []
-          :
-        (award.winners ?? []).map((winner) => ({
-          season: entry.season,
-          award: award.award,
-          player: winner.player,
-          coach: winner.coach,
-          club: winner.club,
-          competition: award.competition,
-        })),
+          : (award.winners ?? []).map((winner) => ({
+              season: entry.season,
+              award: award.award,
+              player: winner.player,
+              coach: winner.coach,
+              club: winner.club,
+              competition: award.competition,
+            })),
       ),
     )
     .slice(0, 80);
@@ -4865,7 +5128,30 @@ function renderAwards() {
   return `<div class="page-heading"><div><div class="eyebrow lime">${esc(career.league.name.toUpperCase())}</div><h1>Season awards</h1><p>Follow your league's Player of the Season race separately from the global Ballon d'Or shortlist.</p></div><span class="live-tag">${seasonRace.length ? `${formatDecimal(seasonRace[0].points)} PTS · LEAGUE LEADER` : "RACE STARTS AT KICK-OFF"}</span></div>
     <section class="panel award-show"><div class="panel-heading"><div><div class="eyebrow">AWARD CEREMONY</div><h2>${latestAwards ? `${seasonLabel(latestAwards.season)} winners` : `${seasonLabel(career.season)} awards`}</h2></div><span class="live-tag">${ceremonyPending ? "BALLON D'OR NEXT SEASON" : latestCeremony ? `${seasonLabel(latestCeremony.ceremonySeason)} CEREMONY COMPLETE` : latestAwards ? "WINNERS ANNOUNCED" : career.seasonComplete ? "AWARDS PENDING" : "SEASON IN PROGRESS"}</span></div>${awardMatrixMarkup || `<p class="muted">${ceremonyPending ? "Season awards are confirmed. The Ballon d'Or ceremony takes place at the start of the next season." : career.seasonComplete ? "Award winners will be announced shortly." : "Award winners are decided at the end of the season, once all six leagues are complete."}</p>`}</section>
     ${raceTable(seasonRace, `LEAGUE RACE · ${career.league.name.toUpperCase()}`, "Player of the Season", "This table only ranks players in your current league. Points: goals × 4, assists × 3, rating above 6.0 × 5, appearances × 0.2 (capped at 30).", "No player ratings yet. This race updates after league appearances.")}
-    ${ballonCeremony ? `<section class="panel ballon-ceremony"><div class="panel-heading"><div><div class="eyebrow">1,000-POINT EVALUATION · ${seasonLabel(latestAwards.season)}</div><h2>Ballon d'Or ceremony</h2></div><span class="live-tag">${formatDecimal(ballonCeremony.winner.points)} / 1000 PTS</span></div><div class="ballon-winner"><div><h3>${esc(ballonCeremony.winner.player)}</h3><p>${esc(ballonCeremony.winner.club)} · ${esc(ballonCeremony.winner.nationality)} · ${ballonCeremony.winner.overall} OVR</p><p>${ballonCeremony.winner.goals} goals · ${ballonCeremony.winner.assists} assists</p></div><div class="ballon-categories">${Object.entries(ballonCeremony.winner.categoryScores).map(([name, value]) => `<span><b>${formatDecimal(value)}</b><small>${esc(name.replace(/([A-Z])/g, " $1"))}</small></span>`).join("")}</div></div><p class="muted">${[...(ballonCeremony.winner.domesticAchievements ?? []), ...(ballonCeremony.winner.championsLeagueAchievements ?? [])].join(" · ") || "Individual performance evaluation from completed matches."}</p><h3>Final global top 10</h3><table class="awards-race-table"><thead><tr><th>#</th><th>PLAYER</th><th>CLUB / NATION</th><th>OVR</th><th>G</th><th>A</th><th>PTS / 1000</th></tr></thead><tbody>${(ballonCeremony.top10 ?? ballonCeremony.top30 ?? []).slice(0, 10).map((entry) => `<tr><td>${entry.rank}</td><td>${playerProfileLink(entry.playerId, entry.player)}</td><td>${esc(entry.club)} · ${esc(entry.nationality)}</td><td>${entry.overall}</td><td>${entry.goals}</td><td>${entry.assists}</td><td class="scorer-goals">${formatDecimal(entry.points)}</td></tr>`).join("")}</tbody></table></section>` : ""}
+    ${
+      ballonCeremony
+        ? `<section class="panel ballon-ceremony"><div class="panel-heading"><div><div class="eyebrow">1,000-POINT EVALUATION · ${seasonLabel(latestAwards.season)}</div><h2>Ballon d'Or ceremony</h2></div><span class="live-tag">${formatDecimal(ballonCeremony.winner.points)} / 1000 PTS</span></div><div class="ballon-winner"><div><h3>${esc(ballonCeremony.winner.player)}</h3><p>${esc(ballonCeremony.winner.club)} · ${esc(ballonCeremony.winner.nationality)} · ${ballonCeremony.winner.overall} OVR</p><p>${ballonCeremony.winner.goals} goals · ${ballonCeremony.winner.assists} assists</p></div><div class="ballon-categories">${Object.entries(
+            ballonCeremony.winner.categoryScores,
+          )
+            .map(
+              ([name, value]) =>
+                `<span><b>${formatDecimal(value)}</b><small>${esc(name.replace(/([A-Z])/g, " $1"))}</small></span>`,
+            )
+            .join(
+              "",
+            )}</div></div><p class="muted">${[...(ballonCeremony.winner.domesticAchievements ?? []), ...(ballonCeremony.winner.championsLeagueAchievements ?? [])].join(" · ") || "Individual performance evaluation from completed matches."}</p><h3>Final global top 10</h3><table class="awards-race-table"><thead><tr><th>#</th><th>PLAYER</th><th>CLUB / NATION</th><th>OVR</th><th>G</th><th>A</th><th>PTS / 1000</th></tr></thead><tbody>${(
+            ballonCeremony.top10 ??
+            ballonCeremony.top30 ??
+            []
+          )
+            .slice(0, 10)
+            .map(
+              (entry) =>
+                `<tr><td>${entry.rank}</td><td>${playerProfileLink(entry.playerId, entry.player)}</td><td>${esc(entry.club)} · ${esc(entry.nationality)}</td><td>${entry.overall}</td><td>${entry.goals}</td><td>${entry.assists}</td><td class="scorer-goals">${formatDecimal(entry.points)}</td></tr>`,
+            )
+            .join("")}</tbody></table></section>`
+        : ""
+    }
     ${raceTable(ballonRace, "GLOBAL RACE · SIX COMPETITIONS", "Ballon d'Or", "A 1,000-point evaluation across six categories: individual statistics (250), domestic league (200), Champions League (180), team achievements (250), consistency and big matches (70), and international tournament (50). Position-specific statistics are used for each role. The winner is decided by 100 journalist votes on a 30-player shortlist (top-10 ballots, 15/12/10/8/7/5/4/3/2/1 points).", "No eligible player performances have been recorded yet.")}
     <section class="panel table-panel scorer-panel award-race-panel"><div class="panel-heading"><div><div class="eyebrow">LIVE SEASON TRACKER</div><h2>Ballon d'Or Watchlist</h2></div><span class="live-tag">TOP ${watchlist.length} · PERFORMANCE-LED</span></div><p class="muted award-race-description">The shortlist updates from recorded performances and achievements. Overall is context, not an award guarantee.</p><div class="watchlist-grid">${
       watchlist
@@ -4884,7 +5170,11 @@ function renderAwards() {
 function renderAwardCard(award, season) {
   const awardName = esc(award.award);
   const winnerNames = award.winners
-    .map((winner) => winner.coach ? esc(winner.coach) : playerProfileLink(winner.playerId, winner.player))
+    .map((winner) =>
+      winner.coach
+        ? esc(winner.coach)
+        : playerProfileLink(winner.playerId, winner.player),
+    )
     .join(", ");
   const clubs = award.winners.map((winner) => esc(winner.club)).join(" · ");
   const value = award.displayValue ?? `${award.value} ${award.valueLabel}`;
@@ -4892,20 +5182,21 @@ function renderAwardCard(award, season) {
   const variant = normalized.includes("champions league champion")
     ? "champions-league"
     : normalized.includes("ballon")
-    ? "ballon"
-    : normalized.includes("boot")
-      ? "boot"
-      : normalized.includes("playmaker")
-        ? "playmaker"
-        : normalized.includes("goalkeeper") || normalized.includes("glove")
-          ? "glove"
-          : normalized.includes("international") || normalized.includes("world")
-            ? "world"
-            : normalized.includes("champion") || normalized.includes("league")
-              ? "champion"
-              : normalized.includes("rating")
-                ? "rating"
-                : "star";
+      ? "ballon"
+      : normalized.includes("boot")
+        ? "boot"
+        : normalized.includes("playmaker")
+          ? "playmaker"
+          : normalized.includes("goalkeeper") || normalized.includes("glove")
+            ? "glove"
+            : normalized.includes("international") ||
+                normalized.includes("world")
+              ? "world"
+              : normalized.includes("champion") || normalized.includes("league")
+                ? "champion"
+                : normalized.includes("rating")
+                  ? "rating"
+                  : "star";
   const trophyArtwork = {
     ballon: `<circle class="trophy-metal" cx="32" cy="22" r="14"/><path class="trophy-engraving" d="M21 22h22M32 8c-4 5-6 9-6 14s2 9 6 14M32 8c4 5 6 9 6 14s-2 9-6 14"/><path class="trophy-stem" d="M28 38h8v14h-8zM23 52h18v5H23zM18 57h28v7H18z"/>`,
     boot: `<path class="trophy-metal" d="M18 37c7 0 11-3 14-9l7 4c1 7 5 12 12 15l8 3c3 1 4 4 3 7l-2 5H13l-2-5c-1-4 1-7 5-9l7-3-5-8z"/><path class="trophy-engraving" d="m32 31 7 4m-3 3 6 3m-2 4 6 2M16 56h41"/>`,
@@ -5164,9 +5455,12 @@ function renderFixtures() {
   const fixtures = allFixtures.filter((fixture) => {
     if (fixtureFilter === "home") return fixture.userIsHome;
     if (fixtureFilter === "away") return !fixture.userIsHome;
-    if (fixtureFilter === "league") return fixture.competitionId === career.league.id;
-    if (fixtureFilter === "champions") return fixture.competitionId === "champions-league";
-    if (fixtureFilter === "world-cup") return fixture.competitionId === "fifa-world-cup";
+    if (fixtureFilter === "league")
+      return fixture.competitionId === career.league.id;
+    if (fixtureFilter === "champions")
+      return fixture.competitionId === "champions-league";
+    if (fixtureFilter === "world-cup")
+      return fixture.competitionId === "fifa-world-cup";
     return true;
   });
   const totals = new Map();
@@ -5181,7 +5475,11 @@ function renderFixtures() {
         const label =
           fixture.roundLabel ??
           `Match ${number}/${totals.get(fixture.competition)}`;
-        const status = fixture.played ? "Completed" : fixture.next ? "Live" : "Upcoming";
+        const status = fixture.played
+          ? "Completed"
+          : fixture.next
+            ? "Live"
+            : "Upcoming";
         const activeWorldCupMatch =
           fixture.competitionId === "fifa-world-cup" &&
           career.lastReport?.userMatch?.worldCupFixtureId === fixture.id &&
@@ -5262,12 +5560,14 @@ function renderHistory() {
           ),
       )
       .map((award) => ({
-      season: entry.season,
-      competition:
-        award.competition ??
-        (award.award === "Ballon d'Or" ? "World football" : career.league.name),
-      award: award.award,
-      winnerDetails: award.winners,
+        season: entry.season,
+        competition:
+          award.competition ??
+          (award.award === "Ballon d'Or"
+            ? "World football"
+            : career.league.name),
+        award: award.award,
+        winnerDetails: award.winners,
       })),
   );
   const rows = [...honourRows, ...awardRows].sort(
@@ -5304,7 +5604,11 @@ function renderTeam() {
     : career.club;
   const manager = club.hierarchy?.manager ?? club.manager;
   const squad = career.players.filter((player) => player.clubId === club.id);
-  const teamRatings = calculateTeamRatings(club, squad, career.currentDay?.() ?? 0);
+  const teamRatings = calculateTeamRatings(
+    club,
+    squad,
+    career.currentDay?.() ?? 0,
+  );
   const displayTeamRating = (rating) => Math.round(rating);
   const seasonHistory = career.seasonHistory ?? [];
   const clubHonours = [
@@ -5312,13 +5616,17 @@ function renderTeam() {
       .filter((honour) => honour?.award || honour?.competition)
       .map((honour) => ({
         award: honour.award ?? "Champion",
-        competition: honour.competition ?? honour.competitionId ?? "Club honour",
+        competition:
+          honour.competition ?? honour.competitionId ?? "Club honour",
         season: honour.season,
         value: honour.value,
       })),
     ...seasonHistory.flatMap((season) =>
       (season.trophyWinners ?? [])
-        .filter((trophy) => trophy.winnerId === club.id || trophy.winner === club.name)
+        .filter(
+          (trophy) =>
+            trophy.winnerId === club.id || trophy.winner === club.name,
+        )
         .map((trophy) => ({
           award: "Champion",
           competition: trophy.competition,
@@ -5328,22 +5636,30 @@ function renderTeam() {
     ),
   ];
   const trophies = groupHonours(clubHonours);
-  const clubSeasons = (club.seasonHistory?.length
-    ? club.seasonHistory.map((standing) => ({
-        season: standing.season,
-        standing: {
-          ...standing,
-          position: standing.position,
-        },
-      }))
-    : seasonHistory
-    .map((season) => {
-      const position = season.standings?.findIndex((row) => row.teamId === club.id);
-      const standing = position >= 0 ? season.standings[position] : null;
-      return standing ? { season: season.season, standing: { ...standing, position: position + 1 } } : null;
-    })
-    .filter(Boolean))
-    .reverse();
+  const clubSeasons = (
+    club.seasonHistory?.length
+      ? club.seasonHistory.map((standing) => ({
+          season: standing.season,
+          standing: {
+            ...standing,
+            position: standing.position,
+          },
+        }))
+      : seasonHistory
+          .map((season) => {
+            const position = season.standings?.findIndex(
+              (row) => row.teamId === club.id,
+            );
+            const standing = position >= 0 ? season.standings[position] : null;
+            return standing
+              ? {
+                  season: season.season,
+                  standing: { ...standing, position: position + 1 },
+                }
+              : null;
+          })
+          .filter(Boolean)
+  ).reverse();
   const currentStanding = career.league.table.row(club.id);
   if (
     currentStanding &&
@@ -5405,8 +5721,18 @@ function renderTeam() {
     .reverse();
   const resultRows = recentResults
     .map((result) => {
-      const home = result.home?.name ?? result.home?.clubName ?? result.homeName ?? result.home ?? "Home";
-      const away = result.away?.name ?? result.away?.clubName ?? result.awayName ?? result.away ?? "Away";
+      const home =
+        result.home?.name ??
+        result.home?.clubName ??
+        result.homeName ??
+        result.home ??
+        "Home";
+      const away =
+        result.away?.name ??
+        result.away?.clubName ??
+        result.awayName ??
+        result.away ??
+        "Away";
       const score = `${result.homeGoals ?? "\u2014"}\u2013${result.awayGoals ?? "\u2014"}`;
       const dateIndex = Number(
         result.dateIndex ?? result.date ?? result.matchday ?? result.week,
@@ -5439,7 +5765,8 @@ function renderFinances() {
 }
 
 function renderInvestments() {
-  if (!career.isManagerCareer) return '<section class="panel"><div class="eyebrow lime">CLUB FACILITIES</div><h1>Investment management</h1><p class="muted">Facility investment, club budgets and spending are restricted to manager-career mode. Training facility levels and their development effects remain visible in Training & Development.</p></section>';
+  if (!career.isManagerCareer)
+    return '<section class="panel"><div class="eyebrow lime">CLUB FACILITIES</div><h1>Investment management</h1><p class="muted">Facility investment, club budgets and spending are restricted to manager-career mode. Training facility levels and their development effects remain visible in Training & Development.</p></section>';
   const finance = career.financialSummary(career.club);
   const options = career.investmentOptions();
   const investment = career.club.investment;
@@ -5462,7 +5789,8 @@ function renderInvestments() {
 }
 
 function renderScouting() {
-  if (!career.isManagerCareer) return '<section class="panel"><div class="eyebrow lime">SCOUTING</div><h1>Scouting management</h1><p class="muted">Scouting assignments, budgets and recruitment are club management features available only in manager-career mode.</p></section>';
+  if (!career.isManagerCareer)
+    return '<section class="panel"><div class="eyebrow lime">SCOUTING</div><h1>Scouting management</h1><p class="muted">Scouting assignments, budgets and recruitment are club management features available only in manager-career mode.</p></section>';
   const state = career.club.scouting ?? {};
   const summary = career.scoutingSummary();
   const scouts = career.scoutingScouts();
@@ -5509,7 +5837,8 @@ function renderClubOffice() {
 }
 
 function renderCoaching() {
-  if (!career.isManagerCareer) return `<section class="panel"><div class="eyebrow lime">CLUB COACHING</div><h1>${esc(career.club.manager?.name ?? "Club coach")}</h1><p class="muted">You can review the coaching staff and training specialists, but tactical control, staff appointments, and club spending are reserved for manager-career mode.</p>${renderTraining()}</section>`;
+  if (!career.isManagerCareer)
+    return `<section class="panel"><div class="eyebrow lime">CLUB COACHING</div><h1>${esc(career.club.manager?.name ?? "Club coach")}</h1><p class="muted">You can review the coaching staff and training specialists, but tactical control, staff appointments, and club spending are reserved for manager-career mode.</p>${renderTraining()}</section>`;
   const manager = career.club.hierarchy?.manager ?? career.club.manager;
   const squad = career.players.filter(
     (player) => player.clubId === career.club.id,
@@ -5528,12 +5857,12 @@ function renderCoaching() {
 }
 
 function renderCoachDatabase() {
-  const coaches = career.clubs.map((club) => {
-    const manager = ensureCoachProfile(club);
-    return { club, manager };
-  }).filter(({ club }) =>
-    club.hierarchy?.employment?.status !== "dismissed"
-  );
+  const coaches = career.clubs
+    .map((club) => {
+      const manager = ensureCoachProfile(club);
+      return { club, manager };
+    })
+    .filter(({ club }) => club.hierarchy?.employment?.status !== "dismissed");
   const filtered = coaches
     .filter(({ manager }) => {
       if (coachFilter.startsWith("rank-"))
@@ -5568,7 +5897,10 @@ function renderCoachProfile() {
   }
   const { club, manager } = entry;
   const stats = manager.statistics;
-  const recentCoachAwards = (manager.seasonAwards ?? []).slice().reverse().slice(0, 5);
+  const recentCoachAwards = (manager.seasonAwards ?? [])
+    .slice()
+    .reverse()
+    .slice(0, 5);
   const attributes = COACHING_ATTRIBUTES.map(
     (attribute) =>
       `<div><small>${esc(attribute.replace(/[A-Z]/g, (letter) => ` ${letter}`).toUpperCase())}</small><b>${manager.coachingAttributes[attribute]}/99</b></div>`,
@@ -5592,7 +5924,15 @@ function renderAcademy() {
       )
       .join("") ||
     '<tr><td colspan="7">No accepted academy players yet. Review youth scouting reports in the Scouting Hub.</td></tr>';
-  const promotionReports = career.isManagerCareer ? academy.players.filter((player) => player.age >= 16 && player.overall >= 55).map((player) => `${esc(player.first)} ${esc(player.last)} is ready for senior consideration`).join(" · ") : "Promotions and releases are restricted to the club manager.";
+  const promotionReports = career.isManagerCareer
+    ? academy.players
+        .filter((player) => player.age >= 16 && player.overall >= 55)
+        .map(
+          (player) =>
+            `${esc(player.first)} ${esc(player.last)} is ready for senior consideration`,
+        )
+        .join(" · ")
+    : "Promotions and releases are restricted to the club manager.";
   return `<div class="page-heading"><div><div class="eyebrow lime">YOUTH DEVELOPMENT</div><h1>Academy</h1><p>Accepted prospects develop gradually through the shared player-development engine, youth coaches and academy facilities.</p></div><span class="live-tag">${academy.players.length} PLAYERS</span></div><section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY SQUAD</div><h2>Development pathway</h2></div><span class="live-tag">STYLE ${esc(academy.playstyle ?? "Balanced")}</span></div><table class="history-table"><thead><tr><th>PLAYER</th><th>POS</th><th>AGE</th><th>OVR</th><th>POTENTIAL</th><th>PLAN</th><th>ACTION</th></tr></thead><tbody>${rows}</tbody></table></section><section class="panel"><div class="panel-heading"><div><div class="eyebrow">ACADEMY COACHING</div><h2>Development history</h2></div></div><p class="muted">${academy.developmentHistory?.length ?? 0} recorded development updates. Specialist youth coaches and the Youth Academy facility improve opportunity but do not guarantee progression.</p><p class="muted">${promotionReports}</p></section>`;
 }
 
@@ -5605,10 +5945,21 @@ function renderConversation() {
     )
     .join("");
   const coaches = career.coachMarket ?? [];
-  const appointments = career.coachAppointments?.season === career.season ? career.coachAppointments.count : 0;
+  const appointments =
+    career.coachAppointments?.season === career.season
+      ? career.coachAppointments.count
+      : 0;
   return `<div class="page-heading"><div><div class="eyebrow lime">PLAYER RELATIONSHIP</div><h1>Talk to the coach</h1><p>Discuss your role, development, tactical responsibilities, and future with ${esc(career.club.manager.name)}.</p></div><span class="live-tag">${esc(career.club.fanSupport ? `${Math.round(career.club.fanSupport)}% FAN SUPPORT` : "CLUB DIALOGUE")}</span></div>
     <div class="dashboard-grid">
-      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT COACH</div><h2>${esc(career.club.manager.name)}</h2></div><span class="live-tag">${esc(career.club.manager.style)}</span></div><p class="muted">Discuss performances, playing time, development, squad recruitment, and tactical decisions.</p><div class="manager-actions-buttons"><button class="button-primary" data-action="talk-manager" data-topic="playingTime">Ask about playing time</button><button class="button-quiet" data-action="player-request" data-request-type="playing-time" data-amount="less">Request less playing time</button><button class="button-quiet" data-action="talk-manager" data-topic="development">Discuss development</button><button class="button-quiet" data-action="talk-manager" data-topic="role">Discuss tactical role</button><button class="button-quiet" data-action="talk-manager" data-topic="training">Request extra training</button><button class="button-quiet" data-action="talk-manager" data-topic="future">Discuss your future</button></div><div class="manager-actions-buttons"><label class="position-select">Preferred teammate position<select id="coach-teammate-position">${POSITIONS.map((position) => `<option value="${position}" ${position === career.player.position ? "selected" : ""}>${position}</option>`).join("")}</select></label><button class="button-quiet" data-action="talk-manager" data-topic="betterTeammate">Ask coach to find a teammate</button></div><div class="manager-actions-buttons"><label class="position-select">Formation<select id="coach-formation">${FORMATION_NAMES.map((formation) => `<option value="${formation}" ${formation === career.club.formation ? "selected" : ""}>${formation}</option>`).join("")}</select></label><button class="button-primary" data-action="talk-manager" data-topic="formation">Ask coach to change formation</button></div><div class="manager-actions-buttons"><label class="position-select">Transfer destination<select id="player-transfer-target" aria-label="Transfer destination"><option value="">Choose a destination</option>${career.clubs.filter((club) => club.id !== career.club.id).map((club) => `<option value="${esc(club.id)}">${esc(club.name)}</option>`).join("")}</select></label><button class="button-danger" data-action="player-request" data-request-type="transfer">Ask for a transfer</button></div></section>
+      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT COACH</div><h2>${esc(career.club.manager.name)}</h2></div><span class="live-tag">${esc(career.club.manager.style)}</span></div><p class="muted">Discuss performances, playing time, development, squad recruitment, and tactical decisions.</p><div class="manager-actions-buttons"><button class="button-primary" data-action="talk-manager" data-topic="playingTime">Ask about playing time</button><button class="button-quiet" data-action="player-request" data-request-type="playing-time" data-amount="less">Request less playing time</button><button class="button-quiet" data-action="talk-manager" data-topic="development">Discuss development</button><button class="button-quiet" data-action="talk-manager" data-topic="role">Discuss tactical role</button><button class="button-quiet" data-action="talk-manager" data-topic="training">Request extra training</button><button class="button-quiet" data-action="talk-manager" data-topic="future">Discuss your future</button></div><div class="manager-actions-buttons"><label class="position-select">Preferred teammate position<select id="coach-teammate-position">${POSITIONS.map((position) => `<option value="${position}" ${position === career.player.position ? "selected" : ""}>${position}</option>`).join("")}</select></label><button class="button-quiet" data-action="talk-manager" data-topic="betterTeammate">Ask coach to find a teammate</button></div><div class="manager-actions-buttons"><label class="position-select">Formation<select id="coach-formation">${FORMATION_NAMES.map((formation) => `<option value="${formation}" ${formation === career.club.formation ? "selected" : ""}>${formation}</option>`).join("")}</select></label><button class="button-primary" data-action="talk-manager" data-topic="formation">Ask coach to change formation</button></div><div class="manager-actions-buttons"><label class="position-select">Transfer destination<select id="player-transfer-target" aria-label="Transfer destination"><option value="">Choose a destination</option>${career.clubs
+        .filter((club) => club.id !== career.club.id)
+        .map(
+          (club) =>
+            `<option value="${esc(club.id)}">${esc(club.name)}</option>`,
+        )
+        .join(
+          "",
+        )}</select></label><button class="button-danger" data-action="player-request" data-request-type="transfer">Ask for a transfer</button></div></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">OWNER CONTACT</div><h2>Talk to the owner</h2></div><span class="live-tag">${appointments}/2 APPOINTMENTS THIS SEASON</span></div><p class="muted">Request that the club dismiss the current head coach. The owner's response depends on your importance to the team. If accepted, the best available coach within budget is appointed automatically.</p><div class="manager-actions-buttons"><button class="button-danger" data-action="request-coach-dismissal">Request coach dismissal</button></div></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CAREER CONTROL</div><h2>End your playing career</h2></div></div><p class="muted">Retirement keeps your statistics, awards, trophy case, and career history in the save while ending weekly progression.</p><button class="button-danger" data-action="retire-career">Retire from football</button></section>
     </div>
@@ -5618,10 +5969,13 @@ function renderConversation() {
 function renderInternationalHistorySection(player) {
   const stats = player.internationalStats ?? {};
   const history = [...(player.internationalHistory ?? [])].reverse();
-  const rows = history.slice(0, 20).map(
-    (match) =>
-      `<tr><td>${match.year ?? "—"}</td><td>${esc(match.competition ?? "—")}</td><td>${esc(match.nation ?? "—")} vs ${esc(match.opponent ?? "—")}</td><td>${match.homeGoals ?? 0}–${match.awayGoals ?? 0}</td><td>${match.goals ?? 0}</td><td>${match.assists ?? 0}</td><td>${match.rating == null ? "—" : formatDecimal(match.rating)}</td></tr>`,
-  ).join("");
+  const rows = history
+    .slice(0, 20)
+    .map(
+      (match) =>
+        `<tr><td>${match.year ?? "—"}</td><td>${esc(match.competition ?? "—")}</td><td>${esc(match.nation ?? "—")} vs ${esc(match.opponent ?? "—")}</td><td>${match.homeGoals ?? 0}–${match.awayGoals ?? 0}</td><td>${match.goals ?? 0}</td><td>${match.assists ?? 0}</td><td>${match.rating == null ? "—" : formatDecimal(match.rating)}</td></tr>`,
+    )
+    .join("");
   return `<section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">INTERNATIONAL CAREER</div><h2>National team record</h2></div><span class="live-tag">${esc(player.internationalReputationLevel ?? "Unknown prospect")}</span></div><div class="stat-grid"><article class="stat-card"><div class="card-label">CAPS</div><div class="big-number">${stats.apps ?? 0}</div></article><article class="stat-card"><div class="card-label">INTERNATIONAL GOALS</div><div class="big-number">${stats.goals ?? 0}</div></article><article class="stat-card"><div class="card-label">ASSISTS</div><div class="big-number">${stats.assists ?? 0}</div></article><article class="stat-card"><div class="card-label">WORLD CUP APPS</div><div class="big-number">${stats.worldCupApps ?? 0}</div></article></div><section class="panel table-panel player-history-panel"><div class="panel-heading"><div><div class="eyebrow">INTERNATIONAL APPEARANCES</div><h2>Country: ${esc(COUNTRY_NAMES[player.nationality] ?? player.nationality ?? "—")}</h2></div><span class="live-tag">${history.length} MATCHES</span></div><table class="history-table"><thead><tr><th>YEAR</th><th>COMPETITION</th><th>FIXTURE</th><th>SCORE</th><th>G</th><th>A</th><th>RTG</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="scorer-empty">International appearances will be recorded after selection and participation.</td></tr>'}</tbody></table><p class="muted">${(player.internationalAchievements ?? []).map(esc).join(" · ") || "No international honours recorded yet."}</p></section></section>`;
 }
 
@@ -5760,7 +6114,26 @@ function renderPlayer() {
         <div class="profile-details"><div><small>SHIRT NUMBER</small><label class="position-select"><input id="player-shirt-number" type="number" min="1" max="99" step="1" value="${player.shirtNumber}" aria-label="Shirt number"><small>Choose an unused squad number from 1 to 99.</small></label></div><div><small>NATIONALITY</small><b>${esc(countryName(player.nationality))}</b></div><div><small>HEIGHT / WEIGHT</small><b>${player.height} cm / ${player.weight} kg</b></div><div><small>PLAYING POSITION</small><label class="position-select"><select id="player-position" aria-label="Playing position">${POSITIONS.map((position) => `<option value="${position}" ${position === player.position ? "selected" : ""}>${position}</option>`).join("")}</select><small>Overall recalculates for the selected position.</small></label></div><div><small>STRONG FOOT</small><b>${esc(player.foot)} · ${player.weakFoot}★ weak foot</b></div><div><small>SKILL MOVES</small><b>${player.skillMoves} ★</b></div><div><small>PERSONALITY</small><b>${esc(player.personality.join(", "))}</b></div><div><small>ARCHETYPE</small><b>${esc(player.archetype ?? "—")}</b></div><div><small>DEVELOPMENT TRAIT</small><b>${esc(player.traits.join(", ") || "None")}</b></div><div><small>BASE OVERALL / POTENTIAL</small><b>${calculateOverall(player)} / ${player.potential ?? "?"}</b></div><div><small>STATUS</small><b>${injuryTag}</b></div><div><small>INJURY RESISTANCE</small><b>${career.injuryResistance(player)}% · physical ${player.attrs?.physical ?? "—"}</b></div><div><small>CONTRACT / WAGE</small><b>€${formatDecimal(player.contract?.wage ?? 0)} per week</b></div><div><small>CAREER BALANCE</small><b>€${formatDecimal(career.money)}</b></div></div>
       </section><section class="player-condition-grid"><article class="stat-card"><div class="card-label">FORM</div><div class="big-number">${Math.round(player.form)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">MORALE</div><div class="big-number">${Math.round(player.morale)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">STAMINA</div><div class="big-number">${ensureStamina(player)}<span>/100</span></div>${staminaMarkup(player)}</article><article class="stat-card"><div class="card-label">DEVELOPMENT</div><div class="big-number">${esc(player.developmentTrajectory ?? "Stable")}</div></article></section></div>
     </section>
-    <section class="player-hub-section" id="player-development"><div class="section-heading"><div><div class="eyebrow">CAREER DEVELOPMENT</div><h2>${esc(player.developmentTrajectory ?? "Stable")}</h2></div><span class="live-tag">BASE ${calculateOverall(player)} · POT ${player.potential ?? "—"}</span></div><div class="development-sparkline">${(player.developmentHistory ?? []).slice(-16).map((point) => `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`).join("") || '<small class="muted">Development history will populate as seasons advance.</small>'}</div><table class="history-table"><thead><tr><th>SEASON</th><th>PREVIOUS</th><th>CURRENT</th><th>CHANGE</th><th>REASONS</th></tr></thead><tbody>${(player.developmentReportHistory ?? []).slice(-8).reverse().map((report) => `<tr><td>${report.season}</td><td>${report.previousOverall}</td><td>${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(report.reasons?.join(" · ") ?? "—")}</td></tr>`).join("") || '<tr><td colspan="5" class="scorer-empty">No seasonal development reports yet.</td></tr>'}</tbody></table></section>
+    <section class="player-hub-section" id="player-development"><div class="section-heading"><div><div class="eyebrow">CAREER DEVELOPMENT</div><h2>${esc(player.developmentTrajectory ?? "Stable")}</h2></div><span class="live-tag">BASE ${calculateOverall(player)} · POT ${player.potential ?? "—"}</span></div><div class="development-sparkline">${
+      (player.developmentHistory ?? [])
+        .slice(-16)
+        .map(
+          (point) =>
+            `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`,
+        )
+        .join("") ||
+      '<small class="muted">Development history will populate as seasons advance.</small>'
+    }</div><table class="history-table"><thead><tr><th>SEASON</th><th>PREVIOUS</th><th>CURRENT</th><th>CHANGE</th><th>REASONS</th></tr></thead><tbody>${
+      (player.developmentReportHistory ?? [])
+        .slice(-8)
+        .reverse()
+        .map(
+          (report) =>
+            `<tr><td>${report.season}</td><td>${report.previousOverall}</td><td>${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(report.reasons?.join(" · ") ?? "—")}</td></tr>`,
+        )
+        .join("") ||
+      '<tr><td colspan="5" class="scorer-empty">No seasonal development reports yet.</td></tr>'
+    }</tbody></table></section>
     <section class="player-hub-section" id="player-statistics"><div class="section-heading"><div><div class="eyebrow">PLAYER STATISTICS</div><h2>Season and career record</h2></div></div>
       <div class="player-stat-panels"><section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT SEASON · ALL COMPETITIONS</div><h2>Season totals</h2></div></div><div class="player-stat-grid"><div><b>${player.stats.apps}</b><small>APPS</small></div><div><b>${player.stats.starts}</b><small>STARTS</small></div><div><b>${player.stats.goals}</b><small>GOALS</small></div><div><b>${player.stats.assists}</b><small>ASSISTS</small></div><div><b>${player.stats.minutes}</b><small>MINUTES</small></div>      <div><b>${averageRating(player.stats) == null ? "—" : formatDecimal(averageRating(player.stats))}</b><small>AVG RATING</small></div><div><b>${player.stats.yellowCards}</b><small>YELLOW CARDS</small></div><div><b>${player.stats.redCards}</b><small>RED CARDS</small></div></div></section>
       <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CAREER TOTALS</div><h2>Lifetime record</h2></div></div><div class="player-stat-grid"><div><b>${careerStats.apps}</b><small>APPS</small></div><div><b>${careerStats.starts}</b><small>STARTS</small></div><div><b>${careerStats.goals}</b><small>GOALS</small></div><div><b>${careerStats.assists}</b><small>ASSISTS</small></div><div><b>${careerStats.minutes}</b><small>MINUTES</small></div>      <div><b>${averageRating(careerStats) == null ? "—" : formatDecimal(averageRating(careerStats))}</b><small>AVG RATING</small></div><div><b>${careerStats.cleanSheets}</b><small>CLEAN SHEETS</small></div><div><b>${careerStats.yellowCards}</b><small>YELLOW CARDS</small></div></div></section></div>
@@ -5835,20 +6208,56 @@ function renderTraining() {
     )
     .join("");
   const player = career.player;
-  const attributesForFocus = isGoalkeeper ? GK_ATTRIBUTES : Object.values(SUB_ATTRIBUTES).flat();
+  const attributesForFocus = isGoalkeeper
+    ? GK_ATTRIBUTES
+    : Object.values(SUB_ATTRIBUTES).flat();
   const development = player.developmentReportHistory ?? [];
   const history = (player.developmentHistory ?? []).slice(-8);
-  const reports = development.slice(-5).reverse().map((report) => `<tr><td>${report.season}</td><td>${report.previousOverall} → ${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(Object.entries(report.attributes ?? {}).map(([name, change]) => `${name} ${change > 0 ? "+" : ""}${change}`).join(", ") || report.reasons?.join(" · ") || "No attribute change")}</td></tr>`).join("");
-  const coaches = overview.coaches.map((coach) => `<article class="training-coach-card"><div class="coach-grade">${esc(coach.grade)}</div><div class="coach-card-main"><b>${esc(coach.name)}</b><small>${esc(coach.department)} specialist · ${coach.overall}/99 · €${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk</small></div>${isManager ? `<button class="button-quiet" data-action="dismiss-training-coach" data-coach-id="${esc(coach.id)}">Dismiss</button>` : ""}</article>`).join("") || '<p class="muted">No specialist coaches are currently employed.</p>';
-  const departmentPanels = overview.departments.map((department) => {
-    const assigned = overview.assignments[department];
-    return `<div class="training-department"><b>${esc(department)}</b><small>${(overview.coaches.find((coach) => coach.id === assigned) ?? overview.coaches.find((coach) => coach.department === department))?.name ?? "Unassigned"}</small>${isManager ? `<select id="coach-assignment-${department}" aria-label="Assign ${department} coach"><option value="">Select coach</option>${overview.coaches.map((coach) => `<option value="${esc(coach.id)}" ${coach.id === assigned ? "selected" : ""}>${esc(coach.name)} · ${coach.overall} · ${esc(coach.department)}</option>`).join("")}</select><button class="button-quiet" data-action="assign-training-coach" data-department="${department}">Assign</button>` : ""}</div>`;
-  }).join("");
-  const market = isManager ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">RECRUITMENT MARKET</div><h2>Available training coaches</h2></div><button class="button-quiet" data-action="refresh-training-market">Refresh market</button></div><div class="training-coach-grid">${overview.market.slice(0, 8).map((coach) => `<article class="training-market-card"><span class="coach-grade">${esc(coach.grade)}</span><b>${esc(coach.name)}</b><small>${coach.age} · ${esc(coach.nationality)} · ${esc(coach.department)} specialist</small><small>Technical ${coach.technicalAbility} · Physical ${coach.physicalAbility} · Tactical ${coach.tacticalAbility} · Youth ${coach.youthAbility}</small><small>€${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk · €${Number(coach.recruitmentCost).toLocaleString("en-GB")} recruitment · ${coach.contractWeeks} weeks</small><button class="button-primary" data-action="hire-training-coach" data-coach-id="${esc(coach.id)}">Hire coach</button></article>`).join("")}</div></section>` : "";
-  const managerSettings = isManager ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING PLAN</div><h2>Programmes & intensity</h2></div><span class="live-tag">€${overview.expenditure.toLocaleString("en-GB")} / WEEK · STAFF PAYROLL</span></div><div class="manager-actions-buttons"><label class="position-select">Programme<select id="club-training-programme">${overview.programmes.map((programme) => `<option ${programme === overview.programme ? "selected" : ""}>${esc(programme)}</option>`).join("")}</select></label><label class="position-select">Intensity<select id="club-training-intensity">${overview.intensities.map((intensity) => `<option ${intensity === overview.intensity ? "selected" : ""}>${esc(intensity)}</option>`).join("")}</select></label><button class="button-primary" data-action="set-club-training">Save training plan</button></div>${departmentPanels}</section>` : `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING STAFF</div><h2>${esc(career.club.name)} coaches</h2></div><span class="live-tag">VIEW ONLY</span></div><p class="muted">Your club staff and specialisations influence your natural attribute development. Hiring, assignments, contracts, wages and club budgets are managed by the club manager.</p><div class="training-department-grid">${departmentPanels}</div></section>`;
+  const reports = development
+    .slice(-5)
+    .reverse()
+    .map(
+      (report) =>
+        `<tr><td>${report.season}</td><td>${report.previousOverall} → ${report.currentOverall}</td><td class="${report.change >= 0 ? "positive" : "negative"}">${report.change > 0 ? "+" : ""}${report.change}</td><td>${esc(
+          Object.entries(report.attributes ?? {})
+            .map(
+              ([name, change]) => `${name} ${change > 0 ? "+" : ""}${change}`,
+            )
+            .join(", ") ||
+            report.reasons?.join(" · ") ||
+            "No attribute change",
+        )}</td></tr>`,
+    )
+    .join("");
+  const coaches =
+    overview.coaches
+      .map(
+        (coach) =>
+          `<article class="training-coach-card"><div class="coach-grade">${esc(coach.grade)}</div><div class="coach-card-main"><b>${esc(coach.name)}</b><small>${esc(coach.department)} specialist · ${coach.overall}/99 · €${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk</small></div>${isManager ? `<button class="button-quiet" data-action="dismiss-training-coach" data-coach-id="${esc(coach.id)}">Dismiss</button>` : ""}</article>`,
+      )
+      .join("") ||
+    '<p class="muted">No specialist coaches are currently employed.</p>';
+  const departmentPanels = overview.departments
+    .map((department) => {
+      const assigned = overview.assignments[department];
+      return `<div class="training-department"><b>${esc(department)}</b><small>${(overview.coaches.find((coach) => coach.id === assigned) ?? overview.coaches.find((coach) => coach.department === department))?.name ?? "Unassigned"}</small>${isManager ? `<select id="coach-assignment-${department}" aria-label="Assign ${department} coach"><option value="">Select coach</option>${overview.coaches.map((coach) => `<option value="${esc(coach.id)}" ${coach.id === assigned ? "selected" : ""}>${esc(coach.name)} · ${coach.overall} · ${esc(coach.department)}</option>`).join("")}</select><button class="button-quiet" data-action="assign-training-coach" data-department="${department}">Assign</button>` : ""}</div>`;
+    })
+    .join("");
+  const market = isManager
+    ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">RECRUITMENT MARKET</div><h2>Available training coaches</h2></div><button class="button-quiet" data-action="refresh-training-market">Refresh market</button></div><div class="training-coach-grid">${overview.market
+        .slice(0, 8)
+        .map(
+          (coach) =>
+            `<article class="training-market-card"><span class="coach-grade">${esc(coach.grade)}</span><b>${esc(coach.name)}</b><small>${coach.age} · ${esc(coach.nationality)} · ${esc(coach.department)} specialist</small><small>Technical ${coach.technicalAbility} · Physical ${coach.physicalAbility} · Tactical ${coach.tacticalAbility} · Youth ${coach.youthAbility}</small><small>€${Number(coach.weeklySalary).toLocaleString("en-GB")}/wk · €${Number(coach.recruitmentCost).toLocaleString("en-GB")} recruitment · ${coach.contractWeeks} weeks</small><button class="button-primary" data-action="hire-training-coach" data-coach-id="${esc(coach.id)}">Hire coach</button></article>`,
+        )
+        .join("")}</div></section>`
+    : "";
+  const managerSettings = isManager
+    ? `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING PLAN</div><h2>Programmes & intensity</h2></div><span class="live-tag">€${overview.expenditure.toLocaleString("en-GB")} / WEEK · STAFF PAYROLL</span></div><div class="manager-actions-buttons"><label class="position-select">Programme<select id="club-training-programme">${overview.programmes.map((programme) => `<option ${programme === overview.programme ? "selected" : ""}>${esc(programme)}</option>`).join("")}</select></label><label class="position-select">Intensity<select id="club-training-intensity">${overview.intensities.map((intensity) => `<option ${intensity === overview.intensity ? "selected" : ""}>${esc(intensity)}</option>`).join("")}</select></label><button class="button-primary" data-action="set-club-training">Save training plan</button></div>${departmentPanels}</section>`
+    : `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB TRAINING STAFF</div><h2>${esc(career.club.name)} coaches</h2></div><span class="live-tag">VIEW ONLY</span></div><p class="muted">Your club staff and specialisations influence your natural attribute development. Hiring, assignments, contracts, wages and club budgets are managed by the club manager.</p><div class="training-department-grid">${departmentPanels}</div></section>`;
   return `<div class="page-heading"><div><div class="eyebrow lime">DEVELOPMENT CENTRE</div><h1>${isManager ? "Club Training & Development" : "Training & Development"}</h1><p>${isManager ? "Manage club programmes, staff assignments, intensity, recruitment, expenditure and academy progression." : "Base OVR follows your attributes. Training focus guides gradual progression; potential, form, fitness and sharpness remain separate."}</p></div><span class="live-tag">${esc(player.developmentTrajectory ?? "Stable")}</span></div>
   <div class="stat-grid lower-stats"><article class="stat-card"><div class="card-label">BASE OVR</div><div class="big-number">${calculateOverall(player)}</div></article><article class="stat-card"><div class="card-label">POTENTIAL</div><div class="big-number">${player.potential ?? "—"}</div></article><article class="stat-card"><div class="card-label">MATCH FORM</div><div class="big-number">${Math.round(player.form ?? 50)}</div></article><article class="stat-card"><div class="card-label">FITNESS</div><div class="big-number">${Math.round(player.fitness ?? 100)}%</div></article></div>
-    <div class="training-grid"><section class="panel training-session"><div class="eyebrow">${isManager ? "SQUAD DEVELOPMENT" : "INDIVIDUAL PLAYER FOCUS"}</div><h2>${isManager ? "Club training programme" : "Development plan"}</h2><p>${isManager ? "Set a club-wide training plan and intensity. Individual player development remains gradual and attribute-based." : "Select a detailed attribute as a focus. It improves the probability of that attribute developing over time, but never buys an immediate upgrade."}</p>${isManager ? "" : `<label class="focus-select">INDIVIDUAL FOCUS<select id="training-focus">${attributesForFocus.map((attribute) => `<option value="${attribute}" ${career.trainingFocus === attribute ? "selected" : ""}>${esc(attribute.replace(/[A-Z]/g, " $&"))} · ${isGoalkeeper ? player.gkAttrs?.[attribute] ?? 50 : player.subAttrs?.[attribute] ?? 50}</option>`).join("")}</select></label>`}<div class="training-progress"><div><span>Trajectory</span><b>${esc(player.developmentTrajectory ?? "Stable")}</b></div><div><span>Appearances</span><b>${player.stats.apps}</b></div><div><span>Minutes</span><b>${player.stats.minutes}</b></div><div><span>Average rating</span><b>${player.stats.apps ? formatDecimal(player.stats.ratingSum / player.stats.apps) : "—"}</b></div></div><p class="muted">${isManager ? "Training coaches, facilities, and intensity shape the entire squad." : `Current individual focus: ${esc(player.trainingFocus ?? career.trainingFocus)}. Form, morale and temporary match boosts do not alter base attributes.`}</p>${isManager ? "" : '<button class="button-primary" data-action="train">Save individual focus</button>'}</section><section class="panel training-log"><div class="panel-heading"><div><div class="eyebrow">DEVELOPMENT SNAPSHOT</div><h2>Recent OVR history</h2></div></div><div class="development-sparkline">${history.map((point) => `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`).join("") || '<small class="muted">Progress history will appear as your career advances.</small>'}</div><p class="muted">${esc(player.developmentTrajectory ?? "Stable")} · reports are generated once per season.</p></section></div>
+    <div class="training-grid"><section class="panel training-session"><div class="eyebrow">${isManager ? "SQUAD DEVELOPMENT" : "INDIVIDUAL PLAYER FOCUS"}</div><h2>${isManager ? "Club training programme" : "Development plan"}</h2><p>${isManager ? "Set a club-wide training plan and intensity. Individual player development remains gradual and attribute-based." : "Select a detailed attribute as a focus. It improves the probability of that attribute developing over time, but never buys an immediate upgrade."}</p>${isManager ? "" : `<label class="focus-select">INDIVIDUAL FOCUS<select id="training-focus">${attributesForFocus.map((attribute) => `<option value="${attribute}" ${career.trainingFocus === attribute ? "selected" : ""}>${esc(attribute.replace(/[A-Z]/g, " $&"))} · ${isGoalkeeper ? (player.gkAttrs?.[attribute] ?? 50) : (player.subAttrs?.[attribute] ?? 50)}</option>`).join("")}</select></label>`}<div class="training-progress"><div><span>Trajectory</span><b>${esc(player.developmentTrajectory ?? "Stable")}</b></div><div><span>Appearances</span><b>${player.stats.apps}</b></div><div><span>Minutes</span><b>${player.stats.minutes}</b></div><div><span>Average rating</span><b>${player.stats.apps ? formatDecimal(player.stats.ratingSum / player.stats.apps) : "—"}</b></div></div><p class="muted">${isManager ? "Training coaches, facilities, and intensity shape the entire squad." : `Current individual focus: ${esc(player.trainingFocus ?? career.trainingFocus)}. Form, morale and temporary match boosts do not alter base attributes.`}</p>${isManager ? "" : '<button class="button-primary" data-action="train">Save individual focus</button>'}</section><section class="panel training-log"><div class="panel-heading"><div><div class="eyebrow">DEVELOPMENT SNAPSHOT</div><h2>Recent OVR history</h2></div></div><div class="development-sparkline">${history.map((point) => `<span title="${point.season}: ${point.overall} OVR" style="height:${Math.max(8, Math.min(100, point.overall))}%"></span>`).join("") || '<small class="muted">Progress history will appear as your career advances.</small>'}</div><p class="muted">${esc(player.developmentTrajectory ?? "Stable")} · reports are generated once per season.</p></section></div>
     ${managerSettings}<section class="panel"><div class="panel-heading"><div><div class="eyebrow">SPECIALIST STAFF</div><h2>Training coaches</h2></div><span class="live-tag">${overview.coaches.length} EMPLOYED</span></div><div class="training-coach-grid">${coaches}</div></section>${market}<section class="panel"><div class="panel-heading"><div><div class="eyebrow">FACILITIES</div><h2>Training environment</h2></div></div><p class="muted">Training ground level ${career.club.investment?.facilities?.trainingGround ?? 1} · Youth academy level ${career.club.investment?.facilities?.youthAcademy ?? 1}. Better facilities improve training efficiency and young-player development. Facility investment remains available only to the manager.</p></section>
     <section class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">PLAYER DEVELOPMENT REPORTS</div><h2>Season progression</h2></div><span class="live-tag">${development.length} REPORTS</span></div><table class="history-table"><thead><tr><th>SEASON</th><th>OVR</th><th>CHANGE</th><th>ATTRIBUTE / REASON</th></tr></thead><tbody>${reports || '<tr><td colspan="4" class="scorer-empty">Season development reports will appear here.</td></tr>'}</tbody></table></section>`;
 }
@@ -5939,9 +6348,17 @@ function playerProfileLink(playerOrId, displayName, className = "") {
   return `<a class="player-profile-link${className ? ` ${esc(className)}` : ""}" href="#players" data-open-player="${esc(playerId)}">${esc(name)}</a>`;
 }
 
+let browseablePlayersCache = { career: null, season: null, players: [] };
 function getBrowseablePlayers() {
+  if (
+    browseablePlayersCache.career === career &&
+    browseablePlayersCache.season === career.season
+  )
+    return browseablePlayersCache.players;
   const entries = career.baseData.careerLeagues ?? [];
   const activeClubIds = new Set(career.clubs.map((club) => club.id));
+  const clubById = new Map(career.clubs.map((club) => [club.id, club]));
+  const leagueById = new Map(entries.map((entry) => [entry.league.id, entry]));
   const result = [];
   const seen = new Set();
   const add = (player, leagueName, clubName) => {
@@ -5968,13 +6385,11 @@ function getBrowseablePlayers() {
   for (const player of career.players) {
     if (!activeClubIds.has(player.clubId) && player.id !== career.player.id)
       continue;
-    const club = career.clubs.find((entry) => entry.id === player.clubId);
+    const club = clubById.get(player.clubId);
     add(player, career.league.name, club?.name ?? "Free agent");
   }
   for (const state of career.worldLeagues) {
-    const entry = entries.find(
-      (candidate) => candidate.league.id === state.league.id,
-    );
+    const entry = leagueById.get(state.league.id);
     for (const player of state.performers ?? []) {
       add(
         player,
@@ -5983,11 +6398,13 @@ function getBrowseablePlayers() {
       );
     }
   }
-  return result.sort(
+  result.sort(
     (left, right) =>
       left.fullName.localeCompare(right.fullName) ||
       left.id.localeCompare(right.id),
   );
+  browseablePlayersCache = { career, season: career.season, players: result };
+  return result;
 }
 
 function renderPlayerDirectory() {
@@ -6090,13 +6507,16 @@ function renderContractSection(player) {
   const contract = player.contract ?? {};
   const isFree = !player.clubId;
   const day = currentDay();
-  const from = contract.startDate != null ? formatDate(Number(contract.startDate)) : "—";
-  const expiry = contract.expiryDate != null ? formatDate(Number(contract.expiryDate)) : "—";
+  const from =
+    contract.startDate != null ? formatDate(Number(contract.startDate)) : "—";
+  const expiry =
+    contract.expiryDate != null ? formatDate(Number(contract.expiryDate)) : "—";
   const duration = isFree ? null : contractRemainingDuration(contract, day);
   const status = contractStatusLabel(player);
   const history = (contract.history ?? []).slice().reverse();
   const stage = isFree ? null : contractStageLabelFromUi(contract, day);
-  const preContract = contract.preContract?.status === "agreed" ? contract.preContract : null;
+  const preContract =
+    contract.preContract?.status === "agreed" ? contract.preContract : null;
   return `<section class="player-hub-section"><div class="section-heading"><div><div class="eyebrow">CONTRACT</div><h2>Employment & contract history</h2></div><span class="live-tag">${esc(status.toUpperCase())}</span></div>
     <section class="panel">
       <div class="free-agent-details contract-profile-grid">
@@ -6114,7 +6534,17 @@ function renderContractSection(player) {
       </div>
       ${duration ? `<div class="contract-profile-countdown">${contractCountdownMarkup(player)}</div>` : ""}
       ${stage && stage !== "normal" ? `<p class="muted contract-stage-note">${{ "twelve-months": "This contract is inside its final 12 months — renewal talks are open.", "six-months": "Inside the six-month window: pre-contract agreements are permitted.", "final-month": "FINAL MONTH: the player must accept a renewal or leave on a free transfer." }[stage] ?? ""}</p>` : ""}
-      ${history.length ? `<table class="history-table"><thead><tr><th>DATE</th><th>EVENT</th><th>CLUB</th><th>DETAILS</th></tr></thead><tbody>${history.slice(0, 12).map((entry) => `<tr><td>${entry.date != null ? esc(formatDate(Number(entry.date))) : "—"}</td><td>${esc(entry.type ?? "—")}</td><td>${esc((career.clubs ?? []).find((club) => club.id === entry.clubId)?.name ?? "—")}</td><td>${esc(entry.reason ?? (entry.weeklyWage ? `€${formatDecimal(entry.weeklyWage)}/wk · ${entry.years ?? "?"}y` : ""))}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">No previous contracts recorded.</p>'}
+      ${
+        history.length
+          ? `<table class="history-table"><thead><tr><th>DATE</th><th>EVENT</th><th>CLUB</th><th>DETAILS</th></tr></thead><tbody>${history
+              .slice(0, 12)
+              .map(
+                (entry) =>
+                  `<tr><td>${entry.date != null ? esc(formatDate(Number(entry.date))) : "—"}</td><td>${esc(entry.type ?? "—")}</td><td>${esc((career.clubs ?? []).find((club) => club.id === entry.clubId)?.name ?? "—")}</td><td>${esc(entry.reason ?? (entry.weeklyWage ? `€${formatDecimal(entry.weeklyWage)}/wk · ${entry.years ?? "?"}y` : ""))}</td></tr>`,
+              )
+              .join("")}</tbody></table>`
+          : '<p class="muted">No previous contracts recorded.</p>'
+      }
     </section>
   </section>`;
 }
@@ -6266,12 +6696,35 @@ function handleAction(action, details = {}) {
     renderGame();
     return;
   }
-  if (action === "owner-request" && !career?.isManagerCareer) { notice = "Club management actions are only available in manager-career mode."; }
+  if (action === "owner-request" && !career?.isManagerCareer) {
+    notice =
+      "Club management actions are only available in manager-career mode.";
+  }
   if (action === "owner-request" && career?.isManagerCareer) {
     const request = career.createOwnerRequest();
     notice = `${request.label}: ${request.detail}`;
   }
-  if (["owner-response", "start-investment", "recruit-scout", "create-scout-assignment", "sign-youth-prospect", "promote-academy-player", "release-academy-player", "hire-training-coach", "dismiss-training-coach", "assign-training-coach", "set-club-training", "refresh-training-market", "owner-fire-coach", "owner-appoint-coach", "refresh-coach-market"].includes(action) && career && !career.isManagerCareer) {
+  if (
+    [
+      "owner-response",
+      "start-investment",
+      "recruit-scout",
+      "create-scout-assignment",
+      "sign-youth-prospect",
+      "promote-academy-player",
+      "release-academy-player",
+      "hire-training-coach",
+      "dismiss-training-coach",
+      "assign-training-coach",
+      "set-club-training",
+      "refresh-training-market",
+      "owner-fire-coach",
+      "owner-appoint-coach",
+      "refresh-coach-market",
+    ].includes(action) &&
+    career &&
+    !career.isManagerCareer
+  ) {
     notice = "This action is reserved for manager-career mode.";
   }
   if (action === "owner-response" && career?.isManagerCareer) {
@@ -6374,7 +6827,12 @@ function handleAction(action, details = {}) {
       notice = `Could not start conversation: ${error.message}`;
     }
   }
-  if ((action === "owner-fire-coach" || action === "owner-appoint-coach" || action === "refresh-coach-market") && career?.isManagerCareer) {
+  if (
+    (action === "owner-fire-coach" ||
+      action === "owner-appoint-coach" ||
+      action === "refresh-coach-market") &&
+    career?.isManagerCareer
+  ) {
     try {
       if (action === "refresh-coach-market") {
         const coaches = career.refreshCoachMarket();
@@ -6393,7 +6851,11 @@ function handleAction(action, details = {}) {
       notice = error.message;
     }
   }
-  if (action === "request-coach-dismissal" && career && !career.isManagerCareer) {
+  if (
+    action === "request-coach-dismissal" &&
+    career &&
+    !career.isManagerCareer
+  ) {
     try {
       const result = career.requestCoachDismissal();
       if (result.accepted) {
@@ -6554,7 +7016,8 @@ function handleAction(action, details = {}) {
       hideSimProgress();
     } catch (error) {
       console.error("Simulation failed:", error);
-      notice = "The day could not be simulated. Your career save is safe; please try again.";
+      notice =
+        "The day could not be simulated. Your career save is safe; please try again.";
       hideSimProgress();
     }
   }
@@ -6569,7 +7032,8 @@ function handleAction(action, details = {}) {
       notice = `Half-season simulation complete: ${result.weeksSimulated} matchdays simulated (${result.leagueMatchesSimulated} league). You are ${place}; your final stats are on the overview.`;
       hideSimProgress();
     } catch (error) {
-      notice = error.message ||
+      notice =
+        error.message ||
         "The half-season simulation could not be completed. Your save is safe; please try again.";
       hideSimProgress();
     }
@@ -6582,14 +7046,17 @@ function handleAction(action, details = {}) {
     try {
       finishLiveMatchForSimulation();
       showSimProgress("Simulating to end of season…");
-      const result = career.simulateToSeasonEnd();
+      const result = measurePerformance("seasonSimulation", () =>
+        career.simulateToSeasonEnd(),
+      );
       const place = result.leaguePosition
         ? ordinal(result.leaguePosition)
         : "—";
       notice = `Season simulated: ${result.matchesSimulated} matches completed (${result.leagueMatchesSimulated} league). You finished ${place}; your final stats are on the overview.`;
       hideSimProgress();
     } catch (error) {
-      notice = error.message ||
+      notice =
+        error.message ||
         "The season simulation could not be completed. Your save is safe; please try again.";
       hideSimProgress();
     }
@@ -6615,33 +7082,65 @@ function handleAction(action, details = {}) {
   if (action === "train") {
     try {
       if (career.isManagerCareer) {
-        career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value });
+        career.setClubTrainingPlan({
+          programme: $app.querySelector("#club-training-programme")?.value,
+          intensity: $app.querySelector("#club-training-intensity")?.value,
+        });
         notice = "Club training programme saved.";
       } else {
-        const result = career.setTrainingFocus($app.querySelector("#training-focus")?.value ?? career.trainingFocus);
+        const result = career.setTrainingFocus(
+          $app.querySelector("#training-focus")?.value ?? career.trainingFocus,
+        );
         notice = `Individual focus set to ${result.attribute}. Development happens gradually as the season advances.`;
       }
-    } catch (error) { notice = error.message; }
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "hire-training-coach") {
-    try { const coach = career.hireTrainingCoach(details.coachId); notice = `${coach.name} hired for the ${coach.department} department.`; }
-    catch (error) { notice = error.message; }
+    try {
+      const coach = career.hireTrainingCoach(details.coachId);
+      notice = `${coach.name} hired for the ${coach.department} department.`;
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "dismiss-training-coach") {
-    try { const coach = career.dismissTrainingCoach(details.coachId); notice = `${coach.name} dismissed.`; }
-    catch (error) { notice = error.message; }
+    try {
+      const coach = career.dismissTrainingCoach(details.coachId);
+      notice = `${coach.name} dismissed.`;
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "refresh-training-market") {
-    try { notice = `${career.refreshTrainingCoachMarket().length} coaches are available for recruitment.`; }
-    catch (error) { notice = error.message; }
+    try {
+      notice = `${career.refreshTrainingCoachMarket().length} coaches are available for recruitment.`;
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "assign-training-coach") {
-    try { career.assignTrainingCoach(details.department, $app.querySelector(`#coach-assignment-${details.department}`)?.value); notice = `Training coach assigned to ${details.department}.`; }
-    catch (error) { notice = error.message; }
+    try {
+      career.assignTrainingCoach(
+        details.department,
+        $app.querySelector(`#coach-assignment-${details.department}`)?.value,
+      );
+      notice = `Training coach assigned to ${details.department}.`;
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "set-club-training") {
-    try { career.setClubTrainingPlan({ programme: $app.querySelector("#club-training-programme")?.value, intensity: $app.querySelector("#club-training-intensity")?.value }); notice = "Club training programme updated."; }
-    catch (error) { notice = error.message; }
+    try {
+      career.setClubTrainingPlan({
+        programme: $app.querySelector("#club-training-programme")?.value,
+        intensity: $app.querySelector("#club-training-intensity")?.value,
+      });
+      notice = "Club training programme updated.";
+    } catch (error) {
+      notice = error.message;
+    }
   }
   if (action === "toggle-developer-mode") {
     if (career.developerMode) {
@@ -6765,6 +7264,98 @@ function handleAction(action, details = {}) {
       notice = `Transfer search unavailable: ${error.message}`;
     }
   }
+  if (action === "add-transfer-list" || action === "remove-transfer-list") {
+    try {
+      if (action === "add-transfer-list") career.addPlayerToTransferList();
+      else career.removePlayerFromTransferList();
+      notice =
+        action === "add-transfer-list"
+          ? "You have been placed on the transfer list. Clubs may scout you during transfer windows."
+          : "You have been removed from the transfer list.";
+      transfersTab = "transfer-list";
+    } catch (error) {
+      notice = error.message;
+    }
+  }
+  if (
+    [
+      "accept-listed-offer",
+      "negotiate-listed-offer",
+      "reject-listed-offer",
+    ].includes(action)
+  ) {
+    try {
+      const choice =
+        action === "accept-listed-offer"
+          ? "accept"
+          : action === "negotiate-listed-offer"
+            ? "negotiate"
+            : "reject";
+      const offer = career.transferListOffers.find(
+        (entry) => entry.id === details.offerId,
+      );
+      const counter =
+        choice === "negotiate"
+          ? {
+              fee: Math.round(
+                Number(
+                  window.prompt("Counter fee (€):", String(offer?.fee ?? 0)) ??
+                    offer?.fee ??
+                    0,
+                ),
+              ),
+              weeklyWage: Math.round(
+                Number(
+                  window.prompt(
+                    "Counter weekly wage (€):",
+                    String(offer?.weeklyWage ?? 0),
+                  ) ??
+                    offer?.weeklyWage ??
+                    0,
+                ),
+              ),
+              years: Math.round(
+                Number(
+                  window.prompt(
+                    "Contract duration (1–5 years):",
+                    String(offer?.years ?? 3),
+                  ) ??
+                    offer?.years ??
+                    3,
+                ),
+              ),
+              signingBonus: Math.round(
+                Number(
+                  window.prompt(
+                    "Signing bonus (€):",
+                    String(offer?.signingBonus ?? 0),
+                  ) ??
+                    offer?.signingBonus ??
+                    0,
+                ),
+              ),
+              squadRole: offer?.squadRole,
+            }
+          : {};
+      const result = career.resolveListedPlayerOffer(
+        details.offerId,
+        choice,
+        counter,
+      );
+      if (result.status === "accepted") {
+        showCurrentClubAfterTransfer();
+        notice = `Transfer complete: ${career.player.first} ${career.player.last} joined ${career.club.name}.`;
+      } else {
+        transfersTab = "offers";
+        notice =
+          result.status === "countered"
+            ? "Your improved terms have been sent to the interested club."
+            : "You rejected the transfer offer.";
+      }
+    } catch (error) {
+      notice = error.message;
+    }
+  }
   if (action === "accept-offer") {
     try {
       const result = career.resolveTransferOffer(details.offerId, "accept");
@@ -6797,15 +7388,9 @@ function handleAction(action, details = {}) {
       notice = `Could not submit wage request: ${error.message}`;
     }
   }
-  if (
-    action === "reject-offer" ||
-    action === "request-offer-role"
-  ) {
+  if (action === "reject-offer" || action === "request-offer-role") {
     try {
-      const decision =
-        action === "reject-offer"
-          ? "reject"
-          : "request-role";
+      const decision = action === "reject-offer" ? "reject" : "request-role";
       const result = career.resolveTransferOffer(details.offerId, decision);
       notice = result.negotiated
         ? `Your agent has negotiated with ${result.offer.clubName}.`
@@ -6820,7 +7405,11 @@ function handleAction(action, details = {}) {
         .transferMarket()
         .find(({ player }) => player.id === details.playerId);
       if (!marketEntry) throw new Error("That player is no longer available.");
-      const value = marketEntry.marketValue ?? marketEntry.player?.marketValue ?? marketEntry.player?.value ?? 0;
+      const value =
+        marketEntry.marketValue ??
+        marketEntry.player?.marketValue ??
+        marketEntry.player?.value ??
+        0;
       const fee = Math.round(value * 1.08);
       const suggestedMonthly = Math.round(
         (marketEntry.player.contract?.wage ??
@@ -6885,8 +7474,7 @@ function handleAction(action, details = {}) {
         try {
           writeCareerStorage(key, serializeCareerSave(true));
         } catch (compactError) {
-          if (compactError?.name !== "QuotaExceededError")
-            throw compactError;
+          if (compactError?.name !== "QuotaExceededError") throw compactError;
           // Autosave is duplicated browser storage. Release it first, then retry
           // the compact manual save without touching the other manual save slots.
           localStorage.removeItem(AUTOSAVE_KEY);

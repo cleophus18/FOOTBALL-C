@@ -386,6 +386,7 @@ export function simulatePossessionEngine({
   neutralVenue = false,
   minutes = 90,
   maxLeagueGoals = null,
+  quickBackground = false,
 }) {
   const teams = { home, away };
   const score = { home: 0, away: 0 };
@@ -442,7 +443,10 @@ export function simulatePossessionEngine({
     away: teamContext(away, home, baselineXg.away, "away", neutralVenue),
   };
   const totalPossessions = Math.max(24, Math.round(POSSESSION_COUNT * minutes / 90));
-  for (let possession = 0; possession < totalPossessions * 2; possession++) {
+  const possessionCount = quickBackground
+    ? Math.max(28, Math.round(totalPossessions * 0.42))
+    : totalPossessions;
+  for (let possession = 0; possession < possessionCount * 2; possession++) {
     const side = possession % 2 === 0 ? "home" : "away";
     const defendingSide = side === "home" ? "away" : "home";
     const team = teams[side];

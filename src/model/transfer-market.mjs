@@ -17,7 +17,9 @@ function positionalFit(player, position) {
 
 /** Assess depth and quality at each role using the club's current formation and squad. */
 export function assessClubSquadNeeds(club, players, { dayIndex = 0 } = {}) {
-  const squad = players.filter((player) => player.clubId === club.id);
+  const squad = Array.isArray(players)
+    ? players.filter((player) => player.clubId === club.id)
+    : players?.get?.(club.id) ?? [];
   const slots = club.formationSlots ?? [];
   const formationPositions = {
     "4-3-3": [

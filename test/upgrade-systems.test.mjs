@@ -105,25 +105,6 @@ test("season winners persist trophies on the club record", () => {
     prestige: 50,
     reputation: 50,
   });
-
-  test("simulate one day advances the calendar one day instead of one week", async () => {
-    const data = await loadData();
-    const career = new Career(data, {
-      first: "Day",
-      last: "Tester",
-      position: "ST",
-      clubId: "hull",
-      seed: 901,
-    });
-    const startDay = career.currentDay();
-    const startWeek = career.week;
-    const first = career.simulateOneDay();
-    assert.equal(first.dayAdvanced, 1);
-    assert.equal(career.currentDay(), startDay + 1);
-    assert.equal(career.week, startWeek);
-    for (let index = 0; index < 5; index++) career.simulateOneDay();
-    assert.equal(career.week, startWeek + 1);
-  });
   const career = {
     season: 2030,
     clubs: [club],
@@ -139,4 +120,23 @@ test("season winners persist trophies on the club record", () => {
   assert.equal(club.honours.length, 1);
   assert.equal(club.honours[0].competition, "Test League");
   assert.equal(club.lastTrophy, "Test League");
+});
+
+test("simulate one day advances the calendar one day instead of one week", async () => {
+  const data = await loadData();
+  const career = new Career(data, {
+    first: "Day",
+    last: "Tester",
+    position: "ST",
+    clubId: "hull",
+    seed: 901,
+  });
+  const startDay = career.currentDay();
+  const startWeek = career.week;
+  const first = career.simulateOneDay();
+  assert.equal(first.dayAdvanced, 1);
+  assert.equal(career.currentDay(), startDay + 1);
+  assert.equal(career.week, startWeek);
+  for (let index = 0; index < 5; index++) career.simulateOneDay();
+  assert.equal(career.week, startWeek + 1);
 });

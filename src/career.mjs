@@ -478,7 +478,10 @@ function releaseSquadPlayer(club, player, date, reason = "Released by club") {
     preContractAllowed: false,
     pendingOffer: null,
     history: Array.isArray(player.contract?.history)
-      ? [...player.contract.history, { date: day, type: "released", clubId: club.id, reason }]
+      ? [
+          ...player.contract.history,
+          { date: day, type: "released", clubId: club.id, reason },
+        ]
       : [{ date: day, type: "released", clubId: club.id, reason }],
   };
   return player;
@@ -487,6 +490,11 @@ function releaseSquadPlayer(club, player, date, reason = "Released by club") {
 export class Career {
   constructor(data, options, saved = null) {
     this.baseData = data;
+    this._simulationLock = false;
+    this._clubById = new Map();
+    this._playerById = new Map();
+    this._playersByClubId = new Map();
+    this._worldPerformerById = new Map();
     const selectedWorldLeague = options.leagueId
       ? data.careerLeagues?.find((entry) => entry.id === options.leagueId)
       : null;
@@ -543,6 +551,9 @@ export class Career {
     this.agentPool = this.buildAgents();
     this.agent = null;
     this.transferOffers = [];
+    this.transferList = [];
+    this.transferListOffers = [];
+    this.transferListNextEvaluationWeek = 0;
     this.transferRefreshCount = 0;
     this.transferMarketState = {
       season: this.season,
@@ -573,19 +584,31 @@ export class Career {
     this.league = data.league;
     this.clubs = this.buildClubs();
     this.players = this.buildSquads();
-    for (const club of this.clubs) ensureClubTraining(club, this.seed, this.season);
+    for (const club of this.clubs)
+      ensureClubTraining(club, this.seed, this.season);
+    const leagueByClubId = new Map(
+      this.worldCareerLeagues.flatMap((entry) =>
+        entry.league.teamIds.map((clubId) => [clubId, entry.league.id]),
+      ),
+    );
     for (const player of this.players) {
       if (player.first === "Lionel" && player.last === "Messi") {
         player.position = "AM";
         player.altPositions = ["ST", "RW", "LW"];
         player.displayPosition = "CAM";
       }
-      const league = this.worldCareerLeagues.find((entry) =>
-        entry.league.teamIds.includes(player.clubId),
-      );
+      const leagueId = leagueByClubId.get(player.clubId);
+      const league = leagueId
+        ? this.worldCareerLeagues.find((entry) => entry.league.id === leagueId)
+        : null;
       if (league) player.leagueId = league.league.id;
     }
-    this.syncAllPlayerMarketValues({ season: this.season, dayIndex: this.currentDay(), initialize: true });
+    this.rebuildIndexes();
+    this.syncAllPlayerMarketValues({
+      season: this.season,
+      dayIndex: this.currentDay(),
+      initialize: true,
+    });
     this.expansionPlayers = [];
     this.worldCupNpcPlayers = [];
     this.leagueHistories = {};
@@ -596,7 +619,8 @@ export class Career {
       ensureClubScouting(club, this.seed);
       ensureCoachProfile(club);
       ensureClubTraining(club, this.seed, this.season);
-      if (club.id !== options.clubId) aiInvestmentDecision(club, toDayIndex(this.season, 7, 1));
+      if (club.id !== options.clubId)
+        aiInvestmentDecision(club, toDayIndex(this.season, 7, 1));
       academyState(club);
       if (!club.academy.players.length) {
         const academyRng = this.rng.stream(`academy-intake-${club.id}`);
@@ -639,13 +663,18 @@ export class Career {
       }
     }
     this.player = this.createCareerPlayer(options);
+    const startingWage = data.careerSettings.finance.startingWeeklyWage;
     this.player.contract = {
       ...(this.player.contract ?? {}),
-      weeklyWage: data.careerSettings.finance.startingWeeklyWage,
-      wage: data.careerSettings.finance.startingWeeklyWage,
+      startDate: this.currentDay(),
+      expiryDate: this.currentDay() + 3 * 365,
+      weeklyWage: startingWage,
+      wage: startingWage,
       years: 3,
-      role: 'Important Player',
+      squadRole: "Important Player",
+      signingBonus: 0,
       status: CONTRACT_STATUSES.ACTIVE,
+      history: this.player.contract?.history ?? [],
     };
     this.money = data.careerSettings.finance.startingBalance;
     this.financialHistory = [];
@@ -670,8 +699,10 @@ export class Career {
     this.club.isUserClub = true;
     this.player.clubId = this.club.id;
     this.ensureSquadSizes();
+    this.rebuildIndexes();
     for (const club of this.clubs) assignShirtNumbers(this.players, club);
-    if (typeof this.normalizeAllContracts === "function") this.normalizeAllContracts({ announce: false, migrate: true });
+    if (typeof this.normalizeAllContracts === "function")
+      this.normalizeAllContracts({ announce: false, migrate: true });
     // In manager mode the human is the coach, so his chosen style is the club's style
     // and he picks the shape — not an AI head coach.
     if (this.managerState) {
@@ -704,14 +735,22 @@ export class Career {
       }
     }
     this.applyExpansionSquads();
+    this.rebuildIndexes();
     for (const state of this.worldLeagues) {
       for (const performer of state.performers ?? []) {
         this.ensureWorldPlayerModel(performer);
-        performer.overall = performer.isLegend ? LEGEND_OVERALL : calculateOverall(performer);
+        performer.overall = performer.isLegend
+          ? LEGEND_OVERALL
+          : calculateOverall(performer);
         performer.baseOverall = performer.overall;
       }
     }
     this.reconcileSquadMembership();
+    this.syncAllPlayerMarketValues({
+      season: this.season,
+      dayIndex: this.currentDay(),
+      initialize: true,
+    });
     this.ensureWorldCupMajorNationPlayers();
     this.worldCup = worldCupSchedule(this.careerStartYear);
     this.initializeWorldCupQualification();
@@ -760,11 +799,18 @@ export class Career {
     this.coachAppointments = { season: this.season, count: 0 };
 
     if (saved) this.restore(saved);
-    if (typeof this.normalizeAllContracts === "function") this.normalizeAllContracts({ announce: false, migrate: true, fromRestore: !!saved });
+    this.rebuildIndexes();
+    if (typeof this.normalizeAllContracts === "function")
+      this.normalizeAllContracts({
+        announce: false,
+        migrate: true,
+        fromRestore: !!saved,
+      });
     if (!saved) {
       // A brand-new career: opening contract lengths and the board's starting
       // allocation. Restored saves keep the terms and budgets they were saved with.
-      if (typeof this.applyInitialContractTerms === "function") this.applyInitialContractTerms();
+      if (typeof this.applyInitialContractTerms === "function")
+        this.applyInitialContractTerms();
       for (const club of this.clubs) {
         const finance = ensureClubFinance(club);
         finance.allocationSeason ??= this.season;
@@ -776,16 +822,46 @@ export class Career {
     this.enforceGeneratedOverallLimit();
   }
 
+  rebuildIndexes() {
+    this._clubById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    this._playerById = new Map(
+      (this.players ?? []).map((player) => [player.id, player]),
+    );
+    this._playersByClubId = new Map();
+    for (const player of this.players ?? []) {
+      if (!player.clubId) continue;
+      let squad = this._playersByClubId.get(player.clubId);
+      if (!squad) this._playersByClubId.set(player.clubId, (squad = []));
+      squad.push(player);
+    }
+    this._worldPerformerById = new Map();
+    for (const state of this.worldLeagues ?? []) {
+      for (const performer of state.performers ?? []) {
+        if (performer?.id)
+          this._worldPerformerById.set(performer.id, performer);
+      }
+    }
+  }
+
+  playersForClub(clubId) {
+    return (
+      this._playersByClubId?.get(clubId) ??
+      (this.players ?? []).filter((player) => player.clubId === clubId)
+    );
+  }
+
   developWorldPlayers() {
     const finalDay =
       this.calendar.at(-1)?.matchday ?? toDayIndex(this.season, 12, 31);
     const developed = new Set();
+    const clubById =
+      this._clubById ?? new Map(this.clubs.map((club) => [club.id, club]));
     for (const state of this.worldLeagues) {
       for (const player of state.performers ?? []) {
         if (player.isLegend || developed.has(player.id)) continue;
         developed.add(player.id);
         let club =
-          this.clubs.find((item) => item.id === player.clubId) ??
+          clubById.get(player.clubId) ??
           (() => {
             state.trainingClubs ??= {};
             return (state.trainingClubs[player.clubId] ??=
@@ -848,6 +924,7 @@ export class Career {
       }
     }
     this.enforceGeneratedOverallLimit();
+    this.rebuildIndexes();
   }
 
   ensureWorldPlayerModel(player) {
@@ -951,6 +1028,7 @@ export class Career {
             this.players = this.players.filter(
               (item) => item.id !== retiredPlayer.id,
             );
+            this._playerById?.delete(retiredPlayer.id);
             this.expansionPlayers = this.expansionPlayers.filter(
               (item) => item.id !== retiredPlayer.id,
             );
@@ -1016,6 +1094,7 @@ export class Career {
             });
             this.players.push(replacement);
             this.expansionPlayers.push(replacement);
+            this._playerById?.set(replacement.id, replacement);
             club?.addPlayer(replacement.id);
             kept[kept.length - 1] = replacement;
             const tracking = (this.populationTracking ??= {
@@ -1076,6 +1155,7 @@ export class Career {
         });
         this.players.push(replacement);
         this.expansionPlayers.push(replacement);
+        this._playerById?.set(replacement.id, replacement);
         club?.addPlayer(replacement.id);
       }
     }
@@ -1144,10 +1224,24 @@ export class Career {
             coachFormationFor(entry, id, clubRatings[id], this.season),
           ]),
         );
-        const trainingClubs = Object.fromEntries(league.teamIds.map((id) => {
-          const previousStaff = this.worldLeagues?.find((state) => state.league.id === league.id)?.trainingClubs?.[id];
-          return [id, previousStaff ?? createWorldTrainingClub(id, clubRatings[id])];
-        }));
+        const previousWorldState = this.worldLeagues?.find(
+          (state) => state.league.id === league.id,
+        );
+        const previousPerformersById = new Map(
+          (previousWorldState?.performers ?? []).map((performer) => [
+            performer.id,
+            performer,
+          ]),
+        );
+        const trainingClubs = Object.fromEntries(
+          league.teamIds.map((id) => {
+            const previousStaff = previousWorldState?.trainingClubs?.[id];
+            return [
+              id,
+              previousStaff ?? createWorldTrainingClub(id, clubRatings[id]),
+            ];
+          }),
+        );
         const clubTactics = Object.fromEntries(
           league.teamIds.map((id) => [
             id,
@@ -1158,8 +1252,11 @@ export class Career {
           const roster = entry.rostersByClub[clubId] ?? [];
           const existingSquad =
             entry.league.id === this.league.id
-              ? this.players.filter((player) => player.clubId === clubId)
+              ? this.playersForClub(clubId)
               : [];
+          const existingSquadById = new Map(
+            existingSquad.map((player) => [player.id, player]),
+          );
           const players = [...existingSquad, ...roster]
             .filter((record) => {
               // A legend never appears for a club other than his own.
@@ -1173,9 +1270,7 @@ export class Career {
             })
             .map((record) => {
               const id = record.playerId ?? `real-${clubId}-${record.id}`;
-              const existingPlayer = existingSquad.find(
-                (player) => player.id === id,
-              );
+              const existingPlayer = existingSquadById.get(id);
               if (existingPlayer) return existingPlayer;
               const legend = record.playerId
                 ? null
@@ -1195,25 +1290,40 @@ export class Career {
                       record.position,
                       development.overall ?? record.overall,
                     );
-              const previous = this.worldLeagues
-                ?.flatMap((worldState) => worldState.performers ?? [])
-                .find(
-                  (performer) =>
-                    performer.id === id ||
-                    (legend &&
-                      performer.isLegend &&
-                      performer.clubId === clubId),
-                );
-              const attrs = previous?.attrs ?? (hasCsvAttrs ? record.attrs : (model?.attrs ?? null));
-              const subAttrs = previous?.subAttrs ?? (hasCsvAttrs ? (record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs)) : (model?.subAttrs ?? null));
-              const gkAttrs = previous?.gkAttrs ??
+              const previous =
+                previousPerformersById.get(id) ??
+                (legend
+                  ? previousWorldState?.performers?.find(
+                      (performer) =>
+                        performer.isLegend && performer.clubId === clubId,
+                    )
+                  : null);
+              const attrs =
+                previous?.attrs ??
+                (hasCsvAttrs ? record.attrs : (model?.attrs ?? null));
+              const subAttrs =
+                previous?.subAttrs ??
+                (hasCsvAttrs
+                  ? (record.subAttrs ?? deriveSubAttrsFromGroups(record.attrs))
+                  : (model?.subAttrs ?? null));
+              const gkAttrs =
+                previous?.gkAttrs ??
                 (hasCsvAttrs && record.position === "GK"
                   ? ensureGoalkeeperAttributes(record.gkAttrs ?? {}, {
                       ...record.attrs,
                       overall: record.overall,
                     })
                   : (model?.gkAttrs ?? null));
-              const overallAdjustment = hasCsvAttrs ? Number(record.overall) - calculateOverall({ position: record.position, attrs, subAttrs, gkAttrs, overallAdjustment: 0 }) : null;
+              const overallAdjustment = hasCsvAttrs
+                ? Number(record.overall) -
+                  calculateOverall({
+                    position: record.position,
+                    attrs,
+                    subAttrs,
+                    gkAttrs,
+                    overallAdjustment: 0,
+                  })
+                : null;
               const calculatedOverall = hasCsvAttrs
                 ? Number(record.overall)
                 : (development.overall ??
@@ -1227,7 +1337,8 @@ export class Career {
                 id,
                 first: record.first,
                 last: record.last,
-                fullName: record.fullName ?? `${record.first} ${record.last}`.trim(),
+                fullName:
+                  record.fullName ?? `${record.first} ${record.last}`.trim(),
                 nickname: record.nickname ?? null,
                 nationality: record.nationality,
                 dob: record.dob,
@@ -1252,7 +1363,8 @@ export class Career {
                 subAttrs,
                 gkAttrs,
                 source: record.source ?? "real-world",
-                overallAdjustment: previous?.overallAdjustment ?? overallAdjustment,
+                overallAdjustment:
+                  previous?.overallAdjustment ?? overallAdjustment,
                 dataStatus: record.dataStatus,
                 dataSource: record.dataSource,
                 value: legend?.value ?? record.value,
@@ -1264,9 +1376,7 @@ export class Career {
                   record.first === "Lionel" && record.last === "Messi"
                     ? "CAM"
                     : undefined,
-                overall: legend
-                  ? LEGEND_OVERALL
-                  : calculatedOverall,
+                overall: legend ? LEGEND_OVERALL : calculatedOverall,
                 age: legend
                   ? 25
                   : (development.age ??
@@ -1282,9 +1392,17 @@ export class Career {
                   development.lastDevelopmentSeason ??
                   previous?.lastDevelopmentSeason ??
                   null,
-                developmentProgress: legend ? 1 : (development.developmentProgress ?? 0),
-                developmentHistory: development.developmentHistory ?? previous?.developmentHistory ?? [],
-                developmentReportHistory: development.developmentReportHistory ?? previous?.developmentReportHistory ?? [],
+                developmentProgress: legend
+                  ? 1
+                  : (development.developmentProgress ?? 0),
+                developmentHistory:
+                  development.developmentHistory ??
+                  previous?.developmentHistory ??
+                  [],
+                developmentReportHistory:
+                  development.developmentReportHistory ??
+                  previous?.developmentReportHistory ??
+                  [],
                 clubId,
                 isLegend: !!legend,
                 playStyles: previous?.playStyles ?? {
@@ -1363,9 +1481,7 @@ export class Career {
           while (players.length < 20) {
             const index = players.length;
             const id = `world-generated-${clubId}-${index + 1}`;
-            const previous = this.worldLeagues
-              ?.flatMap((worldState) => worldState.performers ?? [])
-              .find((performer) => performer.id === id);
+            const previous = this._worldPerformerById?.get(id);
             const development = this.worldPlayerDevelopment[id] ?? {};
             const nationality = this.pickNationality(fillerRng, homeNation);
             const generatedName = this.nameForNationality(
@@ -1448,7 +1564,11 @@ export class Career {
                 development.developmentReportHistory ??
                 previous?.developmentReportHistory ??
                 [],
-              potentialTrajectory: previous?.potentialTrajectory ?? (previous?.potential != null ? Math.max(0, (previous.potential - overall) * 5) : fillerRng.int(15, 75)),
+              potentialTrajectory:
+                previous?.potentialTrajectory ??
+                (previous?.potential != null
+                  ? Math.max(0, (previous.potential - overall) * 5)
+                  : fillerRng.int(15, 75)),
               source: previous?.source ?? "generated",
               clubId,
               apps: 0,
@@ -1483,7 +1603,14 @@ export class Career {
           }
           return players;
         });
-        return { league, clubRatings, clubFormations, clubTactics, trainingClubs, performers };
+        return {
+          league,
+          clubRatings,
+          clubFormations,
+          clubTactics,
+          trainingClubs,
+          performers,
+        };
       });
   }
 
@@ -3864,11 +3991,27 @@ export class Career {
       const rng = this.rng.stream(
         `world-matches-${state.league.id}-${this.season}`,
       );
+      const worldEntry = this.worldCareerLeagues.find(
+        (entry) => entry.league.id === state.league.id,
+      );
+      const performersByClub = new Map();
+      for (const performer of state.performers ?? []) {
+        let squad = performersByClub.get(performer.clubId);
+        if (!squad) performersByClub.set(performer.clubId, (squad = []));
+        squad.push(performer);
+      }
       for (const fixture of state.league.fixtures[roundIndex]) {
-        const homeRating = this.worldClubStrength(state, fixture.home);
-        const awayRating = this.worldClubStrength(state, fixture.away);
-        const worldEntry = this.worldCareerLeagues.find(
-          (entry) => entry.league.id === state.league.id,
+        if (fixture.processedSeason === this.season) continue;
+        const fixtureDay = this.fixtureDayFor(state.league, roundIndex, week);
+        const homeRating = this.worldClubStrength(
+          state,
+          fixture.home,
+          performersByClub,
+        );
+        const awayRating = this.worldClubStrength(
+          state,
+          fixture.away,
+          performersByClub,
         );
         const boosterFor = (clubId) =>
           teamBoosterFor(worldEntry?.clubIdentities?.[clubId]?.name);
@@ -3906,26 +4049,55 @@ export class Career {
             "Low Block": 1.03,
             "Long Ball": 0.98,
           })[style] ?? 1;
-        const homeXIQuality = this.worldClubUnitQuality(
+        const homeStartingXI = this.worldClubStartingXI(
           state,
           fixture.home,
-          "attack",
+          performersByClub,
         );
-        const homeDefense = this.worldClubUnitQuality(
-          state,
-          fixture.home,
-          "defense",
-        );
-        const awayXIQuality = this.worldClubUnitQuality(
+        const awayStartingXI = this.worldClubStartingXI(
           state,
           fixture.away,
-          "attack",
+          performersByClub,
         );
-        const awayDefense = this.worldClubUnitQuality(
-          state,
-          fixture.away,
-          "defense",
-        );
+        const unitQuality = (xi, unit) => {
+          const quality = (player) => {
+            if (unit === "goalkeeping")
+              return player.position === "GK"
+                ? goalkeeperQuality(player.gkAttrs, {
+                    kind: "shotStopping",
+                    overall: Number(player.overall) || 60,
+                  })
+                : Number(player.overall) || 60;
+            const stats = player.attrs ?? {};
+            if (unit === "attack")
+              return (
+                (stats.shooting ?? player.overall ?? 60) * 0.26 +
+                (stats.passing ?? player.overall ?? 60) * 0.25 +
+                (stats.dribbling ?? player.overall ?? 60) * 0.22 +
+                (stats.pace ?? player.overall ?? 60) * 0.12 +
+                (player.overall ?? 60) * 0.15
+              );
+            return (
+              (stats.defending ?? player.overall ?? 60) * 0.4 +
+              (stats.physical ?? player.overall ?? 60) * 0.18 +
+              (stats.pace ?? player.overall ?? 60) * 0.08 +
+              (player.overall ?? 60) * 0.34
+            );
+          };
+          return clamp(
+            0.85 +
+              (xi.reduce((sum, player) => sum + quality(player), 0) /
+                Math.max(1, xi.length) -
+                65) *
+                0.004,
+            0.72,
+            1.16,
+          );
+        };
+        const homeXIQuality = unitQuality(homeStartingXI, "attack");
+        const homeDefense = unitQuality(homeStartingXI, "defense");
+        const awayXIQuality = unitQuality(awayStartingXI, "attack");
+        const awayDefense = unitQuality(awayStartingXI, "defense");
         const xg = expectedGoals(
           {
             attack:
@@ -3938,11 +4110,7 @@ export class Career {
               homeShape.defence *
               tacticalForm(homeTactic) *
               homeDefense,
-            goalkeeping: this.worldClubUnitQuality(
-              state,
-              fixture.home,
-              "goalkeeping",
-            ),
+            goalkeeping: unitQuality(homeStartingXI, "goalkeeping"),
             booster: boosterFor(fixture.home),
           },
           {
@@ -3956,16 +4124,10 @@ export class Career {
               awayShape.defence *
               tacticalForm(awayTactic) *
               awayDefense,
-            goalkeeping: this.worldClubUnitQuality(
-              state,
-              fixture.away,
-              "goalkeeping",
-            ),
+            goalkeeping: unitQuality(awayStartingXI, "goalkeeping"),
             booster: boosterFor(fixture.away),
           },
         );
-        const homeStartingXI = this.worldClubStartingXI(state, fixture.home);
-        const awayStartingXI = this.worldClubStartingXI(state, fixture.away);
         const matchSimulation = simulatePossessionEngine({
           home: {
             xi: homeStartingXI,
@@ -4010,14 +4172,38 @@ export class Career {
           // World-league fixtures are league matches, so the same 50-goal season cap
           // applies here as it does in the domestic league.
           maxLeagueGoals: MAX_LEAGUE_GOALS,
+          quickBackground: true,
         });
         const { homeGoals, awayGoals } = matchSimulation;
+        const processAiTransferWindow = transferWindowForMonth(
+          fromDayIndex(fixtureDay).month,
+        );
+        if (
+          !this.transferMarketState?.processedAiWindows?.includes(
+            `${this.season}-${processAiTransferWindow}`,
+          )
+        ) {
+          if (processAiTransferWindow)
+            this.processCpuTransferMarket(fixtureDay);
+          this.processAIContractManagement(fixtureDay);
+          this.processAISquadManagement(fixtureDay);
+          this.transferMarketState ??= {};
+          this.transferMarketState.processedAiWindows ??= [];
+          if (processAiTransferWindow)
+            this.transferMarketState.processedAiWindows.push(
+              `${this.season}-${processAiTransferWindow}`,
+            );
+        }
         state.league.table.record(
           fixture.home,
           fixture.away,
           homeGoals,
           awayGoals,
         );
+        fixture.processedSeason = this.season;
+        fixture.homeGoals = homeGoals;
+        fixture.awayGoals = awayGoals;
+        fixture.played = true;
         this.recordWorldLeaguePerformers(
           state,
           fixture.home,
@@ -4032,8 +4218,12 @@ export class Career {
     }
   }
 
-  worldClubUnitQuality(state, clubId, unit = "attack") {
-    const squad = (state.performers ?? []).filter(
+  worldClubUnitQuality(state, clubId, unit = "attack", performerIndex = null) {
+    const squad = (
+      performerIndex?.get(clubId) ??
+      state.performers ??
+      []
+    ).filter(
       (player) =>
         player.clubId === clubId &&
         !isInjured(player) &&
@@ -4116,8 +4306,8 @@ export class Career {
     return clamp(0.85 + (average - 65) * 0.004, 0.72, 1.16);
   }
 
-  worldClubStartingXI(state, clubId) {
-    const squad = (state.performers ?? [])
+  worldClubStartingXI(state, clubId, performerIndex = null) {
+    const squad = (performerIndex?.get(clubId) ?? state.performers ?? [])
       .filter(
         (player) =>
           player.clubId === clubId &&
@@ -4177,7 +4367,9 @@ export class Career {
           player,
           score:
             (player.overall ?? 60) +
-            ((alternatives[slot] ?? [slot]).includes(player.position) ? 0 : -18),
+            ((alternatives[slot] ?? [slot]).includes(player.position)
+              ? 0
+              : -18),
         }))
         .sort((left, right) => right.score - left.score);
       const selected = options[0]?.player;
@@ -4193,8 +4385,8 @@ export class Career {
    * The top XI matters most, while the best few players provide the ceiling that
    * separates elite clubs from deep but average squads.
    */
-  worldClubStrength(state, clubId) {
-    const squad = (state.performers ?? [])
+  worldClubStrength(state, clubId, performerIndex = null) {
+    const squad = (performerIndex?.get(clubId) ?? state.performers ?? [])
       .filter(
         (player) =>
           player.clubId === clubId &&
@@ -4297,9 +4489,10 @@ export class Career {
       };
       if (matchSimulation) {
         const side = clubId === homeId ? "home" : "away";
-        for (const goal of matchSimulation.events.filter(
+        const sideGoals = matchSimulation.events.filter(
           (event) => event.side === side && event.type === "goal",
-        )) {
+        );
+        for (const goal of sideGoals) {
           let scorer = starting.find((player) => player.id === goal.scorerId);
           if (!scorer || Number(scorer.goals ?? 0) >= 50) {
             scorer =
@@ -4323,9 +4516,7 @@ export class Career {
             );
           }
         }
-        const recordedGoals = matchSimulation.events.filter(
-          (event) => event.side === side && event.type === "goal",
-        ).length;
+        const recordedGoals = sideGoals.length;
         for (let goal = recordedGoals; goal < goals; goal++) {
           const scorer =
             starting.find(
@@ -4992,7 +5183,10 @@ export class Career {
     const voteResult = this.getBallonDorVoteResult();
     if (ballonAward && voteResult?.winner) {
       const winnerEntry = voteResult.winner;
-      const winner = evaluatedBallonRace.find((entry) => entry.playerId === winnerEntry.playerId) ?? evaluatedBallonRace[0];
+      const winner =
+        evaluatedBallonRace.find(
+          (entry) => entry.playerId === winnerEntry.playerId,
+        ) ?? evaluatedBallonRace[0];
       ballonAward.winners = [
         {
           ...withClub(winner.player),
@@ -5020,7 +5214,9 @@ export class Career {
           secondPlaceVotes: winnerEntry.secondPlaceVotes,
         },
         top10: voteResult.top10.map((entry, index) => {
-          const raceEntry = evaluatedBallonRace.find((e) => e.playerId === entry.playerId);
+          const raceEntry = evaluatedBallonRace.find(
+            (e) => e.playerId === entry.playerId,
+          );
           return {
             rank: index + 1,
             playerId: entry.playerId,
@@ -5034,7 +5230,8 @@ export class Career {
             goals: raceEntry?.goals ?? 0,
             assists: raceEntry?.assists ?? 0,
             domesticAchievements: raceEntry?.domesticAchievements ?? [],
-            championsLeagueAchievements: raceEntry?.championsLeagueAchievements ?? [],
+            championsLeagueAchievements:
+              raceEntry?.championsLeagueAchievements ?? [],
             votePoints: entry.points,
             firstPlaceVotes: entry.firstPlaceVotes,
             secondPlaceVotes: entry.secondPlaceVotes,
@@ -5132,7 +5329,9 @@ export class Career {
       requireIndividualAward: true,
     });
     const winnerEntry = voteResult.winner;
-    const winner = eligibleRace.find((entry) => entry.playerId === winnerEntry.playerId) ?? eligibleRace[0];
+    const winner =
+      eligibleRace.find((entry) => entry.playerId === winnerEntry.playerId) ??
+      eligibleRace[0];
     if (!winner) return;
     const clubNameFor = (player) =>
       this.clubs.find((club) => club.id === player.clubId)?.name ??
@@ -5510,19 +5709,18 @@ export class Career {
             clamp(Math.max(0, knockoutRating - 7) * 12, 12) +
             clamp((cl?.playerOfMatch ?? 0) * 4, 12) +
             clamp(clAwards.length * 5, 10)
-          : 0) *
-          Math.min(1, clApps / 4),
+          : 0) * Math.min(1, clApps / 4),
         180,
       );
       const combinedStats = positionStats(player, stats, goals, assists);
-      const individualStatistics =
-        clamp(
-          diminishing(combinedStats, 250, 55) +
-            clamp((averageRating - 6) * 42, 65) +
-            clamp(Math.min(apps, 38) * 1.2, 45),
-          250,
-        );
-      const leagueChampion = league.table?.sorted?.()?.[0]?.teamId === player.clubId;
+      const individualStatistics = clamp(
+        diminishing(combinedStats, 250, 55) +
+          clamp((averageRating - 6) * 42, 65) +
+          clamp(Math.min(apps, 38) * 1.2, 45),
+        250,
+      );
+      const leagueChampion =
+        league.table?.sorted?.()?.[0]?.teamId === player.clubId;
       const clWinner = this.championsLeague?.winnerId === player.clubId;
       const clRunnerUp = this.championsLeague?.runnerUpId === player.clubId;
       const trophyContribution = Math.min(1, apps / 20);
@@ -5533,19 +5731,17 @@ export class Career {
           (clRunnerUp ? 30 * clContribution : 0),
         250,
       );
-      const consistencyBigMatches =
-        clamp(
-          clamp(Math.min(apps + clApps, 50) * 1.5, 70) +
-            clamp((averageRating - 6.2) * 34, 45) +
-            clamp(knockoutRating > 0 ? (knockoutRating - 6) * 18 : 0, 25) +
-            clamp(
-              ((player.matchHistory ?? []).filter(
-                (match) => match.rating >= 7.5,
-              ).length || 0) * 2,
-              30,
-            ),
-          70,
-        );
+      const consistencyBigMatches = clamp(
+        clamp(Math.min(apps + clApps, 50) * 1.5, 70) +
+          clamp((averageRating - 6.2) * 34, 45) +
+          clamp(knockoutRating > 0 ? (knockoutRating - 6) * 18 : 0, 25) +
+          clamp(
+            ((player.matchHistory ?? []).filter((match) => match.rating >= 7.5)
+              .length || 0) * 2,
+            30,
+          ),
+        70,
+      );
       const domesticGoalPoints = clamp(goals * 6, 0, 90);
       const domesticAssistPoints = clamp(assists * 4, 0, 50);
       const totalPoints = round(
@@ -6894,7 +7090,9 @@ export class Career {
     });
     // Recalculate market value for every player across all leagues/contexts once per completed season,
     // using the finished season's statistics and the players' latest attributes/OVR.
-    this.recalculateAllMarketValuesForSeason(this.season, { dayIndex: this.currentDay() });
+    this.recalculateAllMarketValuesForSeason(this.season, {
+      dayIndex: this.currentDay(),
+    });
     for (const entry of this.worldCareerLeagues) {
       entry.league.season = this.season + 1;
       this.leagueHistories[entry.league.id] = entry.league.history ?? [];
@@ -6956,6 +7154,7 @@ export class Career {
     this.positionNeedCache = null;
     this.worldCareerLeagues = this.refreshWorldCareerLeagues();
     this.data = { ...this.data, careerLeagues: this.worldCareerLeagues };
+    this.rebuildIndexes();
     this.leagueHistories ??= {};
 
     this.seasonWeekCount = Math.max(
@@ -6969,7 +7168,9 @@ export class Career {
     );
     this.league = this.buildLeague();
     this.worldLeagues = this.buildWorldLeagues();
+    this.rebuildIndexes();
     this.applyExpansionSquads();
+    this.rebuildIndexes();
     this.enforceGeneratedOverallLimit();
     // New season, new board review: every club's transfer allocation is recalculated
     // from the cash it actually has, once, and never twice for the same season.
@@ -6985,8 +7186,14 @@ export class Career {
     };
   }
 
-  syncAllPlayerMarketValues({ season = this.season, dayIndex = this.currentDay(), initialize = false } = {}) {
-    const clubById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+  syncAllPlayerMarketValues({
+    season = this.season,
+    dayIndex = this.currentDay(),
+    initialize = false,
+  } = {}) {
+    const clubById =
+      this._clubById ??
+      new Map((this.clubs ?? []).map((club) => [club.id, club]));
     for (const player of this.collectAllMarketPlayers()) {
       const club = clubById.get(player.clubId) ?? null;
       if (player.marketValue == null && Number.isFinite(Number(player.value))) {
@@ -6996,10 +7203,14 @@ export class Career {
         club,
         dayIndex,
         season,
-        force: initialize || !Number.isFinite(Number(player.marketValue ?? player.value)),
+        force:
+          initialize ||
+          !Number.isFinite(Number(player.marketValue ?? player.value)),
       });
-      if (player.previousMarketValue === undefined) player.previousMarketValue = null;
-      if (!Number.isFinite(Number(player.marketValueChange))) player.marketValueChange = 0;
+      if (player.previousMarketValue === undefined)
+        player.previousMarketValue = null;
+      if (!Number.isFinite(Number(player.marketValueChange)))
+        player.marketValueChange = 0;
     }
   }
 
@@ -7031,15 +7242,22 @@ export class Career {
     return players;
   }
 
-  recalculateAllMarketValuesForSeason(completedSeason, { dayIndex = this.currentDay() } = {}) {
-    const clubById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+  recalculateAllMarketValuesForSeason(
+    completedSeason,
+    { dayIndex = this.currentDay() } = {},
+  ) {
+    const clubById =
+      this._clubById ??
+      new Map((this.clubs ?? []).map((club) => [club.id, club]));
     for (const player of this.collectAllMarketPlayers()) {
       if (player.marketValueSeason === completedSeason) continue; // once per season per player
       const club = clubById.get(player.clubId) ?? null;
       if (player.marketValue == null && Number.isFinite(Number(player.value))) {
         player.marketValue = Number(player.value);
       }
-      const previous = Number.isFinite(Number(player.marketValue ?? player.value))
+      const previous = Number.isFinite(
+        Number(player.marketValue ?? player.value),
+      )
         ? Number(player.marketValue ?? player.value)
         : null;
       const current = calculateMarketValue(player, {
@@ -7052,24 +7270,46 @@ export class Career {
       let adjusted = current;
       if (previous != null && previous > 0) {
         const ratio = current / previous;
-        const dampedRatio = ratio > 1 ? Math.min(ratio, 1.45) : Math.max(ratio, 0.65);
+        const dampedRatio =
+          ratio > 1 ? Math.min(ratio, 1.45) : Math.max(ratio, 0.65);
         adjusted = Math.round(previous * dampedRatio);
         const age = Number(player.age ?? 25);
-        const apps = Number(player.leaguePerformance?.apps ?? player.stats?.apps ?? player.apps ?? 0);
-        const ratingSum = Number(player.leaguePerformance?.ratingSum ?? player.stats?.ratingSum ?? player.ratingSum ?? 0);
+        const apps = Number(
+          player.leaguePerformance?.apps ??
+            player.stats?.apps ??
+            player.apps ??
+            0,
+        );
+        const ratingSum = Number(
+          player.leaguePerformance?.ratingSum ??
+            player.stats?.ratingSum ??
+            player.ratingSum ??
+            0,
+        );
         const avg = apps > 0 ? ratingSum / apps : 6.4;
         if (age <= 21 && avg >= 7.1 && apps >= 12) {
-          adjusted = Math.max(adjusted, Math.round(previous * Math.min(ratio, 1.7)));
+          adjusted = Math.max(
+            adjusted,
+            Math.round(previous * Math.min(ratio, 1.7)),
+          );
         }
         if (apps <= 2 && avg < 6.8) {
-          adjusted = Math.min(adjusted, Math.round(previous * Math.max(ratio, 0.82)));
+          adjusted = Math.min(
+            adjusted,
+            Math.round(previous * Math.max(ratio, 0.82)),
+          );
         }
       }
-      const step = adjusted >= 50_000_000 ? 1_000_000
-        : adjusted >= 10_000_000 ? 500_000
-        : adjusted >= 1_000_000 ? 100_000
-        : adjusted >= 250_000 ? 25_000
-        : 10_000;
+      const step =
+        adjusted >= 50_000_000
+          ? 1_000_000
+          : adjusted >= 10_000_000
+            ? 500_000
+            : adjusted >= 1_000_000
+              ? 100_000
+              : adjusted >= 250_000
+                ? 25_000
+                : 10_000;
       adjusted = Math.max(25_000, Math.round(adjusted / step) * step);
 
       player.previousMarketValue = previous;
@@ -7186,14 +7426,14 @@ export class Career {
     const rating =
       apps > 0
         ? (this.player.stats.ratingSum ?? 0) / apps
-        : this.player.overall ?? 60;
+        : (this.player.overall ?? 60);
     const standing = this.league.table.positions().get(this.club.id) ?? 10;
     const ownerPatience = this.club.ownerProfile?.patience ?? 50;
     const baseChance =
       0.08 +
       importance * 0.55 +
       Math.max(0, (rating - 6.4) * 0.08) +
-      Math.max(0, (10 - standing)) * 0.015 +
+      Math.max(0, 10 - standing) * 0.015 +
       (ownerPatience < 45 ? 0.08 : 0);
     const threshold = 0.42;
     const roll = this.rng.stream("coach-dismissal-request").next();
@@ -7204,9 +7444,7 @@ export class Career {
         importance < 0.25
           ? "The owner feels you are not yet influential enough to make that demand."
           : "The owner has backed the head coach and rejected your request.";
-      this.news.unshift(
-        `Coach dismissal request declined. ${reason}`,
-      );
+      this.news.unshift(`Coach dismissal request declined. ${reason}`);
       return { accepted: false, importance, rating, message: reason };
     }
     const dismissedName = this.club.manager?.name ?? "the head coach";
@@ -7221,8 +7459,7 @@ export class Career {
       (c) => Number(c.cost ?? 0) <= Math.max(500000, budget * 0.12),
     );
     const pool = (affordable.length ? affordable : candidates).sort(
-      (a, b) =>
-        (b.overall ?? b.rating ?? 0) - (a.overall ?? a.rating ?? 0),
+      (a, b) => (b.overall ?? b.rating ?? 0) - (a.overall ?? a.rating ?? 0),
     );
     const best = pool[0];
     if (!best) throw new Error("No replacement coach is available.");
@@ -7277,8 +7514,7 @@ export class Career {
     const apps = me.stats?.apps ?? 0;
     const rating =
       apps > 0 ? (me.stats.ratingSum ?? 0) / apps : (me.overall ?? 60) / 10;
-    const goalContrib =
-      (me.stats?.goals ?? 0) + (me.stats?.assists ?? 0) * 0.7;
+    const goalContrib = (me.stats?.goals ?? 0) + (me.stats?.assists ?? 0) * 0.7;
     const squadOverallAvg =
       squad.reduce((sum, p) => sum + (p.overall ?? 60), 0) / squad.length;
     const overallEdge = Math.max(
@@ -7287,7 +7523,9 @@ export class Career {
     );
     const xi = this.selectedXI?.(this.currentDay?.() ?? 0) ?? [];
     const inXI = xi.some((s) => s.id === me.id || s.player?.id === me.id);
-    const appShare = apps / Math.max(1, this.league?.table?.row?.(this.club.id)?.played ?? apps);
+    const appShare =
+      apps /
+      Math.max(1, this.league?.table?.row?.(this.club.id)?.played ?? apps);
     const importance =
       overallEdge * 0.35 +
       Math.min(1, appShare) * 0.25 +
@@ -7298,7 +7536,7 @@ export class Career {
   }
 
   fireCoach(reason = "The owner has decided to appoint a new head coach.") {
-      throw new Error("Only the manager can manage club staff.");
+    throw new Error("Only the manager can manage club staff.");
     const dismissed = dismissClubManager(this.club, reason, this.currentDay());
     if (!dismissed)
       throw new Error("The club has no active head coach to dismiss.");
@@ -7539,8 +7777,13 @@ export class Career {
 
   buildCareerWorldLeagues(selectedLeagueId = null) {
     const entries = [...(this.baseData.careerLeagues ?? [])];
-    if (selectedLeagueId && !entries.some((entry) => entry.league.id === selectedLeagueId)) {
-      const selected = this.data.careerLeagues?.find((entry) => entry.league.id === selectedLeagueId);
+    if (
+      selectedLeagueId &&
+      !entries.some((entry) => entry.league.id === selectedLeagueId)
+    ) {
+      const selected = this.data.careerLeagues?.find(
+        (entry) => entry.league.id === selectedLeagueId,
+      );
       if (selected) entries.push(selected);
     }
     const included = new Set(entries.map((entry) => entry.league.id));
@@ -7808,6 +8051,201 @@ export class Career {
     });
   }
 
+  addPlayerToTransferList(playerId = this.player?.id) {
+    if (this.isManagerCareer)
+      throw new Error("Manager careers control transfers directly.");
+    if (playerId !== this.player?.id)
+      throw new Error("You can only list your own player.");
+    if (!this.player.clubId)
+      throw new Error("Free agents cannot be placed on the transfer list.");
+    if (this.player.isLegend)
+      throw new Error("Protected legends cannot request transfers.");
+    this.transferList ??= [];
+    if (!this.transferList.some((entry) => entry.playerId === playerId)) {
+      this.transferList.push({
+        playerId,
+        playerName: `${this.player.first} ${this.player.last}`,
+        clubId: this.club.id,
+        listedAt: this.currentDay(),
+        offers: 0,
+      });
+    }
+    return this.transferList.find((entry) => entry.playerId === playerId);
+  }
+
+  removePlayerFromTransferList(playerId = this.player?.id) {
+    this.transferList = (this.transferList ?? []).filter(
+      (entry) => entry.playerId !== playerId,
+    );
+    this.transferListOffers = (this.transferListOffers ?? []).filter(
+      (offer) => offer.playerId !== playerId,
+    );
+    return true;
+  }
+
+  processUserTransferList(day = this.currentDay()) {
+    if (
+      this.isManagerCareer ||
+      !this.player?.clubId ||
+      this.week < this.transferListNextEvaluationWeek
+    )
+      return [];
+    const listing = (this.transferList ?? []).find(
+      (entry) => entry.playerId === this.player.id,
+    );
+    if (!listing || !this.isTransferWindowWeek(day)) return [];
+    this.transferListNextEvaluationWeek = this.week + 2;
+    const value = marketValueForPlayer(this.player, this.club, day);
+    const candidates = this.evaluateTransferInterest(this.player, {
+      threshold: this.transferPerformanceBonus(this.player) >= 8 ? 57 : 64,
+    });
+    const offers = candidates
+      .slice(0, 3)
+      .filter(({ club }) => {
+        const finance = ensureClubFinance(club);
+        const wage = desiredWeeklyWage(this.player, club, {
+          offeredRole: "Important Player",
+        });
+        return (
+          finance.transferBudget >= value * 0.65 &&
+          finance.balance >= value * 0.65 &&
+          club.wageBill(this.players) + wage <= finance.wageBudget
+        );
+      })
+      .map(({ club, league, fit }) => {
+        const finance = ensureClubFinance(club);
+        const wage = Math.min(
+          desiredWeeklyWage(this.player, club, {
+            offeredRole: "Important Player",
+          }),
+          Math.max(500, finance.wageBudget - club.wageBill(this.players)),
+        );
+        const fee = Math.min(
+          Math.round(value * (0.82 + fit.score / 350)),
+          finance.transferBudget,
+          finance.balance,
+        );
+        const signingBonus = Math.min(
+          Math.round(wage * 4),
+          Math.max(0, finance.balance - fee) * 0.05,
+        );
+        return {
+          id: `listed-offer-${club.id}-${this.season}-${this.week}-${this.player.id}`,
+          playerId: this.player.id,
+          clubId: club.id,
+          clubName: club.name,
+          leagueId: league?.id ?? club.leagueId,
+          fee,
+          weeklyWage: wage,
+          years: fit.playingTime >= 68 ? 4 : 3,
+          signingBonus,
+          squadRole: fit.playingTime >= 78 ? "Key Player" : "Important Player",
+          interest: fit.score,
+          reason: fit.reason,
+          date: day,
+        };
+      })
+      .filter(
+        (offer) =>
+          !this.transferListOffers.some((existing) => existing.id === offer.id),
+      );
+    this.transferListOffers.push(...offers);
+    listing.offers = (listing.offers ?? 0) + offers.length;
+    return offers;
+  }
+
+  resolveListedPlayerOffer(offerId, decision = "reject", counter = {}) {
+    const offer = (this.transferListOffers ?? []).find(
+      (entry) => entry.id === offerId,
+    );
+    if (!offer) throw new Error("That transfer offer is no longer available.");
+    if (decision === "negotiate") {
+      const club = this._clubById.get(offer.clubId);
+      const finance = ensureClubFinance(club);
+      const fee = Math.round(Number(counter.fee ?? offer.fee) || offer.fee);
+      const wage = Math.round(
+        Number(counter.weeklyWage ?? offer.weeklyWage) || offer.weeklyWage,
+      );
+      if (
+        fee > finance.transferBudget ||
+        fee > finance.balance ||
+        wage <= 0 ||
+        club.wageBill(this.players) + wage > finance.wageBudget
+      )
+        throw new Error(
+          "The proposed terms exceed the destination club's budgets.",
+        );
+      offer.fee = fee;
+      offer.weeklyWage = wage;
+      offer.years = clamp(
+        Math.round(Number(counter.years ?? offer.years)),
+        1,
+        5,
+      );
+      offer.signingBonus = Math.min(
+        Math.max(
+          0,
+          Math.round(Number(counter.signingBonus ?? offer.signingBonus)),
+        ),
+        Math.max(0, finance.balance - fee),
+      );
+      offer.squadRole = counter.squadRole ?? offer.squadRole;
+      offer.negotiated = true;
+      return { status: "countered", offer };
+    }
+    if (decision === "reject") {
+      this.transferListOffers = this.transferListOffers.filter(
+        (entry) => entry.id !== offerId,
+      );
+      return { status: "rejected", offer };
+    }
+    if (decision !== "accept") throw new Error("Unknown transfer decision.");
+    if (!this.isTransferWindowWeek(this.currentDay()))
+      throw new Error(
+        "This offer can only be completed during a transfer window.",
+      );
+    const destination = this._clubById.get(offer.clubId);
+    if (!destination || destination.id === this.club.id)
+      throw new Error("The destination club is unavailable.");
+    const seller = this.club;
+    transferPlayer({
+      seller,
+      buyer: destination,
+      player: this.player,
+      players: this.players,
+      fee: offer.fee,
+      wage: offer.weeklyWage,
+      date: this.currentDay(),
+      transferId: `listed-transfer-${offer.id}`,
+    });
+    const contract = signPlayerContract(this.player, destination, offer, {
+      currentDay: this.currentDay(),
+      season: this.season,
+    });
+    this.club = destination;
+    this.player.leagueId = offer.leagueId;
+    this.transferHistory.unshift({
+      id: `listed-transfer-${offer.id}`,
+      playerId: this.player.id,
+      playerName: `${this.player.first} ${this.player.last}`,
+      fromClubId: seller.id,
+      fromClub: seller.name,
+      toClubId: destination.id,
+      toClub: destination.name,
+      fee: offer.fee,
+      wage: contract.weeklyWage,
+      contractYears: contract.years,
+      signingBonus: offer.signingBonus,
+      date: this.currentDay(),
+      type: "permanent",
+    });
+    this.transferList = [];
+    this.transferListOffers = [];
+    this.positionNeedCache = null;
+    this.reconcileSquadMembership();
+    return { status: "accepted", offer, club: destination };
+  }
+
   /** Current absolute day used by finance and transfer events. */
   currentDay() {
     if (Number.isFinite(this.dayCursor)) return this.dayCursor;
@@ -8048,6 +8486,10 @@ export class Career {
   /** Market view over the same player objects used by the match engine. */
   transferMarket(filters = {}) {
     const query = String(filters.query ?? "").toLowerCase();
+    const clubById =
+      this._clubById ?? new Map(this.clubs.map((club) => [club.id, club]));
+    const minimum = Number(filters.minOverall ?? 0);
+    const limit = Math.min(250, Math.max(1, Number(filters.limit ?? 100)));
     return this.players
       .filter((player) => player.clubId && player.id !== this.player.id)
       .filter(
@@ -8057,21 +8499,19 @@ export class Career {
             normalizePosition(filters.position),
       )
       .filter((player) => !filters.clubId || player.clubId === filters.clubId)
-      .filter(
-        (player) =>
-          !filters.minOverall || player.overall >= Number(filters.minOverall),
-      )
+      .filter((player) => Number(player.overall ?? 0) >= minimum)
       .filter(
         (player) =>
           !query ||
           `${player.first} ${player.last}`.toLowerCase().includes(query),
       )
       .map((player) => {
-        const club = this.clubs.find((entry) => entry.id === player.clubId);
+        const club = clubById.get(player.clubId);
         marketValueForPlayer(player, club, this.currentDay());
         return { player, club, marketValue: player.value };
       })
-      .sort((left, right) => right.player.overall - left.player.overall);
+      .sort((left, right) => right.player.overall - left.player.overall)
+      .slice(0, limit);
   }
 
   playerManagerRequest(type, details = {}) {
@@ -8578,7 +9018,8 @@ export class Career {
   }
 
   buyPlayer(playerId, { fee, wage, contractYears = 3 } = {}) {
-    if (!this.isManagerCareer) throw new Error("Only the manager can approve club transfers.");
+    if (!this.isManagerCareer)
+      throw new Error("Only the manager can approve club transfers.");
     const player = this.players.find((entry) => entry.id === playerId);
     if (!player) throw new Error("That player is not available.");
     const seller = this.clubs.find((club) => club.id === player.clubId);
@@ -8883,7 +9324,9 @@ export class Career {
                   this.pickArchetypeForPosition(rng, record.position),
               }),
           attrs: hasCsvAttrs ? { ...record.attrs } : (generated?.attrs ?? null),
-          subAttrs: hasCsvAttrs ? derivedSubAttrs : (generated?.subAttrs ?? null),
+          subAttrs: hasCsvAttrs
+            ? derivedSubAttrs
+            : (generated?.subAttrs ?? null),
           gkAttrs: hasCsvAttrs
             ? (derivedGkAttrs ?? generated?.gkAttrs ?? null)
             : (generated?.gkAttrs ?? null),
@@ -8892,7 +9335,11 @@ export class Career {
           overall: hasCsvAttrs ? Number(record.overall) : target,
           potential: legend
             ? LEGEND_OVERALL
-            : clamp(Number(record.potential) || target, Math.min(target, Number(record.potential) || target), 99),
+            : clamp(
+                Number(record.potential) || target,
+                Math.min(target, Number(record.potential) || target),
+                99,
+              ),
           clubId: club.id,
           squadStatus: "First Team",
           value: legend?.value ?? record.value,
@@ -9373,7 +9820,10 @@ export class Career {
     });
     league.buildFixtures(this.rng.stream("schedule"));
     const breakWeeks = [8, 16, 24, 32];
-    const minCalendarWeeks = (leagueSpec.fixtureStartWeek ?? 3) + league.fixtures.length + breakWeeks.length;
+    const minCalendarWeeks =
+      (leagueSpec.fixtureStartWeek ?? 3) +
+      league.fixtures.length +
+      breakWeeks.length;
     const calendar = seasonWeeks(
       this.season,
       Math.max(
@@ -9462,16 +9912,14 @@ export class Career {
     if (player?.isLegend) return [];
     const day = this.currentDay();
     const candidates = [];
-    const marketPlayers = [
-      ...new Map(
-        [
-          ...(this.players ?? []),
-          ...(this.worldLeagues ?? []).flatMap(
-            (state) => state.performers ?? [],
-          ),
-        ].map((entry) => [entry.id, entry]),
-      ).values(),
-    ];
+    const marketPlayers = this.collectAllMarketPlayers();
+    const playersByClub = new Map();
+    for (const item of marketPlayers) {
+      if (!item.clubId) continue;
+      let squad = playersByClub.get(item.clubId);
+      if (!squad) playersByClub.set(item.clubId, (squad = []));
+      squad.push(item);
+    }
     const destinationClubs = new Map(
       (this.clubs ?? []).map((club) => [club.id, club]),
     );
@@ -9496,9 +9944,7 @@ export class Career {
             rating: identity.prestige ?? 60,
           },
         });
-        const roster = marketPlayers.filter(
-          (candidate) => candidate.clubId === clubId,
-        );
+        const roster = playersByClub.get(clubId) ?? [];
         club.squad = roster.map((candidate) => candidate.id);
         ensureClubFinance(club);
         destinationClubs.set(clubId, club);
@@ -9515,7 +9961,7 @@ export class Career {
           club.prestige ??
           50,
       );
-      const squad = marketPlayers.filter((item) => item.clubId === club.id);
+      const squad = playersByClub.get(club.id) ?? [];
       const marketClub = {
         ...club,
         currentWageBill: club.wageBill(marketPlayers),
@@ -9597,6 +10043,7 @@ export class Career {
         window: currentKey,
         searchCount: 0,
         lastSearchDay: null,
+        processedAiWindows: this.transferMarketState?.processedAiWindows ?? [],
       };
     }
   }
@@ -9610,7 +10057,6 @@ export class Career {
     return { agent: null, offers: [] };
   }
 
-
   /**
    * Standard opening contract terms: AI players start on four-year deals and the
    * human-controlled player on a two-year deal. Runs once, at career creation —
@@ -9618,8 +10064,11 @@ export class Career {
    */
   applyInitialContractTerms() {
     const season = this.season ?? null;
-    const currentDay = typeof this.currentDay === "function" ? this.currentDay() : null;
-    const clubsById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    const currentDay =
+      typeof this.currentDay === "function" ? this.currentDay() : null;
+    const clubsById = new Map(
+      (this.clubs ?? []).map((club) => [club.id, club]),
+    );
     let applied = 0;
     const apply = (player) => {
       if (!player?.contract || !player.clubId) return;
@@ -9636,7 +10085,12 @@ export class Career {
       for (const performer of state?.performers ?? []) apply(performer);
     }
     for (const performer of this.expansionPlayers ?? []) apply(performer);
-    return { applied, season, aiYears: initialCareerContractYears({ isUser: false }), userYears: initialCareerContractYears({ isUser: true }) };
+    return {
+      applied,
+      season,
+      aiYears: initialCareerContractYears({ isUser: false }),
+      userYears: initialCareerContractYears({ isUser: true }),
+    };
   }
 
   /**
@@ -9667,15 +10121,30 @@ export class Career {
     return reviews;
   }
 
-  normalizeAllContracts({ announce = false, migrate = true, fromRestore = false } = {}) {
-    this.contractNotifications = Array.isArray(this.contractNotifications) ? this.contractNotifications : [];
-    this.contractEvents = Array.isArray(this.contractEvents) ? this.contractEvents : [];
-    this.recentlyExpiredContracts = Array.isArray(this.recentlyExpiredContracts) ? this.recentlyExpiredContracts : [];
-    const currentDay = typeof this.currentDay === "function" ? this.currentDay() : null;
+  normalizeAllContracts({
+    announce = false,
+    migrate = true,
+    fromRestore = false,
+  } = {}) {
+    this.contractNotifications = Array.isArray(this.contractNotifications)
+      ? this.contractNotifications
+      : [];
+    this.contractEvents = Array.isArray(this.contractEvents)
+      ? this.contractEvents
+      : [];
+    this.recentlyExpiredContracts = Array.isArray(this.recentlyExpiredContracts)
+      ? this.recentlyExpiredContracts
+      : [];
+    const currentDay =
+      typeof this.currentDay === "function" ? this.currentDay() : null;
     const season = this.season ?? 1;
-    const clubsById = new Map((this.clubs ?? []).map((club) => [club.id, club]));
+    const clubsById = new Map(
+      (this.clubs ?? []).map((club) => [club.id, club]),
+    );
     for (const player of this.players ?? []) {
-      const club = player?.clubId ? clubsById.get(player.clubId) ?? null : null;
+      const club = player?.clubId
+        ? (clubsById.get(player.clubId) ?? null)
+        : null;
       if (typeof normalizeContract === "function") {
         normalizeContract(player, { club, currentDay, season, migrate });
       } else if (player && !player.contract && player.clubId) {
@@ -9688,24 +10157,34 @@ export class Career {
       if (!player) continue;
       // Keep legacy convenience fields aligned without destroying existing data.
       if (player.contract) {
-        const w = Number(player.contract.weeklyWage ?? player.contract.wage ?? 0);
+        const w = Number(
+          player.contract.weeklyWage ?? player.contract.wage ?? 0,
+        );
         player.contract.weeklyWage = Number.isFinite(w) ? Math.round(w) : 0;
         player.contract.wage = player.contract.weeklyWage;
-        if (migrate && !player.squadStatus && player.contract.squadRole) player.squadStatus = player.contract.squadRole;
+        if (migrate && !player.squadStatus && player.contract.squadRole)
+          player.squadStatus = player.contract.squadRole;
       }
     }
     // Normalize embedded performer snapshots used by world leagues.
     for (const state of this.worldLeagues ?? []) {
       for (const performer of state?.performers ?? []) {
-        const club = performer?.clubId ? clubsById.get(performer.clubId) ?? null : null;
-        if (typeof normalizeContract === "function") normalizeContract(performer, { club, currentDay, season, migrate });
+        const club = performer?.clubId
+          ? (clubsById.get(performer.clubId) ?? null)
+          : null;
+        if (typeof normalizeContract === "function")
+          normalizeContract(performer, { club, currentDay, season, migrate });
       }
     }
     for (const performer of this.expansionPlayers ?? []) {
-      const club = performer?.clubId ? clubsById.get(performer.clubId) ?? null : null;
-      if (typeof normalizeContract === "function") normalizeContract(performer, { club, currentDay, season, migrate });
+      const club = performer?.clubId
+        ? (clubsById.get(performer.clubId) ?? null)
+        : null;
+      if (typeof normalizeContract === "function")
+        normalizeContract(performer, { club, currentDay, season, migrate });
     }
-    if (fromRestore && currentDay != null) this.lastContractProcessDay ??= currentDay;
+    if (fromRestore && currentDay != null)
+      this.lastContractProcessDay ??= currentDay;
     return { normalized: true, day: currentDay, season };
   }
 
@@ -9719,7 +10198,8 @@ export class Career {
    */
   processContractLifecycle(day = this.currentDay()) {
     if (!Number.isFinite(Number(day))) return { expired: [], notifications: 0 };
-    if (this.lastContractProcessDay === day) return { expired: [], notifications: 0 };
+    if (this.lastContractProcessDay === day)
+      return { expired: [], notifications: 0 };
     const previousDay = this.lastContractProcessDay;
     this.lastContractProcessDay = day;
     const clubsById = new Map(this.clubs.map((club) => [club.id, club]));
@@ -9727,10 +10207,11 @@ export class Career {
     const expired = [];
 
     for (const player of this.players) {
-      if (!player || player.source === "academy" || player === this.player) continue;
+      if (!player || player.source === "academy" || player === this.player)
+        continue;
       if (player.contract?.status === CONTRACT_STATUSES.RETIRED) continue;
       const contract = normalizeContract(player, {
-        club: player.clubId ? clubsById.get(player.clubId) ?? null : null,
+        club: player.clubId ? (clubsById.get(player.clubId) ?? null) : null,
         currentDay: day,
         season: this.season,
       });
@@ -9740,34 +10221,51 @@ export class Career {
         const stageKey = `stage-${player.id}-${stage}`;
         if (
           stage === "twelve-months" &&
-          !this.contractEvents.includes(`12m-${player.id}-${Math.floor(day / 30)}`)
+          !this.contractEvents.includes(
+            `12m-${player.id}-${Math.floor(day / 30)}`,
+          )
         ) {
           this.contractEvents.push(`12m-${player.id}-${Math.floor(day / 30)}`);
-          notifications.push(`${player.first} ${player.last} has entered the final 12 months of his contract at ${clubsById.get(player.clubId)?.name ?? "his club"}.`);
+          notifications.push(
+            `${player.first} ${player.last} has entered the final 12 months of his contract at ${clubsById.get(player.clubId)?.name ?? "his club"}.`,
+          );
         } else if (
           stage === "six-months" &&
-          !this.contractEvents.includes(`6m-${player.id}-${Math.floor(day / 30)}`)
+          !this.contractEvents.includes(
+            `6m-${player.id}-${Math.floor(day / 30)}`,
+          )
         ) {
           this.contractEvents.push(`6m-${player.id}-${Math.floor(day / 30)}`);
           contract.preContractAllowed = true;
-          if (contract.status === CONTRACT_STATUSES.ACTIVE) contract.status = CONTRACT_STATUSES.EXPIRING;
-          notifications.push(`${player.first} ${player.last} is inside the six-month pre-contract window.`);
+          if (contract.status === CONTRACT_STATUSES.ACTIVE)
+            contract.status = CONTRACT_STATUSES.EXPIRING;
+          notifications.push(
+            `${player.first} ${player.last} is inside the six-month pre-contract window.`,
+          );
         } else if (
           stage === "final-month" &&
-          !this.contractEvents.includes(`1m-${player.id}-${Math.floor(day / 30)}`)
+          !this.contractEvents.includes(
+            `1m-${player.id}-${Math.floor(day / 30)}`,
+          )
         ) {
           this.contractEvents.push(`1m-${player.id}-${Math.floor(day / 30)}`);
-          notifications.push(`FINAL MONTH: ${player.first} ${player.last} must accept a renewal or leave ${clubsById.get(player.clubId)?.name ?? "his club"} on a free transfer.`);
+          notifications.push(
+            `FINAL MONTH: ${player.first} ${player.last} must accept a renewal or leave ${clubsById.get(player.clubId)?.name ?? "his club"} on a free transfer.`,
+          );
         }
       }
       // Expire the contract once its date has passed.
       if (player.clubId && isContractExpired(contract, day)) {
         const previousClubId = player.clubId;
-        const result = expirePlayerContract(player, clubsById.get(previousClubId) ?? null, {
-          currentDay: day,
-          season: this.season,
-          reason: "Contract expired",
-        });
+        const result = expirePlayerContract(
+          player,
+          clubsById.get(previousClubId) ?? null,
+          {
+            currentDay: day,
+            season: this.season,
+            reason: "Contract expired",
+          },
+        );
         if (result) {
           expired.push(result);
           this.recentlyExpiredContracts.push({
@@ -9779,7 +10277,9 @@ export class Career {
             day,
             season: this.season,
           });
-          notifications.push(`${player.first} ${player.last} has become a free agent after leaving ${clubsById.get(previousClubId)?.name ?? "his former club"}.`);
+          notifications.push(
+            `${player.first} ${player.last} has become a free agent after leaving ${clubsById.get(previousClubId)?.name ?? "his former club"}.`,
+          );
         }
       }
     }
@@ -9800,13 +10300,20 @@ export class Career {
     ) {
       const formerClubId = this.player.clubId;
       const formerClubName = clubsById.get(formerClubId)?.name ?? "his club";
-      const previousWeeklyWage = Number(userContract.weeklyWage ?? userContract.wage ?? 0);
+      const previousWeeklyWage = Number(
+        userContract.weeklyWage ?? userContract.wage ?? 0,
+      );
       expirePlayerContract(this.player, clubsById.get(formerClubId) ?? null, {
         currentDay: day,
         season: this.season,
         reason: "Contract expired",
       });
-      expired.push({ playerId: this.player.id, previousClubId: formerClubId, date: day, reason: "Contract expired" });
+      expired.push({
+        playerId: this.player.id,
+        previousClubId: formerClubId,
+        date: day,
+        reason: "Contract expired",
+      });
       this.recentlyExpiredContracts.push({
         playerId: this.player.id,
         playerName: `${this.player.first} ${this.player.last}`,
@@ -9825,14 +10332,22 @@ export class Career {
           formerClubId,
           formerClubName,
           previousWeeklyWage,
-          clubOffer: this.userContractRenewalOffer(formerClubName, previousWeeklyWage),
+          clubOffer: this.userContractRenewalOffer(
+            formerClubName,
+            previousWeeklyWage,
+          ),
         };
-        notifications.push(`CONTRACT EXPIRED: Your ${formerClubName} contract has run out. The season is paused until you renew or walk away as a free agent.`);
+        notifications.push(
+          `CONTRACT EXPIRED: Your ${formerClubName} contract has run out. The season is paused until you renew or walk away as a free agent.`,
+        );
       }
     }
 
     if (this.recentlyExpiredContracts.length > 200) {
-      this.recentlyExpiredContracts.splice(0, this.recentlyExpiredContracts.length - 200);
+      this.recentlyExpiredContracts.splice(
+        0,
+        this.recentlyExpiredContracts.length - 200,
+      );
     }
     if (this.contractEvents.length > 2000) {
       this.contractEvents.splice(0, this.contractEvents.length - 2000);
@@ -9850,10 +10365,19 @@ export class Career {
     for (const message of notifications) this.news.push(message);
     this.contractNotifications.push(...notifications);
     if (this.contractNotifications.length > 200) {
-      this.contractNotifications.splice(0, this.contractNotifications.length - 200);
+      this.contractNotifications.splice(
+        0,
+        this.contractNotifications.length - 200,
+      );
     }
     void previousDay;
-    return { expired, completedPre, aiSignings, decisions, notifications: notifications.length };
+    return {
+      expired,
+      completedPre,
+      aiSignings,
+      decisions,
+      notifications: notifications.length,
+    };
   }
 
   /**
@@ -9862,7 +10386,10 @@ export class Career {
    * cycle and either renews, transfer-lists or lets them run down. Each
    * player is evaluated at most once per stage via contract.lastManagedDay.
    */
-  processAIContractManagement(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+  processAIContractManagement(
+    day,
+    clubsById = new Map(this.clubs.map((club) => [club.id, club])),
+  ) {
     const rng = this.rng.stream(`ai-contract-mgmt-${Math.floor(day / 7)}`);
     const decisions = [];
     const candidates = this.players.filter(
@@ -9887,9 +10414,13 @@ export class Career {
       const club = clubsById.get(player.clubId) ?? null;
       if (!club || club.isUserClub) continue;
       const finance = ensureClubFinance(club);
-      const squadPlayers = this.players.filter((entry) => entry.clubId === club.id);
+      const squadPlayers = this.players.filter(
+        (entry) => entry.clubId === club.id,
+      );
       const positionalDepth = squadPlayers.filter(
-        (entry) => normalizePosition(entry.position) === normalizePosition(player.position),
+        (entry) =>
+          normalizePosition(entry.position) ===
+          normalizePosition(player.position),
       ).length;
       const decision = aiContractDecision(player, club, {
         currentDay: day,
@@ -9899,9 +10430,16 @@ export class Career {
         ageOfPlayer: ageOn(player.dob, day),
         rng,
       });
-      decisions.push({ playerId: player.id, clubId: club.id, action: decision.action, reason: decision.reason });
+      decisions.push({
+        playerId: player.id,
+        clubId: club.id,
+        action: decision.action,
+        reason: decision.reason,
+      });
       if (decision.action === "renew") {
-        const offer = aiRenewalOffer(player, club, { wageBill: club.wageBill(this.players) });
+        const offer = aiRenewalOffer(player, club, {
+          wageBill: club.wageBill(this.players),
+        });
         // AI renewals are usually agreed; a demanding star can still stall.
         const negotiation = createContractNegotiation({
           playerId: player.id,
@@ -9922,19 +10460,27 @@ export class Career {
             season: this.season,
             isFreeAgent: false,
           });
-          this.news.push(`${club.name} have renewed ${player.first} ${player.last}'s contract until ${fromDayIndex(player.contract.expiryDate)?.year}.`);
+          this.news.push(
+            `${club.name} have renewed ${player.first} ${player.last}'s contract until ${fromDayIndex(player.contract.expiryDate)?.year}.`,
+          );
         } else if (outcome.kind === "wants-to-leave") {
           contract.transferListed = true;
-          this.news.push(`${player.first} ${player.last} has told ${club.name} he will not sign a new deal and has been transfer-listed.`);
+          this.news.push(
+            `${player.first} ${player.last} has told ${club.name} he will not sign a new deal and has been transfer-listed.`,
+          );
         }
       } else if (decision.action === "transfer-list") {
         contract.transferListed = true;
         contract.transferListedDay = day;
-        this.news.push(`${club.name} have placed ${player.first} ${player.last} on the transfer list.${decision.reason ? ` ${decision.reason}` : ""}`);
+        this.news.push(
+          `${club.name} have placed ${player.first} ${player.last} on the transfer list.${decision.reason ? ` ${decision.reason}` : ""}`,
+        );
       } else {
         contract.renewalRejected = true;
         contract.releaseAtExpiry = true;
-        this.news.push(`${club.name} will not renew ${player.first} ${player.last}; he leaves on a free transfer at the end of his contract.${decision.reason ? ` ${decision.reason}` : ""}`);
+        this.news.push(
+          `${club.name} will not renew ${player.first} ${player.last}; he leaves on a free transfer at the end of his contract.${decision.reason ? ` ${decision.reason}` : ""}`,
+        );
       }
     }
     return decisions.slice(-80);
@@ -9945,7 +10491,10 @@ export class Career {
    * Urgent recruitment (short squads, no keeper cover) runs outside transfer
    * windows through free agents; ordinary depth-building happens in-window.
    */
-  processAISquadManagement(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+  processAISquadManagement(
+    day,
+    clubsById = new Map(this.clubs.map((club) => [club.id, club])),
+  ) {
     const signings = [];
     for (const club of this.clubs) {
       if (club.isUserClub || club.id === this.club.id) continue;
@@ -9953,34 +10502,50 @@ export class Career {
       if (priority <= 1 && !this.isTransferWindowWeek(day)) continue;
       if (priority <= 0) continue;
       const finance = ensureClubFinance(club);
-      const squadPlayers = this.players.filter((entry) => entry.clubId === club.id);
+      const squadPlayers = this.players.filter(
+        (entry) => entry.clubId === club.id,
+      );
       const needs = assessClubSquadNeeds(club, this.players, { dayIndex: day });
-      const wantedPosition = priorityRecruitmentPosition(needs, this.players, club);
+      const wantedPosition = priorityRecruitmentPosition(
+        needs,
+        this.players,
+        club,
+      );
       const limit = Number(club.registrationLimit ?? 25);
       const urgency = priority >= 3;
       // Even urgent clubs respect registration limits and wage budgets.
-      for (const agent_ of this.freeAgents({ position: wantedPosition ?? undefined })) {
+      for (const agent_ of this.freeAgents({
+        position: wantedPosition ?? undefined,
+      })) {
         if (club.squad.length >= limit) break;
         const player = agent_.player;
         if (player.contract?.preContract?.status === "agreed") continue;
         // A grace period after expiry: clubs take days to scout and negotiate,
         // so a player who just became a free agent is not swooped the same week.
         const freeSince = player.contract?.freeSinceDay ?? day - 21;
-        if (Number.isFinite(Number(freeSince)) && day - Number(freeSince) < 14) continue;
+        if (Number.isFinite(Number(freeSince)) && day - Number(freeSince) < 14)
+          continue;
         const wageBill = club.wageBill(this.players);
         const wage = freeAgentExpectedWage(player);
         if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
-        const positionalNeed = Number(needs?.[normalizePosition(player.position)]?.demand ?? 0);
+        const positionalNeed = Number(
+          needs?.[normalizePosition(player.position)]?.demand ?? 0,
+        );
         const score = freeAgentClubInterest(player, club, {
           currentWageBill: wageBill,
-          leagueReputation: this.clubLeagueEntry(club.id)?.league?.tier === 1 ? 80 : 55,
-          positionalNeed: urgency ? Math.max(positionalNeed, 70) : positionalNeed,
+          leagueReputation:
+            this.clubLeagueEntry(club.id)?.league?.tier === 1 ? 80 : 55,
+          positionalNeed: urgency
+            ? Math.max(positionalNeed, 70)
+            : positionalNeed,
           squadSize: club.squad.length,
         });
         // Urgent recruitment lowers the quality bar; depth recruitment keeps it high.
         const threshold = urgency ? 35 : 55;
         if (score < threshold) continue;
-        const offer = freeAgentOpeningOffer(player, club, { currentWageBill: wageBill });
+        const offer = freeAgentOpeningOffer(player, club, {
+          currentWageBill: wageBill,
+        });
         const contract_ = signPlayerContract(player, club, offer, {
           currentDay: day,
           season: this.season,
@@ -9991,7 +10556,9 @@ export class Career {
         this.transferHistory.unshift({
           playerId: player.id,
           playerName: `${player.first} ${player.last}`,
-          fromClub: this.clubs.find((entry) => entry.id === player.formerClubId)?.name ?? "Free agent",
+          fromClub:
+            this.clubs.find((entry) => entry.id === player.formerClubId)
+              ?.name ?? "Free agent",
           toClub: club.name,
           toClubId: club.id,
           fee: 0,
@@ -10001,7 +10568,9 @@ export class Career {
           date: day,
           source: urgency ? "squad-protection" : "squad-depth",
         });
-        this.news.push(`${club.name} have signed ${player.first} ${player.last} on a free transfer to address ${normalizePosition(player.position)} depth.`);
+        this.news.push(
+          `${club.name} have signed ${player.first} ${player.last} on a free transfer to address ${normalizePosition(player.position)} depth.`,
+        );
         signings.push({ playerId: player.id, clubId: club.id, priority });
         if (!urgency) break; // depth signings are limited to one per cycle
       }
@@ -10013,13 +10582,18 @@ export class Career {
   }
 
   /** Move every player with a completed pre-contract into his destination club. */
-  completeDuePreContracts(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+  completeDuePreContracts(
+    day,
+    clubsById = new Map(this.clubs.map((club) => [club.id, club])),
+  ) {
     const completed = [];
     for (const player of this.players) {
       const agreement = player?.contract?.preContract;
       if (!agreement || agreement.status !== "agreed") continue;
       if (!isContractExpired(player.contract, day) && player.clubId) continue;
-      const destination = clubsById.get(agreement.toClubId) ?? this.clubs.find((club) => club.id === agreement.toClubId);
+      const destination =
+        clubsById.get(agreement.toClubId) ??
+        this.clubs.find((club) => club.id === agreement.toClubId);
       if (!destination) {
         agreement.status = "cancelled";
         continue;
@@ -10033,10 +10607,20 @@ export class Career {
           squadRole: agreement.squadRole,
           signingBonus: agreement.signingBonus,
         },
-        { currentDay: day, season: this.season, isFreeAgent: true, agentFee: agentFeeFor(agreement.weeklyWage) },
+        {
+          currentDay: day,
+          season: this.season,
+          isFreeAgent: true,
+          agentFee: agentFeeFor(agreement.weeklyWage),
+        },
       );
       agreement.status = "completed";
-      player.contract.history.push({ date: day, season: this.season, type: "pre-contract-completed", clubId: destination.id });
+      player.contract.history.push({
+        date: day,
+        season: this.season,
+        type: "pre-contract-completed",
+        clubId: destination.id,
+      });
       this.transferHistory.unshift({
         playerId: player.id,
         playerName: agreement.playerName,
@@ -10049,7 +10633,9 @@ export class Career {
         wage: agreement.weeklyWage,
         date: day,
       });
-      this.news.push(`${agreement.playerName} has joined ${destination.name} on a pre-contract agreement.`);
+      this.news.push(
+        `${agreement.playerName} has joined ${destination.name} on a pre-contract agreement.`,
+      );
       completed.push(agreement);
     }
     return completed;
@@ -10063,7 +10649,10 @@ export class Career {
    */
   userContractRenewalOffer(clubName = this.club?.name, previousWage = 0) {
     const player = this.player;
-    const club = this.clubs.find((entry) => entry.id === (this.player.formerClubId ?? this.club?.id)) ?? this.club;
+    const club =
+      this.clubs.find(
+        (entry) => entry.id === (this.player.formerClubId ?? this.club?.id),
+      ) ?? this.club;
     const base = Math.max(
       Math.round(Number(previousWage) || 0),
       desiredWeeklyWage(player, club, { offeredRole: "Important Player" }),
@@ -10074,7 +10663,10 @@ export class Career {
     const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
     const form = Number(player.lastMatchRating ?? 6.5);
     const factor = clamp(1 + (form - 6.6) * 0.06, 0.95, 1.3);
-    const wage = Math.min(Math.max(500, Math.round((base * factor) / 50) * 50), Math.max(base, Math.floor(room * 0.4) || base));
+    const wage = Math.min(
+      Math.max(500, Math.round((base * factor) / 50) * 50),
+      Math.max(base, Math.floor(room * 0.4) || base),
+    );
     const overall = Number(player.overall ?? 60);
     return createContractOffer({
       weeklyWage: wage,
@@ -10110,42 +10702,64 @@ export class Career {
     const decision = this.userContractDecision;
     if (!decision || decision.resolved)
       throw new Error("There is no contract decision to negotiate.");
-    const club = this.clubs.find((entry) => entry.id === decision.formerClubId) ?? this.club;
+    const club =
+      this.clubs.find((entry) => entry.id === decision.formerClubId) ??
+      this.club;
     if (!club) throw new Error("Your former club is no longer available.");
     const requested = createContractOffer(offer);
     const finance = ensureClubFinance(club);
     const wageBill = club.wageBill(this.players);
     const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
-    const opening = decision.clubOffer ?? this.userContractRenewalOffer(club.name, decision.previousWeeklyWage);
-    const fairWage = desiredWeeklyWage(this.player, club, { offeredRole: requested.squadRole });
+    const opening =
+      decision.clubOffer ??
+      this.userContractRenewalOffer(club.name, decision.previousWeeklyWage);
+    const fairWage = desiredWeeklyWage(this.player, club, {
+      offeredRole: requested.squadRole,
+    });
     const overall = Number(this.player.overall ?? 60);
     const performance = Number(this.player.lastMatchRating ?? 6.5);
     const importance = overall >= 76 ? 1.15 : overall >= 70 ? 1.05 : 1;
-    const ceiling = Math.max(opening.weeklyWage, Math.floor(Math.min(room * 0.6, fairWage * 1.35 * importance) / 50) * 50);
+    const ceiling = Math.max(
+      opening.weeklyWage,
+      Math.floor(Math.min(room * 0.6, fairWage * 1.35 * importance) / 50) * 50,
+    );
     const acceptableWage = requested.weeklyWage <= ceiling;
     const acceptableYears = requested.years >= 1 && requested.years <= 5;
-    const bonusAffordable = Number(requested.signingBonus ?? 0) <= Math.max(0, Number(finance.balance ?? 0)) * 0.1;
+    const bonusAffordable =
+      Number(requested.signingBonus ?? 0) <=
+      Math.max(0, Number(finance.balance ?? 0)) * 0.1;
     if (acceptableWage && acceptableYears && bonusAffordable) {
       const contract = signPlayerContract(this.player, club, requested, {
         currentDay: this.currentDay(),
         season: this.season,
         isFreeAgent: false,
-        loyaltyBonus: (this.player.contract?.years ?? 0) >= 3 ? Math.round(requested.weeklyWage * 4) : 0,
+        loyaltyBonus:
+          (this.player.contract?.years ?? 0) >= 3
+            ? Math.round(requested.weeklyWage * 4)
+            : 0,
       });
       this.player.squadStatus = "Contracted";
       ensureSquadRegistration(club, this.players);
       decision.resolved = true;
       decision.outcome = "renewed";
       this.reconcileSquadMembership();
-      this.news.push(`You have signed a new ${club.name} contract: ${contract.years} years at ${contract.weeklyWage.toLocaleString()} per week.`);
-      return { status: "accepted", contract, message: `You have signed a new ${club.name} contract.` };
+      this.news.push(
+        `You have signed a new ${club.name} contract: ${contract.years} years at ${contract.weeklyWage.toLocaleString()} per week.`,
+      );
+      return {
+        status: "accepted",
+        contract,
+        message: `You have signed a new ${club.name} contract.`,
+      };
     }
     // The club counters with the best it can justify.
     const counter = createContractOffer({
       weeklyWage: ceiling,
       years: acceptableYears ? requested.years : opening.years,
       squadRole: requested.squadRole,
-      signingBonus: bonusAffordable ? requested.signingBonus : Math.round(ceiling * 4),
+      signingBonus: bonusAffordable
+        ? requested.signingBonus
+        : Math.round(ceiling * 4),
     });
     decision.clubOffer = counter;
     decision.negotiation = {
@@ -10153,13 +10767,21 @@ export class Career {
       requested,
       respondedWith: counter,
       reasons: [
-        !acceptableWage ? `the wage ask exceeds what the wage budget can justify` : null,
-        !bonusAffordable ? `the signing bonus is beyond the transfer budget` : null,
+        !acceptableWage
+          ? `the wage ask exceeds what the wage budget can justify`
+          : null,
+        !bonusAffordable
+          ? `the signing bonus is beyond the transfer budget`
+          : null,
         !acceptableYears ? `the contract length is not offerable` : null,
       ].filter(Boolean),
       message: `${club.name} have countered with ${counter.weeklyWage.toLocaleString()} per week over ${counter.years} years.`,
     };
-    return { status: "counteroffer", offer: counter, message: decision.negotiation.message };
+    return {
+      status: "counteroffer",
+      offer: counter,
+      message: decision.negotiation.message,
+    };
   }
 
   /**
@@ -10172,10 +10794,13 @@ export class Career {
     const decision = this.userContractDecision;
     if (!decision || decision.resolved)
       throw new Error("There is no contract decision to decline.");
-    const formerClub = this.clubs.find((entry) => entry.id === decision.formerClubId) ?? this.club;
+    const formerClub =
+      this.clubs.find((entry) => entry.id === decision.formerClubId) ??
+      this.club;
     const day = this.currentDay();
     if (formerClub) {
-      if (typeof formerClub.removePlayer === "function") formerClub.removePlayer(this.player.id);
+      if (typeof formerClub.removePlayer === "function")
+        formerClub.removePlayer(this.player.id);
       else if (Array.isArray(formerClub.squad)) {
         const index = formerClub.squad.indexOf(this.player.id);
         if (index >= 0) formerClub.squad.splice(index, 1);
@@ -10196,17 +10821,30 @@ export class Career {
       freeSinceDay: day,
       releaseClause: null,
       history: [
-        ...(Array.isArray(this.player.contract?.history) ? this.player.contract.history : []),
-        { date: day, season: this.season, type: "declined-renewal", clubId: decision.formerClubId, reason: "Declined a new contract" },
+        ...(Array.isArray(this.player.contract?.history)
+          ? this.player.contract.history
+          : []),
+        {
+          date: day,
+          season: this.season,
+          type: "declined-renewal",
+          clubId: decision.formerClubId,
+          reason: "Declined a new contract",
+        },
       ],
     };
     this.reconcileSquadMembership();
     decision.resolved = true;
     decision.outcome = "free-agent";
-    this.news.push(`You declined a new ${decision.formerClubName ?? "club"} contract and are now a free agent. Your agent is finding clubs immediately.`);
+    this.news.push(
+      `You declined a new ${decision.formerClubName ?? "club"} contract and are now a free agent. Your agent is finding clubs immediately.`,
+    );
     // The agent gets to work the moment free agency begins.
     this.freeAgentOpportunities = this.searchFreeAgentClubs();
-    return { status: "free-agent", opportunities: this.freeAgentOpportunities.length };
+    return {
+      status: "free-agent",
+      opportunities: this.freeAgentOpportunities.length,
+    };
   }
 
   /**
@@ -10216,20 +10854,24 @@ export class Career {
    */
   searchFreeAgentClubs() {
     if (this.isManagerCareer)
-      throw new Error("Manager careers negotiate contracts directly with the board.");
+      throw new Error(
+        "Manager careers negotiate contracts directly with the board.",
+      );
     if (this.player.clubId)
-      throw new Error("You are under contract; renew through your club instead.");
+      throw new Error(
+        "You are under contract; renew through your club instead.",
+      );
     const agent = this.agent ?? this.agentPool[0] ?? null;
     const agentQuality = Number(agent?.quality ?? agent?.rating ?? 50);
     const day = this.currentDay();
-    const marketPlayers = [
-      ...new Map(
-        [
-          ...(this.players ?? []),
-          ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
-        ].map((entry) => [entry.id, entry]),
-      ).values(),
-    ];
+    const marketPlayers = this.collectAllMarketPlayers();
+    const playersByClub = new Map();
+    for (const item of marketPlayers) {
+      if (!item.clubId) continue;
+      let squad = playersByClub.get(item.clubId);
+      if (!squad) playersByClub.set(item.clubId, (squad = []));
+      squad.push(item);
+    }
     const opportunities = [];
     for (const club of this.clubs) {
       if (club.id === this.player.formerClubId && this.clubs.length > 1) {
@@ -10237,12 +10879,14 @@ export class Career {
         // like any other so a desperate club can re-sign its own free agent.
       }
       if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
-      const needs = this.transferNeedAssessment(club, day, marketPlayers);
+      const needs = this.transferNeedAssessment(club, day, playersByClub);
       const finance = ensureClubFinance(club);
       const wageBill = club.wageBill(this.players);
       const wage = freeAgentExpectedWage(this.player);
       if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
-      const positionalNeed = Number(needs?.[normalizePosition(this.player.position)]?.demand ?? 0);
+      const positionalNeed = Number(
+        needs?.[normalizePosition(this.player.position)]?.demand ?? 0,
+      );
       const leagueEntry = this.clubLeagueEntry(club.id);
       const score = freeAgentClubInterest(this.player, club, {
         currentWageBill: wageBill,
@@ -10254,7 +10898,9 @@ export class Career {
       // and better, clubs. Weak agents still find opportunities.
       const threshold = clamp(60 - agentQuality * 0.25, 30, 55);
       if (score < threshold) continue;
-      const offer = freeAgentOpeningOffer(this.player, club, { currentWageBill: wageBill });
+      const offer = freeAgentOpeningOffer(this.player, club, {
+        currentWageBill: wageBill,
+      });
       const identity = leagueEntry?.clubIdentities?.[club.id] ?? club;
       opportunities.push({
         clubId: club.id,
@@ -10287,22 +10933,33 @@ export class Career {
    * registers him, records the transfer and un-pauses the career.
    */
   acceptFreeAgentOffer(clubId, override = {}) {
-    if (this.player.clubId)
-      throw new Error("You are already under contract.");
-    const opportunity = (this.freeAgentOpportunities ?? []).find((entry) => entry.clubId === clubId);
+    if (this.player.clubId) throw new Error("You are already under contract.");
+    const opportunity = (this.freeAgentOpportunities ?? []).find(
+      (entry) => entry.clubId === clubId,
+    );
     if (!opportunity) throw new Error("That club is no longer interested.");
     const club = this.clubs.find((entry) => entry.id === clubId);
     if (!club) throw new Error("That club is no longer available.");
     if (club.squad.length >= (club.registrationLimit ?? 25))
       throw new Error(`${club.name} no longer has a squad place.`);
     const offer = createContractOffer({ ...opportunity.offer, ...override });
-    const wage = Math.max(500, Math.round(Number(offer.weeklyWage) || freeAgentExpectedWage(this.player)));
-    const contract = signPlayerContract(this.player, club, { ...offer, weeklyWage: wage }, {
-      currentDay: this.currentDay(),
-      season: this.season,
-      isFreeAgent: true,
-      agentFee: agentFeeFor(wage),
-    });
+    const wage = Math.max(
+      500,
+      Math.round(
+        Number(offer.weeklyWage) || freeAgentExpectedWage(this.player),
+      ),
+    );
+    const contract = signPlayerContract(
+      this.player,
+      club,
+      { ...offer, weeklyWage: wage },
+      {
+        currentDay: this.currentDay(),
+        season: this.season,
+        isFreeAgent: true,
+        agentFee: agentFeeFor(wage),
+      },
+    );
     ensureSquadRegistration(club, this.players);
     this.club = club;
     this.player.formerClubId = this.player.formerClubId ?? null;
@@ -10310,7 +10967,9 @@ export class Career {
     this.transferHistory.unshift({
       playerId: this.player.id,
       playerName: `${this.player.first} ${this.player.last}`,
-      fromClub: this.clubs.find((entry) => entry.id === this.player.formerClubId)?.name ?? "Free agent",
+      fromClub:
+        this.clubs.find((entry) => entry.id === this.player.formerClubId)
+          ?.name ?? "Free agent",
       toClub: club.name,
       toClubId: club.id,
       fee: 0,
@@ -10322,7 +10981,9 @@ export class Career {
     });
     this.reconcileSquadMembership();
     this.freeAgentOpportunities = [];
-    this.news.push(`${this.player.first} ${this.player.last} has joined ${club.name} on a free transfer.`);
+    this.news.push(
+      `${this.player.first} ${this.player.last} has joined ${club.name} on a free transfer.`,
+    );
     return { status: "signed", contract, club };
   }
 
@@ -10330,22 +10991,65 @@ export class Career {
   freeAgents(filters = {}) {
     const query = String(filters.query ?? "").toLowerCase();
     return this.players
-      .filter((player) => !player.clubId && player.id !== this.player.id && !player.source?.startsWith("academy"))
+      .filter(
+        (player) =>
+          !player.clubId &&
+          player.id !== this.player.id &&
+          !player.source?.startsWith("academy"),
+      )
       .filter((player) => player.contract?.status !== CONTRACT_STATUSES.RETIRED)
-      .filter((player) => !filters.position || normalizePosition(player.position) === normalizePosition(filters.position))
-      .filter((player) => !filters.nationality || player.nationality === filters.nationality)
-      .filter((player) => !filters.minAge || ageOn(player.dob, this.currentDay()) >= Number(filters.minAge))
-      .filter((player) => !filters.maxAge || ageOn(player.dob, this.currentDay()) <= Number(filters.maxAge))
-      .filter((player) => !filters.minOverall || player.overall >= Number(filters.minOverall))
-      .filter((player) => !filters.minPotential || player.potential >= Number(filters.minPotential))
-      .filter((player) => !filters.maxExpectedWage || freeAgentExpectedWage(player) <= Number(filters.maxExpectedWage))
-      .filter((player) => !query || `${player.first} ${player.last}`.toLowerCase().includes(query))
+      .filter(
+        (player) =>
+          !filters.position ||
+          normalizePosition(player.position) ===
+            normalizePosition(filters.position),
+      )
+      .filter(
+        (player) =>
+          !filters.nationality || player.nationality === filters.nationality,
+      )
+      .filter(
+        (player) =>
+          !filters.minAge ||
+          ageOn(player.dob, this.currentDay()) >= Number(filters.minAge),
+      )
+      .filter(
+        (player) =>
+          !filters.maxAge ||
+          ageOn(player.dob, this.currentDay()) <= Number(filters.maxAge),
+      )
+      .filter(
+        (player) =>
+          !filters.minOverall || player.overall >= Number(filters.minOverall),
+      )
+      .filter(
+        (player) =>
+          !filters.minPotential ||
+          player.potential >= Number(filters.minPotential),
+      )
+      .filter(
+        (player) =>
+          !filters.maxExpectedWage ||
+          freeAgentExpectedWage(player) <= Number(filters.maxExpectedWage),
+      )
+      .filter(
+        (player) =>
+          !query ||
+          `${player.first} ${player.last}`.toLowerCase().includes(query),
+      )
       .map((player) => ({
         player,
-        formerClub: this.clubs.find((club) => club.id === (player.formerClubId ?? player.releasedFromClubId)) ?? null,
+        formerClub:
+          this.clubs.find(
+            (club) =>
+              club.id === (player.formerClubId ?? player.releasedFromClubId),
+          ) ?? null,
         expectedWage: freeAgentExpectedWage(player),
         marketValue: player.marketValue ?? player.value ?? 0,
-        preContract: player.contract?.preContract?.status === "agreed" ? player.contract.preContract : null,
+        preContract:
+          player.contract?.preContract?.status === "agreed"
+            ? player.contract.preContract
+            : null,
       }));
   }
 
@@ -10358,9 +11062,19 @@ export class Career {
       .map((player) => {
         const remaining = daysUntilExpiry(player.contract, day);
         const stage = contractStageLabel(player.contract, day);
-        return { player, club: this.clubs.find((club) => club.id === player.clubId) ?? null, remaining, stage };
+        return {
+          player,
+          club: this.clubs.find((club) => club.id === player.clubId) ?? null,
+          remaining,
+          stage,
+        };
       })
-      .filter((entry) => entry.remaining != null && entry.remaining >= 0 && entry.remaining <= days)
+      .filter(
+        (entry) =>
+          entry.remaining != null &&
+          entry.remaining >= 0 &&
+          entry.remaining <= days,
+      )
       .sort((left, right) => left.remaining - right.remaining);
   }
 
@@ -10373,7 +11087,9 @@ export class Career {
     if (!player || player.clubId !== this.club.id)
       throw new Error("That player is not under contract at your club.");
     if (!canDiscussRenewal(player.contract, this.currentDay()))
-      throw new Error(`${player.first} ${player.last} is not ready to discuss a new contract yet.`);
+      throw new Error(
+        `${player.first} ${player.last} is not ready to discuss a new contract yet.`,
+      );
     const negotiation = createContractNegotiation({
       playerId: player.id,
       clubId: this.club.id,
@@ -10383,12 +11099,17 @@ export class Career {
       kind: "renewal",
       fromCareer: true,
     });
-    const decision = resolveContractNegotiation(player, this.club, negotiation, {
-      currentDay: this.currentDay(),
-      managerTrust: this.club.manager.trust?.[player.id] ?? 50,
-      clubPosition: this.league.table.positions().get(this.club.id) ?? 10,
-      rng: this.rng.stream(`negotiation-${player.id}`),
-    });
+    const decision = resolveContractNegotiation(
+      player,
+      this.club,
+      negotiation,
+      {
+        currentDay: this.currentDay(),
+        managerTrust: this.club.manager.trust?.[player.id] ?? 50,
+        clubPosition: this.league.table.positions().get(this.club.id) ?? 10,
+        rng: this.rng.stream(`negotiation-${player.id}`),
+      },
+    );
     this.contractNegotiations.unshift(negotiation);
     if (this.contractNegotiations.length > 100) this.contractNegotiations.pop();
 
@@ -10397,7 +11118,8 @@ export class Career {
         currentDay: this.currentDay(),
         season: this.season,
         isFreeAgent: false,
-        loyaltyBonus: player.contract?.years >= 4 ? negotiation.offer.weeklyWage * 8 : 0,
+        loyaltyBonus:
+          player.contract?.years >= 4 ? negotiation.offer.weeklyWage * 8 : 0,
       });
       player.contract.status = CONTRACT_STATUSES.ACTIVE;
     } else if (negotiation.status === "rejected") {
@@ -10414,11 +11136,15 @@ export class Career {
 
   /** Withdraw any negotiation still awaiting a response or a counteroffer. */
   withdrawContractNegotiation(negotiationId) {
-    const negotiation = this.contractNegotiations.find((entry) => entry.id === negotiationId);
+    const negotiation = this.contractNegotiations.find(
+      (entry) => entry.id === negotiationId,
+    );
     if (!negotiation || negotiation.status === "accepted")
       throw new Error("That negotiation can no longer be withdrawn.");
     negotiation.status = "withdrawn";
-    const player = this.players.find((entry) => entry.id === negotiation.playerId);
+    const player = this.players.find(
+      (entry) => entry.id === negotiation.playerId,
+    );
     if (player && player.contract?.status === CONTRACT_STATUSES.NEGOTIATING)
       player.contract.status = CONTRACT_STATUSES.ACTIVE;
     return negotiation;
@@ -10428,17 +11154,32 @@ export class Career {
   signFreeAgent(playerId, offer = {}) {
     const player = this.players.find((entry) => entry.id === playerId);
     if (!player) throw new Error("That player is not available.");
-    if (player.clubId) throw new Error(`${player.first} ${player.last} is already under contract.`);
+    if (player.clubId)
+      throw new Error(
+        `${player.first} ${player.last} is already under contract.`,
+      );
     if (player.contract?.preContract?.status === "agreed")
-      throw new Error(`${player.first} ${player.last} has already agreed a pre-contract elsewhere.`);
+      throw new Error(
+        `${player.first} ${player.last} has already agreed a pre-contract elsewhere.`,
+      );
     const finance = ensureClubFinance(this.club);
-    const wage = Math.max(0, Math.round(Number(offer.weeklyWage ?? offer.wage ?? freeAgentExpectedWage(player))));
-    const signingBonus = Math.max(0, Math.round(Number(offer.signingBonus ?? 0) || 0));
+    const wage = Math.max(
+      0,
+      Math.round(
+        Number(offer.weeklyWage ?? offer.wage ?? freeAgentExpectedWage(player)),
+      ),
+    );
+    const signingBonus = Math.max(
+      0,
+      Math.round(Number(offer.signingBonus ?? 0) || 0),
+    );
     const fee = agentFeeFor(wage);
     if ((this.club.squad?.length ?? 0) >= (this.club.registrationLimit ?? 25))
       throw new Error(`Your club has reached its registration limit.`);
     if (signingBonus + fee > finance.balance)
-      throw new Error("The club cannot afford the signing bonus and agent fee.");
+      throw new Error(
+        "The club cannot afford the signing bonus and agent fee.",
+      );
     const wageBill = this.club.wageBill(this.players);
     if (wageBill + wage > finance.wageBudget)
       throw new Error("The player's wage demands do not fit the wage budget.");
@@ -10456,7 +11197,9 @@ export class Career {
     this.transferHistory.unshift({
       playerId: player.id,
       playerName: `${player.first} ${player.last}`,
-      fromClub: this.clubs.find((club) => club.id === player.formerClubId)?.name ?? "Free agent",
+      fromClub:
+        this.clubs.find((club) => club.id === player.formerClubId)?.name ??
+        "Free agent",
       toClub: this.club.name,
       toClubId: this.club.id,
       fee: 0,
@@ -10466,7 +11209,9 @@ export class Career {
       date: this.currentDay(),
     });
     ensureSquadRegistration(this.club, this.players);
-    this.news.push(`${player.first} ${player.last} has joined ${this.club.name} on a free transfer.`);
+    this.news.push(
+      `${player.first} ${player.last} has joined ${this.club.name} on a free transfer.`,
+    );
     return contract;
   }
 
@@ -10475,7 +11220,9 @@ export class Career {
     const player = this.players.find((entry) => entry.id === playerId);
     if (!player) throw new Error("That player is not available.");
     if (!canSignPreContract(player, this.currentDay()))
-      throw new Error("Pre-contract negotiations are only allowed inside the final six months of a contract.");
+      throw new Error(
+        "Pre-contract negotiations are only allowed inside the final six months of a contract.",
+      );
     const negotiation = createContractNegotiation({
       playerId: player.id,
       clubId: this.club.id,
@@ -10485,18 +11232,31 @@ export class Career {
       kind: "pre-contract",
       fromCareer: true,
     });
-    const decision = resolveContractNegotiation(player, this.club, negotiation, {
-      currentDay: this.currentDay(),
-      clubPosition: null,
-      rng: this.rng.stream(`pre-contract-${player.id}`),
-    });
+    const decision = resolveContractNegotiation(
+      player,
+      this.club,
+      negotiation,
+      {
+        currentDay: this.currentDay(),
+        clubPosition: null,
+        rng: this.rng.stream(`pre-contract-${player.id}`),
+      },
+    );
     this.contractNegotiations.unshift(negotiation);
     if (negotiation.status === "accepted") {
-      createPreContractAgreement({ player, club: this.club, offer: negotiation.offer, currentDay: this.currentDay(), season: this.season });
+      createPreContractAgreement({
+        player,
+        club: this.club,
+        offer: negotiation.offer,
+        currentDay: this.currentDay(),
+        season: this.season,
+      });
       this.transferHistory.unshift({
         playerId: player.id,
         playerName: `${player.first} ${player.last}`,
-        fromClub: this.clubs.find((club) => club.id === player.clubId)?.name ?? "Unknown",
+        fromClub:
+          this.clubs.find((club) => club.id === player.clubId)?.name ??
+          "Unknown",
         toClub: this.club.name,
         toClubId: this.club.id,
         fee: 0,
@@ -10506,7 +11266,9 @@ export class Career {
         date: this.currentDay(),
         future: true,
       });
-      this.news.push(`${player.first} ${player.last} has agreed a pre-contract with ${this.club.name}.`);
+      this.news.push(
+        `${player.first} ${player.last} has agreed a pre-contract with ${this.club.name}.`,
+      );
     } else {
       this.news.push(decision.message);
     }
@@ -10514,18 +11276,31 @@ export class Career {
   }
 
   /** AI clubs scout, offer and sign free agents every week. */
-  processAIFreeAgency(day, clubsById = new Map(this.clubs.map((club) => [club.id, club]))) {
+  processAIFreeAgency(
+    day,
+    clubsById = new Map(this.clubs.map((club) => [club.id, club])),
+  ) {
     const rng = this.rng.stream("ai-free-agency");
     const signings = [];
     const agents = this.players.filter(
-      (player) => !player.clubId && player.id !== this.player.id && !player.source?.startsWith("academy") && player.contract?.status !== CONTRACT_STATUSES.RETIRED && !(player.contract?.preContract?.status === "agreed"),
+      (player) =>
+        !player.clubId &&
+        player.id !== this.player.id &&
+        !player.source?.startsWith("academy") &&
+        player.contract?.status !== CONTRACT_STATUSES.RETIRED &&
+        !(player.contract?.preContract?.status === "agreed"),
     );
     if (!agents.length) return signings;
     // Elite free agents attract interest more slowly, so unsigned players are
     // re-evaluated weekly but nobody is forced to sign immediately.
     for (const player of agents) {
       const interest = Number(player.contract?.freeAgentInterestDay ?? 0);
-      const patience = Number(player.overall ?? 60) >= 80 ? 5 : Number(player.overall ?? 60) >= 70 ? 3 : 2;
+      const patience =
+        Number(player.overall ?? 60) >= 80
+          ? 5
+          : Number(player.overall ?? 60) >= 70
+            ? 3
+            : 2;
       if (day - interest < patience * 7) continue;
       player.contract ??= {};
       player.contract.freeAgentInterestDay = day;
@@ -10537,24 +11312,49 @@ export class Career {
         const wageBill = club.wageBill(this.players);
         const wage = freeAgentExpectedWage(player);
         if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
-        const needs = assessClubSquadNeeds(club, this.players, { dayIndex: day });
-        const positionalNeed = Number(needs?.[normalizePosition(player.position)]?.demand ?? 0);
-        const leagueEntry = this.worldCareerLeagues?.find((entry) => entry.league.teamIds.includes(club.id));
+        const needs = assessClubSquadNeeds(club, this.players, {
+          dayIndex: day,
+        });
+        const positionalNeed = Number(
+          needs?.[normalizePosition(player.position)]?.demand ?? 0,
+        );
+        const leagueEntry = this.worldCareerLeagues?.find((entry) =>
+          entry.league.teamIds.includes(club.id),
+        );
         const score = freeAgentClubInterest(player, club, {
           currentWageBill: wageBill,
           leagueReputation: leagueEntry?.league.tier === 1 ? 80 : 55,
           positionalNeed,
           squadSize: club.squad.length,
         });
-        if (score >= 55) offers.push({ club, score, offer: freeAgentOpeningOffer(player, club, { currentWageBill: wageBill }) });
+        if (score >= 55)
+          offers.push({
+            club,
+            score,
+            offer: freeAgentOpeningOffer(player, club, {
+              currentWageBill: wageBill,
+            }),
+          });
       }
       if (!offers.length) continue;
       offers.sort((left, right) => right.score - left.score);
       // Competing clubs may miss out: the top two clubs each have a chance.
       const chosen = offers[0];
-      const beatsRival = offers.length > 1 && rng.chance(0.25) ? offers[1] : chosen;
+      const beatsRival =
+        offers.length > 1 && rng.chance(0.25) ? offers[1] : chosen;
       const target = rng.chance(0.75) ? beatsRival : chosen;
-      const decision = resolveContractNegotiation(player, target.club, createContractNegotiation({ playerId: player.id, clubId: target.club.id, offer: target.offer, currentDay: day, kind: "free-agent" }), { currentDay: day, rng });
+      const decision = resolveContractNegotiation(
+        player,
+        target.club,
+        createContractNegotiation({
+          playerId: player.id,
+          clubId: target.club.id,
+          offer: target.offer,
+          currentDay: day,
+          kind: "free-agent",
+        }),
+        { currentDay: day, rng },
+      );
       if (decision.acceptable || decision.kind === "accepted") {
         const contract = signPlayerContract(player, target.club, target.offer, {
           currentDay: day,
@@ -10566,7 +11366,9 @@ export class Career {
         this.transferHistory.unshift({
           playerId: player.id,
           playerName: `${player.first} ${player.last}`,
-          fromClub: this.clubs.find((club) => club.id === player.formerClubId)?.name ?? "Free agent",
+          fromClub:
+            this.clubs.find((club) => club.id === player.formerClubId)?.name ??
+            "Free agent",
           toClub: target.club.name,
           toClubId: target.club.id,
           fee: 0,
@@ -10575,7 +11377,9 @@ export class Career {
           wage: contract.weeklyWage,
           date: day,
         });
-        this.news.push(`${target.club.name} have signed ${player.first} ${player.last} on a free transfer.`);
+        this.news.push(
+          `${target.club.name} have signed ${player.first} ${player.last} on a free transfer.`,
+        );
         signings.push({ playerId: player.id, clubId: target.club.id });
       }
     }
@@ -10587,11 +11391,15 @@ export class Career {
   contractNegotiationView() {
     const day = this.currentDay();
     return (this.contractNegotiations ?? []).map((negotiation) => {
-      const player = this.players.find((entry) => entry.id === negotiation.playerId) ?? null;
-      const club = this.clubs.find((entry) => entry.id === negotiation.clubId) ?? null;
+      const player =
+        this.players.find((entry) => entry.id === negotiation.playerId) ?? null;
+      const club =
+        this.clubs.find((entry) => entry.id === negotiation.clubId) ?? null;
       return {
         ...negotiation,
-        playerName: player ? `${player.first} ${player.last}` : negotiation.playerId,
+        playerName: player
+          ? `${player.first} ${player.last}`
+          : negotiation.playerId,
         clubName: club?.name ?? negotiation.clubId,
         ageOfPlayer: player?.dob != null ? ageOn(player.dob, day) : null,
       };
@@ -10600,9 +11408,15 @@ export class Career {
 
   reconcileSquadMembership() {
     const owned = new Set();
+    const playersById = new Map(
+      (this.players ?? []).map((player) => [player.id, player]),
+    );
+    const clubsById = new Map(
+      (this.clubs ?? []).map((club) => [club.id, club]),
+    );
     for (const club of this.clubs ?? []) {
       club.squad = (club.squad ?? []).filter((playerId) => {
-        const player = this.players.find((item) => item.id === playerId);
+        const player = playersById.get(playerId);
         if (!player || player.clubId !== club.id || owned.has(playerId))
           return false;
         owned.add(playerId);
@@ -10611,9 +11425,10 @@ export class Career {
     }
     for (const player of this.players ?? []) {
       if (!player.clubId) continue;
-      const club = this.clubs.find((item) => item.id === player.clubId);
+      const club = clubsById.get(player.clubId);
       if (club && !club.squad.includes(player.id)) club.addPlayer(player.id);
     }
+    this.rebuildIndexes();
   }
 
   moveToLeague(leagueId, clubId, { preservePreviousClub = false } = {}) {
@@ -10737,6 +11552,7 @@ export class Career {
     for (const player of this.players)
       player.leaguePerformance = { apps: 0, ratingSum: 0 };
     this.worldLeagues = this.buildWorldLeagues();
+    this.rebuildIndexes();
     this.applyExpansionSquads();
     this.reconcileSquadMembership();
     const restoredPerformerIds = new Set();
@@ -10784,11 +11600,14 @@ export class Career {
     this.positionNeedCache = null;
     this.transferHistory ??= [];
     this.transferRumours = [];
+    this.transferList ??= [];
+    this.transferListOffers ??= [];
     this.transferMarketState = {
       season: this.season,
       window: null,
       searchCount: 0,
       lastSearchDay: null,
+      processedAiWindows: this.transferMarketState?.processedAiWindows ?? [],
     };
     this.hiredManagerId = null;
     this.seasonComplete = this.areAllSeasonCompetitionsComplete();
@@ -10858,6 +11677,7 @@ export class Career {
         window: windowKey,
         searchCount: 0,
         lastSearchDay: null,
+        processedAiWindows: this.transferMarketState.processedAiWindows ?? [],
       };
     }
     if (this.transferMarketState.searchCount >= terms.searches) {
@@ -11016,7 +11836,17 @@ export class Career {
 
   processCpuTransferMarket(dayIndex = this.currentDay()) {
     const month = fromDayIndex(dayIndex).month;
+    const windowName = transferWindowForMonth(month);
     if (![1, 7, 8].includes(month)) return [];
+    const windowKey = `${this.season}-${windowName}`;
+    this.transferMarketState ??= {
+      season: this.season,
+      window: null,
+      processedAiWindows: [],
+    };
+    this.transferMarketState.processedAiWindows ??= [];
+    if (this.transferMarketState.processedAiWindows.includes(windowKey))
+      return [];
     if (
       this.nextCpuTransferEvaluationWeek > this.week &&
       !this._forceCpuTransferEvaluation
@@ -11025,6 +11855,20 @@ export class Career {
     this.nextCpuTransferEvaluationWeek = this.week + 4;
     this._forceCpuTransferEvaluation = false;
     const moved = [];
+    const clubById =
+      this._clubById ?? new Map(this.clubs.map((club) => [club.id, club]));
+    const playersByClub = new Map(
+      (this.clubs ?? []).map((club) => [club.id, this.playersForClub(club.id)]),
+    );
+    const depthByClubAndPosition = new Map();
+    for (const [clubId, squad] of playersByClub) {
+      const counts = new Map();
+      for (const player of squad) {
+        const position = normalizePosition(player.position);
+        counts.set(position, (counts.get(position) ?? 0) + 1);
+      }
+      depthByClubAndPosition.set(clubId, counts);
+    }
     const marketRng = this.rng.stream(
       `cpu-transfer-market-${this.season}-${this.week}`,
     );
@@ -11049,9 +11893,7 @@ export class Career {
       );
       const priority = priorities.find((need) => need.demand >= 58);
       if (!priority) continue;
-      const buyerSquad = this.players.filter(
-        (player) => player.clubId === buyer.id,
-      );
+      const buyerSquad = playersByClub.get(buyer.id) ?? [];
       const marketBuyer = {
         ...buyer,
         currentWageBill: buyer.wageBill(this.players),
@@ -11073,22 +11915,20 @@ export class Career {
               Number(player.contract.expires) > this.season),
         )
         .filter((player) => {
-          const seller = this.clubs.find((club) => club.id === player.clubId);
+          const seller = clubById.get(player.clubId);
           if (!seller) return false;
           const sellerDemand =
             this.transferNeedAssessment(seller, dayIndex)[
               normalizePosition(player.position)
             ]?.demand ?? 0;
-          const samePosDepth = this.players.filter(
-            (item) =>
-              item.clubId === seller.id &&
-              normalizePosition(item.position) ===
-                normalizePosition(player.position),
-          ).length;
+          const samePosDepth =
+            depthByClubAndPosition
+              .get(seller.id)
+              ?.get(normalizePosition(player.position)) ?? 0;
           return sellerDemand < 88 || samePosDepth > 2;
         })
         .map((player) => {
-          const seller = this.clubs.find((club) => club.id === player.clubId);
+          const seller = clubById.get(player.clubId);
           if (!seller) return null;
           const value = marketValueForPlayer(player, seller, dayIndex);
           const fit = scoreTransferSuitability({
@@ -11115,11 +11955,7 @@ export class Career {
         originalClubByPlayer.get(target.player.id) !== target.seller.id
       )
         continue;
-      if (
-        this.players.filter((player) => player.clubId === target.seller.id)
-          .length <= 15
-      )
-        continue;
+      if ((playersByClub.get(target.seller.id)?.length ?? 0) <= 15) continue;
       const fee = Math.round(target.value * (0.88 + marketRng.float() * 0.2));
       const wage = Math.max(
         target.player.contract?.wage ?? 0,
@@ -11149,6 +11985,22 @@ export class Career {
       target.player.contract.expires = this.season + 3;
       target.player.contract.startSeason = this.season;
       target.player.contract.loan = false;
+      playersByClub
+        .get(target.seller.id)
+        ?.splice(playersByClub.get(target.seller.id).indexOf(target.player), 1);
+      playersByClub.get(buyer.id)?.push(target.player);
+      const sellerDepth = depthByClubAndPosition.get(target.seller.id);
+      const position = normalizePosition(target.player.position);
+      sellerDepth?.set(
+        position,
+        Math.max(0, (sellerDepth.get(position) ?? 1) - 1),
+      );
+      depthByClubAndPosition
+        .get(buyer.id)
+        ?.set(
+          position,
+          (depthByClubAndPosition.get(buyer.id)?.get(position) ?? 0) + 1,
+        );
       assignShirtNumbers(this.players, target.seller);
       assignShirtNumbers(this.players, buyer);
       const transfer = {
@@ -11159,10 +12011,8 @@ export class Career {
         fromClubId:
           originalClubByPlayer.get(target.player.id) ?? target.seller.id,
         fromClub:
-          this.clubs.find(
-            (club) =>
-              club.id ===
-              (originalClubByPlayer.get(target.player.id) ?? target.seller.id),
+          clubById.get(
+            originalClubByPlayer.get(target.player.id) ?? target.seller.id,
           )?.name ?? target.seller.name,
         toClubId: buyer.id,
         toClub: buyer.name,
@@ -11177,8 +12027,7 @@ export class Career {
       if (originalClubId && originalClubId !== target.seller.id) {
         transfer.fromClubId = originalClubId;
         transfer.fromClub =
-          this.clubs.find((club) => club.id === originalClubId)?.name ??
-          transfer.fromClub;
+          clubById.get(originalClubId)?.name ?? transfer.fromClub;
       }
       this.transferHistory.unshift(transfer);
       moved.push(transfer);
@@ -11188,7 +12037,9 @@ export class Career {
       deals++;
     }
     this.transferHistory = this.transferHistory.slice(0, 1000);
+    this.transferMarketState.processedAiWindows.push(windowKey);
     this.positionNeedCache = null;
+    this.rebuildIndexes();
     if (moved.length) {
       const headline = `${moved.length} CPU transfer${moved.length === 1 ? "" : "s"} completed this window.`;
       this.news.unshift(headline);
@@ -11497,11 +12348,7 @@ export class Career {
       return pausedReport;
     }
     for (const club of this.clubs) {
-      processWeeklyClubFinances(
-        club,
-        this.players.filter((player) => player.clubId === club.id),
-        financeDay,
-      );
+      processWeeklyClubFinances(club, this.playersForClub(club.id), financeDay);
       processWeeklyHierarchy(club, financeDay);
       processInvestmentWeek(club, financeDay);
       const aiClub = club.id !== this.club.id;
@@ -11543,6 +12390,7 @@ export class Career {
       this.processCpuTransferMarket(financeDay);
       this.evaluateUserTransferInterest(financeDay);
     }
+    this.processUserTransferList(financeDay);
     // Squad protection: keep every AI club at a playable size (runs weekly so
     // urgent clubs recruit outside transfer windows; depth moves stay in-window).
     this.processAISquadManagement(financeDay);
@@ -11563,8 +12411,8 @@ export class Career {
       0,
       this.player.fatigue - progression.weeklyFatigueRecovery,
     );
-    for (const teammate of this.players) {
-      if (teammate.clubId === this.club.id && teammate.id !== this.player.id) {
+    for (const teammate of this.playersForClub(this.club.id)) {
+      if (teammate.id !== this.player.id) {
         // Squad players only shed fatigue when they actually play; a blanket weekly
         // recovery would erase the tired-incumbent state the selection plan depends on.
         teammate.fatigue = Math.max(
@@ -11962,21 +12810,26 @@ export class Career {
     if ((this.player.position ?? "").toUpperCase() === "GK") {
       this.player.stats.goalsConceded += opponentGoals;
       this.player.careerStats.goalsConceded += opponentGoals;
-      const shotsFaced = Math.max(0, Number(matchStats.shotsFaced ?? opponentGoals));
+      const shotsFaced = Math.max(
+        0,
+        Number(matchStats.shotsFaced ?? opponentGoals),
+      );
       this.player.stats.shotsFaced =
         (this.player.stats.shotsFaced ?? 0) + shotsFaced;
       this.player.careerStats.shotsFaced =
         (this.player.careerStats.shotsFaced ?? 0) + shotsFaced;
       const saves = Number(matchStats.saves ?? 0);
       this.player.stats.saves = (this.player.stats.saves ?? 0) + saves;
-      this.player.careerStats.saves = (this.player.careerStats.saves ?? 0) + saves;
+      this.player.careerStats.saves =
+        (this.player.careerStats.saves ?? 0) + saves;
       const penaltySaves = Number(matchStats.penaltySaves ?? 0);
       this.player.stats.penaltySaves =
         (this.player.stats.penaltySaves ?? 0) + penaltySaves;
       this.player.careerStats.penaltySaves =
         (this.player.careerStats.penaltySaves ?? 0) + penaltySaves;
       if (opponentGoals === 0) {
-        this.player.stats.cleanSheets = (this.player.stats.cleanSheets ?? 0) + 1;
+        this.player.stats.cleanSheets =
+          (this.player.stats.cleanSheets ?? 0) + 1;
         this.player.careerStats.cleanSheets =
           (this.player.careerStats.cleanSheets ?? 0) + 1;
       }
@@ -13504,7 +14357,10 @@ export class Career {
         if (player.position === "GK" && sideKeeper?.id === player.id) {
           player.stats ??= emptyStats();
           player.careerStats ??= emptyStats();
-          const goalsConceded = Math.max(0, Math.round(Number(opponentGoals) || 0));
+          const goalsConceded = Math.max(
+            0,
+            Math.round(Number(opponentGoals) || 0),
+          );
           // Shots on target are at least the goals conceded; the keeper's quality
           // decides the rest, so a strong keeper is not left on a 0% save rate.
           const saveFactor = goalkeeperSaveFactor(player.gkAttrs, {
@@ -14198,9 +15054,18 @@ export class Career {
           },
         );
         player.seasonDevelopmentReport = report;
-        if (report?.change >= 1 && report.change <= 7) this.news.unshift(`${player.first} ${player.last} advanced ${report.change} OVR this season (${report.reasons.join(", ")}).`);
-        else if (report?.change <= -1) this.news.unshift(`${player.first} ${player.last} declined ${Math.abs(report.change)} OVR this season (${report.reasons.join(", ")}).`);
-        if (report?.change >= 4 && ageOn(player.dob, finalDay) <= 21) this.news.unshift(`${player.first} ${player.last} is showing exceptional potential with ${report.change} OVR growth.`);
+        if (report?.change >= 1 && report.change <= 7)
+          this.news.unshift(
+            `${player.first} ${player.last} advanced ${report.change} OVR this season (${report.reasons.join(", ")}).`,
+          );
+        else if (report?.change <= -1)
+          this.news.unshift(
+            `${player.first} ${player.last} declined ${Math.abs(report.change)} OVR this season (${report.reasons.join(", ")}).`,
+          );
+        if (report?.change >= 4 && ageOn(player.dob, finalDay) <= 21)
+          this.news.unshift(
+            `${player.first} ${player.last} is showing exceptional potential with ${report.change} OVR growth.`,
+          );
         if (report && !player.isUser) {
           const headCoach = ensureCoachProfile(club);
           developCoach(club, {
@@ -14210,14 +15075,41 @@ export class Career {
         }
       }
       const training = ensureClubTraining(club, this.seed, this.season);
-      const youthCoach = training.coaches.find((coach) => coach.department === "youth");
+      const youthCoach = training.coaches.find(
+        (coach) => coach.department === "youth",
+      );
       for (const prospect of club.academy?.players ?? []) {
         if (prospect.status === "academy") {
-          const focusDepartment = prospect.position === "GK" ? "goalkeeper" : prospect.position === "ST" || prospect.position === "LW" || prospect.position === "RW" ? "attacking" : prospect.position === "CB" || prospect.position === "LB" || prospect.position === "RB" ? "defensive" : "midfield";
-          const assigned = training.coaches.find((coach) => coach.department === focusDepartment);
-          prospect.academyCoachQuality = Math.max(Number(youthCoach?.youthAbility ?? 50), Number(assigned?.overall ?? 45));
-          prospect.potentialTrajectory = clamp(((Number(prospect.potentialRange?.max ?? prospect.potential ?? 50) - Number(prospect.overall ?? 40)) * 4) + prospect.academyCoachQuality * 0.2, 0, 100);
-          prospect.trainingFocus = (TRAINING_DEPARTMENTS[focusDepartment] ?? [])[0] ?? (prospect.position === "GK" ? "reflexes" : "finishing");
+          const focusDepartment =
+            prospect.position === "GK"
+              ? "goalkeeper"
+              : prospect.position === "ST" ||
+                  prospect.position === "LW" ||
+                  prospect.position === "RW"
+                ? "attacking"
+                : prospect.position === "CB" ||
+                    prospect.position === "LB" ||
+                    prospect.position === "RB"
+                  ? "defensive"
+                  : "midfield";
+          const assigned = training.coaches.find(
+            (coach) => coach.department === focusDepartment,
+          );
+          prospect.academyCoachQuality = Math.max(
+            Number(youthCoach?.youthAbility ?? 50),
+            Number(assigned?.overall ?? 45),
+          );
+          prospect.potentialTrajectory = clamp(
+            (Number(prospect.potentialRange?.max ?? prospect.potential ?? 50) -
+              Number(prospect.overall ?? 40)) *
+              4 +
+              prospect.academyCoachQuality * 0.2,
+            0,
+            100,
+          );
+          prospect.trainingFocus =
+            (TRAINING_DEPARTMENTS[focusDepartment] ?? [])[0] ??
+            (prospect.position === "GK" ? "reflexes" : "finishing");
           prospect.morale = prospect.morale ?? prospect.confidence ?? 65;
           developAcademyPlayer(
             club,
@@ -14271,161 +15163,190 @@ export class Career {
   playNextScheduledMatch() {
     const next = this.getFixtureList().find((fixture) => fixture.next);
     if (!next) throw new Error("There is no upcoming fixture to play.");
-
-    let report;
-    do {
-      report = this.advanceWeek();
-    } while (!report.userMatch && !this.seasonComplete);
-    return {
-      played: !!report.userMatch,
-      report,
-      fixture: next,
-      competition: next.competition,
-    };
+    if (this._simulationLock)
+      throw new Error("A career simulation is already running.");
+    this._simulationLock = true;
+    try {
+      let report;
+      do {
+        report = this.advanceWeek();
+      } while (!report.userMatch && !this.seasonComplete);
+      return {
+        played: !!report.userMatch,
+        report,
+        fixture: next,
+        competition: next.competition,
+      };
+    } finally {
+      this._simulationLock = false;
+    }
   }
 
   simulateOneWeek() {
-    if (this.seasonComplete) {
-      throw new Error("The season is already complete.");
-    }
-    this.finishLiveMatchForSimulation();
-
-    if (
-      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-        (moment) => !moment.resolved,
-      )
-    ) {
-      throw new Error(
-        "Resolve your outstanding key moments before simulating.",
-      );
-    }
-    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
-      throw new Error("Finish the live match before simulating the week.");
-    }
-
-    const leagueResultsBefore = this.results.length;
-    const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
-    const completeCurrentMatchAutomatically = () => {
+    if (this._simulationLock)
+      throw new Error("A career simulation is already running.");
+    this._simulationLock = true;
+    try {
+      if (this.seasonComplete) {
+        throw new Error("The season is already complete.");
+      }
       this.finishLiveMatchForSimulation();
-    };
 
-    const report = this.advanceWeek();
-    if (report.userMatch) completeCurrentMatchAutomatically();
+      if (
+        this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+          (moment) => !moment.resolved,
+        )
+      ) {
+        throw new Error(
+          "Resolve your outstanding key moments before simulating.",
+        );
+      }
+      if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+        throw new Error("Finish the live match before simulating the week.");
+      }
 
-    const leagueMatchesSimulated = this.results.length - leagueResultsBefore;
-    const competitionMatchesSimulated =
-      this.getChampionsLeagueFixtureCount() - competitionResultsBefore;
-    return {
-      week: this.week,
-      weeksSimulated: 1,
-      leagueMatchesSimulated,
-      matchesSimulated: leagueMatchesSimulated + competitionMatchesSimulated,
-      competitionMatchesSimulated,
-      report: this.lastReport ?? report,
-    };
+      const leagueResultsBefore = this.results.length;
+      const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
+      const completeCurrentMatchAutomatically = () => {
+        this.finishLiveMatchForSimulation();
+      };
+
+      const report = this.advanceWeek();
+      if (report.userMatch) completeCurrentMatchAutomatically();
+
+      const leagueMatchesSimulated = this.results.length - leagueResultsBefore;
+      const competitionMatchesSimulated =
+        this.getChampionsLeagueFixtureCount() - competitionResultsBefore;
+      return {
+        week: this.week,
+        weeksSimulated: 1,
+        leagueMatchesSimulated,
+        matchesSimulated: leagueMatchesSimulated + competitionMatchesSimulated,
+        competitionMatchesSimulated,
+        report: this.lastReport ?? report,
+      };
+    } finally {
+      this._simulationLock = false;
+    }
   }
 
   simulateOneDay() {
-    if (this.seasonComplete) {
-      throw new Error("The season is already complete.");
-    }
-    this.finishLiveMatchForSimulation();
-    if (
-      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-        (moment) => !moment.resolved,
-      )
-    ) {
-      throw new Error(
-        "Resolve your outstanding key moments before simulating.",
-      );
-    }
-    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
-      throw new Error("Finish the live match before simulating the day.");
-    }
+    if (this._simulationLock)
+      throw new Error("A career simulation is already running.");
+    this._simulationLock = true;
+    try {
+      if (this.seasonComplete) {
+        throw new Error("The season is already complete.");
+      }
+      this.finishLiveMatchForSimulation();
+      if (
+        this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+          (moment) => !moment.resolved,
+        )
+      ) {
+        throw new Error(
+          "Resolve your outstanding key moments before simulating.",
+        );
+      }
+      if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+        throw new Error("Finish the live match before simulating the day.");
+      }
 
-    const firstDay = this.calendar[0]?.day ?? toDayIndex(this.season, 7, 1);
-    this.dayCursor = Number.isFinite(this.dayCursor)
-      ? this.dayCursor + 1
-      : firstDay;
-    const nextWeek = this.week + 1;
-    const matchday = this.calendar[nextWeek]?.matchday;
-    if (Number.isFinite(matchday) && this.dayCursor >= matchday) {
-      const result = this.simulateOneWeek();
-      this.dayCursor = this.calendar[this.week]?.matchday ?? this.dayCursor;
+      const firstDay = this.calendar[0]?.day ?? toDayIndex(this.season, 7, 1);
+      this.dayCursor = Number.isFinite(this.dayCursor)
+        ? this.dayCursor + 1
+        : firstDay;
+      const nextWeek = this.week + 1;
+      const matchday = this.calendar[nextWeek]?.matchday;
+      if (Number.isFinite(matchday) && this.dayCursor >= matchday) {
+        const result = this.simulateOneWeek();
+        this.dayCursor = this.calendar[this.week]?.matchday ?? this.dayCursor;
+        return {
+          ...result,
+          dayAdvanced: 1,
+          weekAdvanced: 1,
+        };
+      }
       return {
-        ...result,
-        dayAdvanced: 1,
-        weekAdvanced: 1,
-      };
-    }
-    return {
-      week: this.week,
-      weeksSimulated: 0,
-      leagueMatchesSimulated: 0,
-      matchesSimulated: 0,
-      competitionMatchesSimulated: 0,
-      dayAdvanced: 1,
-      weekAdvanced: 0,
-      report: {
         week: this.week,
-        fixtures: [],
-        userMatch: null,
-        headlines: [`Day ${this.dayCursor} advanced.`],
-      },
-    };
+        weeksSimulated: 0,
+        leagueMatchesSimulated: 0,
+        matchesSimulated: 0,
+        competitionMatchesSimulated: 0,
+        dayAdvanced: 1,
+        weekAdvanced: 0,
+        report: {
+          week: this.week,
+          fixtures: [],
+          userMatch: null,
+          headlines: [`Day ${this.dayCursor} advanced.`],
+        },
+      };
+    } finally {
+      this._simulationLock = false;
+    }
   }
 
   simulateToSeasonEnd() {
-    if (this.seasonComplete) {
-      throw new Error("The season is already complete.");
-    }
-    this.finishLiveMatchForSimulation();
-    if (
-      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-        (moment) => !moment.resolved,
-      )
-    ) {
-      throw new Error(
-        "Resolve your outstanding key moments before simulating.",
-      );
-    }
-    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
-      throw new Error("Finish the live match before simulating the season.");
-    }
-
-    let leagueMatchesSimulated = 0;
-    const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
-    let weeksSimulated = 0;
-    const completeCurrentMatchAutomatically = () => {
+    if (this._simulationLock)
+      throw new Error("A career simulation is already running.");
+    this._simulationLock = true;
+    try {
+      if (this.seasonComplete) {
+        throw new Error("The season is already complete.");
+      }
       this.finishLiveMatchForSimulation();
-    };
+      if (
+        this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+          (moment) => !moment.resolved,
+        )
+      ) {
+        throw new Error(
+          "Resolve your outstanding key moments before simulating.",
+        );
+      }
+      if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+        throw new Error("Finish the live match before simulating the season.");
+      }
 
-    while (!this.seasonComplete) {
-      if (weeksSimulated >= this.calendar.length) {
-        throw new Error("The season did not complete within its calendar.");
+      let leagueMatchesSimulated = 0;
+      const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
+      let weeksSimulated = 0;
+      const completeCurrentMatchAutomatically = () => {
+        this.finishLiveMatchForSimulation();
+      };
+
+      while (!this.seasonComplete) {
+        if (weeksSimulated >= this.calendar.length) {
+          throw new Error("The season did not complete within its calendar.");
+        }
+        const report = this.advanceWeek();
+        weeksSimulated += 1;
+        if (report.userMatch) {
+          leagueMatchesSimulated += 1;
+          completeCurrentMatchAutomatically();
+        }
       }
-      const report = this.advanceWeek();
-      weeksSimulated += 1;
-      if (report.userMatch) {
-        leagueMatchesSimulated += 1;
-        completeCurrentMatchAutomatically();
-      }
+
+      this.player ??= this.players.find(
+        (player) => player?.id === this.playerId,
+      );
+      if (this.player && !this.player.stats) this.player.stats = emptyStats();
+      return {
+        matchesSimulated:
+          leagueMatchesSimulated +
+          (this.getChampionsLeagueFixtureCount() - competitionResultsBefore),
+        leagueMatchesSimulated,
+        competitionMatchesSimulated:
+          this.getChampionsLeagueFixtureCount() - competitionResultsBefore,
+        weeksSimulated,
+        season: this.season,
+        playerStats: { ...(this.player?.stats ?? {}) },
+        leaguePosition: this.league.table.positions().get(this.club.id),
+      };
+    } finally {
+      this._simulationLock = false;
     }
-
-    this.player ??= this.players.find((player) => player?.id === this.playerId);
-    if (this.player && !this.player.stats) this.player.stats = emptyStats();
-    return {
-      matchesSimulated:
-        leagueMatchesSimulated +
-        (this.getChampionsLeagueFixtureCount() - competitionResultsBefore),
-      leagueMatchesSimulated,
-      competitionMatchesSimulated:
-        this.getChampionsLeagueFixtureCount() - competitionResultsBefore,
-      weeksSimulated,
-      season: this.season,
-      playerStats: { ...(this.player?.stats ?? {}) },
-      leaguePosition: this.league.table.positions().get(this.club.id),
-    };
   }
 
   /**
@@ -14434,55 +15355,62 @@ export class Career {
    * played so you can review mid-season form without committing to the full run.
    */
   simulateToHalfSeason() {
-    if (this.seasonComplete) {
-      throw new Error("The season is already complete.");
-    }
-    this.finishLiveMatchForSimulation();
-    if (
-      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-        (moment) => !moment.resolved,
-      )
-    ) {
-      throw new Error(
-        "Resolve your outstanding key moments before simulating.",
-      );
-    }
-    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
-      throw new Error("Finish the live match before simulating the season.");
-    }
-
-    const halfway = Math.max(1, Math.ceil(this.calendar.length / 2));
-    let leagueMatchesSimulated = 0;
-    const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
-    let weeksSimulated = 0;
-    const completeCurrentMatchAutomatically = () => {
+    if (this._simulationLock)
+      throw new Error("A career simulation is already running.");
+    this._simulationLock = true;
+    try {
+      if (this.seasonComplete) {
+        throw new Error("The season is already complete.");
+      }
       this.finishLiveMatchForSimulation();
-    };
+      if (
+        this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+          (moment) => !moment.resolved,
+        )
+      ) {
+        throw new Error(
+          "Resolve your outstanding key moments before simulating.",
+        );
+      }
+      if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+        throw new Error("Finish the live match before simulating the season.");
+      }
 
-    while (!this.seasonComplete && weeksSimulated < halfway) {
-      if (weeksSimulated >= this.calendar.length) {
-        throw new Error("The season did not complete within its calendar.");
+      const halfway = Math.max(1, Math.ceil(this.calendar.length / 2));
+      let leagueMatchesSimulated = 0;
+      const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
+      let weeksSimulated = 0;
+      const completeCurrentMatchAutomatically = () => {
+        this.finishLiveMatchForSimulation();
+      };
+
+      while (!this.seasonComplete && weeksSimulated < halfway) {
+        if (weeksSimulated >= this.calendar.length) {
+          throw new Error("The season did not complete within its calendar.");
+        }
+        const report = this.advanceWeek();
+        weeksSimulated += 1;
+        if (report.userMatch) {
+          leagueMatchesSimulated += 1;
+          completeCurrentMatchAutomatically();
+        }
       }
-      const report = this.advanceWeek();
-      weeksSimulated += 1;
-      if (report.userMatch) {
-        leagueMatchesSimulated += 1;
-        completeCurrentMatchAutomatically();
-      }
+
+      return {
+        matchesSimulated:
+          leagueMatchesSimulated +
+          (this.getChampionsLeagueFixtureCount() - competitionResultsBefore),
+        leagueMatchesSimulated,
+        competitionMatchesSimulated:
+          this.getChampionsLeagueFixtureCount() - competitionResultsBefore,
+        weeksSimulated,
+        season: this.season,
+        playerStats: { ...(this.player?.stats ?? {}) },
+        leaguePosition: this.league.table.positions().get(this.club.id),
+      };
+    } finally {
+      this._simulationLock = false;
     }
-
-    return {
-      matchesSimulated:
-        leagueMatchesSimulated +
-        (this.getChampionsLeagueFixtureCount() - competitionResultsBefore),
-      leagueMatchesSimulated,
-      competitionMatchesSimulated:
-        this.getChampionsLeagueFixtureCount() - competitionResultsBefore,
-      weeksSimulated,
-      season: this.season,
-      playerStats: { ...(this.player?.stats ?? {}) },
-      leaguePosition: this.league.table.positions().get(this.club.id),
-    };
   }
 
   getAwardRace() {
@@ -15088,7 +16016,7 @@ export class Career {
 
   toJSON() {
     return {
-      saveVersion: 2,
+      saveVersion: 3,
       activeLeagueId: this.league.id,
       seed: this.seed,
       difficulty: this.difficulty,
@@ -15122,6 +16050,9 @@ export class Career {
       news: this.news,
       agent: this.agent ? { ...this.agent } : null,
       transferOffers: this.transferOffers,
+      transferList: this.transferList ?? [],
+      transferListOffers: this.transferListOffers ?? [],
+      transferListNextEvaluationWeek: this.transferListNextEvaluationWeek ?? 0,
       transferRefreshCount: this.transferRefreshCount,
       transferMarketState: this.transferMarketState,
       transferHistory: this.transferHistory ?? [],
@@ -15241,7 +16172,17 @@ export class Career {
       ? save.worldLeagues.map((state) => ({
           ...state,
           performers: Array.isArray(state.performers)
-            ? state.performers.map((player) => ({ ...player, developmentHistory: (player.developmentHistory ?? []).slice(-40), developmentReportHistory: (player.developmentReportHistory ?? []).slice(-20) })).slice(0, 100)
+            ? state.performers
+                .map((player) => ({
+                  ...player,
+                  developmentHistory: (player.developmentHistory ?? []).slice(
+                    -40,
+                  ),
+                  developmentReportHistory: (
+                    player.developmentReportHistory ?? []
+                  ).slice(-20),
+                }))
+                .slice(0, 100)
             : [],
         }))
       : [];
@@ -15256,8 +16197,12 @@ export class Career {
     this.contractEvents = saved.contractEvents ?? [];
     this.recentlyExpiredContracts = saved.recentlyExpiredContracts ?? [];
     this.lastContractProcessDay = saved.lastContractProcessDay ?? null;
-    this.contractNegotiations = Array.isArray(saved.contractNegotiations) ? saved.contractNegotiations : [];
-    this.freeAgentOffers = Array.isArray(saved.freeAgentOffers) ? saved.freeAgentOffers : [];
+    this.contractNegotiations = Array.isArray(saved.contractNegotiations)
+      ? saved.contractNegotiations
+      : [];
+    this.freeAgentOffers = Array.isArray(saved.freeAgentOffers)
+      ? saved.freeAgentOffers
+      : [];
     const freshLegendPlayers = [
       ...(this.players ?? []),
       ...(this.worldLeagues ?? []).flatMap((state) => state.performers ?? []),
@@ -15318,6 +16263,14 @@ export class Career {
         new Agent(saved.agent))
       : null;
     this.transferOffers = saved.transferOffers ?? [];
+    this.transferList = Array.isArray(saved.transferList)
+      ? saved.transferList
+      : [];
+    this.transferListOffers = Array.isArray(saved.transferListOffers)
+      ? saved.transferListOffers
+      : [];
+    this.transferListNextEvaluationWeek =
+      saved.transferListNextEvaluationWeek ?? 0;
     this.transferMarketState = saved.transferMarketState ?? {
       season: saved.season,
       searchCount: saved.transferRefreshCount ?? 0,
@@ -15409,18 +16362,28 @@ export class Career {
       if (player.marketValue == null && Number.isFinite(Number(player.value))) {
         player.marketValue = Number(player.value);
       }
-      if (player.marketValue != null && player.value == null) player.value = player.marketValue;
+      if (player.marketValue != null && player.value == null)
+        player.value = player.marketValue;
       player.previousMarketValue ??= null;
       player.marketValueChange ??= 0;
       player.overall = calculateOverall(player);
       player.baseOverall = player.overall;
       return player;
     });
-    this.expansionPlayers = Array.isArray(saved.expansionPlayers) ? saved.expansionPlayers : (this.expansionPlayers ?? []);
-    this.worldCupNpcPlayers = Array.isArray(saved.worldCupNpcPlayers) ? saved.worldCupNpcPlayers : (this.worldCupNpcPlayers ?? []);
-    this.syncAllPlayerMarketValues({ season: this.season, dayIndex: this.currentDay(), initialize: false });
+    this.expansionPlayers = Array.isArray(saved.expansionPlayers)
+      ? saved.expansionPlayers
+      : (this.expansionPlayers ?? []);
+    this.worldCupNpcPlayers = Array.isArray(saved.worldCupNpcPlayers)
+      ? saved.worldCupNpcPlayers
+      : (this.worldCupNpcPlayers ?? []);
     this.player = this.players.find((player) => player.id === saved.playerId);
     if (!this.player) throw new Error("Save is missing its career player.");
+    this.rebuildIndexes();
+    this.syncAllPlayerMarketValues({
+      season: this.season,
+      dayIndex: this.currentDay(),
+      initialize: false,
+    });
     this.trainingFocus = normalizedTrainingFocus(
       saved.trainingFocus ?? this.player.trainingFocus,
       this.player.position,
@@ -15563,6 +16526,12 @@ export class Career {
         };
       },
     );
+    this.rebuildIndexes();
+    this.syncAllPlayerMarketValues({
+      season: this.season,
+      dayIndex: this.currentDay(),
+      initialize: false,
+    });
     for (const state of this.worldLeagues) {
       for (const performer of state.performers) {
         this.ensureWorldPlayerModel(performer);
@@ -15578,6 +16547,7 @@ export class Career {
         performer.matchHistory ??= [];
       }
     }
+    this.rebuildIndexes();
     this.clearLegacyLegendFlags(freshLegendPlayers);
     this.worldCup = saved.worldCup ?? worldCupSchedule(this.careerStartYear);
     this.worldCup.startYear ??= this.careerStartYear;
@@ -15712,4 +16682,3 @@ export function createCareer(data, options, saved = null) {
 }
 
 export { emptyStats };
-

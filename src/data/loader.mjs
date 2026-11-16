@@ -8,9 +8,16 @@ import {
 const readJson = (path) =>
   readFile(new URL(path, import.meta.url), "utf8").then(JSON.parse);
 const readText = (path) => readFile(new URL(path, import.meta.url), "utf8");
+let cachedDataPromise = null;
 
-/** Load the local game data for Node-based tools and tests. */
-export async function loadData() {
+/** Load the immutable local game data once for tools, tests and careers. */
+export async function loadData({ forceReload = false } = {}) {
+  if (forceReload) cachedDataPromise = null;
+  if (!cachedDataPromise) cachedDataPromise = loadDataUncached();
+  return cachedDataPromise;
+}
+
+async function loadDataUncached() {
   const [
     clubs,
     leagueConfig,

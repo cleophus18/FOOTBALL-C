@@ -524,6 +524,7 @@ export function buildPlayableCareerLeagues(
     .flatMap(([leagueKey, source]) => {
       const leagueName = source.name;
       const clubs = byLeague.get(leagueKey) ?? new Map();
+      const clubsBySlug = new Map([...clubs].map(([name, roster]) => [slug(name), roster]));
       const expansion = EXPANSION_LEAGUES.find(
         (item) => item.name === leagueName,
       );
@@ -537,10 +538,7 @@ export function buildPlayableCareerLeagues(
       const names = new Set(clubList);
       if (!names.size) return [];
       for (const clubName of [...names].sort((a, b) => a.localeCompare(b))) {
-        const roster =
-          [...clubs.entries()].find(
-            ([importedName]) => slug(importedName) === slug(clubName),
-          )?.[1] ?? [];
+        const roster = clubsBySlug.get(slug(clubName)) ?? [];
         const clubId = slug(clubName);
         teamIds.push(clubId);
         const averageRating = roster.length
