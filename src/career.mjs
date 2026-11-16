@@ -12331,9 +12331,10 @@ export class Career {
 
     const progression = this.data.careerSettings.training;
     const financeDay = this.calendar[this.week]?.day ?? this.currentDay();
-    // The contract lifecycle runs BEFORE finances and matches so a user contract
-    // expiry opens the pause before anything else in the week is processed.
-    this.processContractLifecycle(financeDay);
+    const contractDay = this.calendar[this.week]?.matchday ?? this.currentDay();
+    // The contract lifecycle runs on the matchday so expiries that fall within
+    // the current week are caught before finances and matches are processed.
+    this.processContractLifecycle(contractDay);
     if (this.userContractDecision && !this.userContractDecision.resolved) {
       const pausedReport = {
         week: this.week,

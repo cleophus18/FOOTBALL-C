@@ -2360,6 +2360,7 @@ function renderGame() {
         ["squad", "Formation & Squad", "♟"],
         ["coaches", "Coaches", "♛"],
         ["players", "Players", "♙"],
+        ["contracts", "Contracts", "📋"],
         ...(career.isManagerCareer
           ? [["office", "Club office", "▦"]]
           : [
@@ -3270,6 +3271,7 @@ function renderScreen() {
   if (screen === "player") return renderPlayer();
   if (screen === "conversation") return renderConversation();
   if (screen === "transfers-list") return renderTransfersList();
+  if (screen === "contracts") return renderContractsTab();
   if (screen === "agent") return renderAgent();
   if (screen === "history") return renderHistory();
   if (screen === "investments")
@@ -3748,6 +3750,257 @@ function contractOfferForm(playerId, kind, defaults = {}) {
       </div>
     </form>
   </section></div>`;
+}
+3754:
+
+function renderContractsTab() {
+  const player = career.player;
+  const contract = player.contract ?? {};
+  const currentDay = career.currentDay();
+  const expiryDay = contractExpiryDay(contract);
+  const remainingDays = daysUntilExpiry(contract, currentDay);
+  const stage = contractStageLabel(contract, currentDay);
+  const duration = contractRemainingDuration(contract, currentDay);
+  const statusLabel = CONTRACT_STATUS_LABELS[contract.status] ?? contract.status ?? "Active";
+  const isFreeAgent = contract.status === CONTRACT_STATUSES.FREE_AGENT;
+  const isExpired = contract.status === CONTRACT_STATUSES.EXPIRED;
+  const isNegotiating = contract.status === CONTRACT_STATUSES.NEGOTIATING;
+  const isRenewalOffered = contract.status === CONTRACT_STATUSES.RENEWAL_OFFERED;
+  const isExpiring = contract.status === CONTRACT_STATUSES.EXPIRING;
+
+  // Status badge
+  const statusClass = isFreeAgent ? "status-free-agent" : isExpired ? "status-expired" : isNegotiating ? "status-negotiating" : isRenewalOffered ? "status-renewal-offered" : isExpiring ? "status-expiring" : "status-active";
+
+  // Club info
+  const club = career.clubs.find((c) => c.id === player.clubId);
+  const formerClub = career.clubs.find((c) => c.id === player.formerClubId);
+
+  // Teammates with expiring contracts
+  const teammates = career.players
+    .filter((p) => p.clubId === player.clubId && p.id !== player.id && p.contract)
+    .map((p) => {
+      const c = p.contract;
+      const rem = daysUntilExpiry(c, currentDay);
+      const stg = contractStageLabel(c, currentDay);
+      return { player: p, remaining: rem, stage: stg, expiryDay: contractExpiryDay(c) };
+    })
+    .filter((t) => t.remaining != null && t.remaining <= 550)
+    .sort((a, b) => (a.remaining ?? 9999) - (b.remaining ?? 9999));
+
+  // Contract history
+  const history = Array.isArray(contract.history) ? contract.history : [];
+
+  // Active negotiations
+  const negotiations = career.contractNegotiationView?.() ?? [];
+
+  // Free agent opportunities (if applicable)
+  const freeAgentOpps = career.freeAgentOpportunities ?? [];
+
+  // User contract decision (if in expiry pause)
+  const userDecision = career.userContractDecision;
+
+  return `
+    <div class="page-heading"><div><div class="eyebrow lime">CONTRACTS</div><h1>Contract Management</h1><p>Your contract, negotiations, expiries and free agency status.</p></div><span class="live-tag">${isFreeAgent ? "FREE AGENT" : club ? esc(club.name) : "NO CLUB"}</span></div>
+
+    <!-- Current Contract -->
+    <section class="panel contract-main-panel">
+      <div class="panel-heading"><div><div class="eyebrow">CURRENT CONTRACT</div><h2>${player.first} ${player.last} · ${esc(player.position)} · ${player.overall} OVR</h2></div><span class="contract-status-badge ${statusClass}">${esc(statusLabel)}</span></div>
+      <div class="contract-grid">
+        <article class="contract-card">
+          <div class="card-label">STATUS</div>
+          <div class="big-number">${esc(statusLabel)}</div>
+          <div class="muted">${isFreeAgent ? "Available to sign with any club" : club ? `Contracted to ${esc(club.name)}` : "No club"}</div>
+        </article>
+        <article class="contract-card">
+          <div class="card-label">EXPIRES</div>
+          <div class="big-number">${expiryDay != null ? formatDate(expiryDay) : "—"}</div>
+          <div class="muted">${remainingDays != null && remainingDays > 0 ? `${remainingDays} days (${duration.years}y ${duration.months}m)` : remainingDays != null && remainingDays <= 0 ? "EXPIRED" : "—"}</div>
+        </article>
+        <article class="contract-card">
+          <div class="card-label">WEEKLY WAGE</div>
+          <div class="big-number">€${formatDecimal(contract.weeklyWage ?? 0)}</div>
+          <div class="muted">${contract.weeklyWage ? `${(contract.weeklyWage * 52).toLocaleString("en-GB")} per year` : "No wage"}</div>
+        </article>
+        <article class="contract-card">
+          <div class="card-label">SIGNING BONUS</div>
+          <div class="big-number">€${formatDecimal(contract.signingBonus ?? 0)}</div>
+          <div class="muted">${contract.signingBonusPaid ? "Paid" : contract.signingBonus > 0 ? "Pending" : "None"}</div>
+        </article>
+        <article class="contract-card">
+          <div class="card-label">RELEASE CLAUSE</div>
+          <div class="big-number">${contract.releaseClause ? `€${formatDecimal(contract.releaseClause)}` : "None"}</div>
+          <div class="muted">Can be triggered by buying clubs</div>
+        </article>
+        <article class="contract-card">
+          <div class="card-label">SQUAD ROLE</div>
+          <div class="big-number">${esc(contract.squadRole ?? "—")}</div>
+          <div class="muted">Expected playing time & influence</div>
+        </article>
+      </div>
+      ${contract.years ? `<div class="contract-detail-row"><span>Contract Length</span><b>${contract.years} year${contract.years > 1 ? "s" : ""}</b></div>` : ""}
+      ${contract.startDate ? `<div class="contract-detail-row"><span>Start Date</span><b>${formatDate(contract.startDate)}</b></div>` : ""}
+      ${contract.loyaltyBonus ? `<div class="contract-detail-row"><span>Loyalty Bonus</span><b>€${formatDecimal(contract.loyaltyBonus)}</b></div>` : ""}
+      ${isFreeAgent && formerClub ? `<div class="contract-detail-row warning"><span>Former Club</span><b>${esc(formerClub.name)}</b><small>Contract expired ${contract.freeSinceDay ? formatDate(contract.freeSinceDay) : "recently"}</small></div>` : ""}
+    </section>
+
+    <!-- Contract Stage & Countdown -->
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">CONTRACT TIMELINE</div><h2>Countdown & Stage</h2></div><span class="live-tag">${stage ? stage.toUpperCase().replace("-", " ") : "NORMAL"}</span></div>
+      <div class="contract-timeline">
+        <div class="timeline-stage ${stage === "twelve-months" || (remainingDays != null && remainingDays <= 365 && remainingDays > 183) ? "active" : remainingDays != null && remainingDays <= 183 ? "passed" : ""}">
+          <span class="stage-icon">12</span><span class="stage-label">12 MONTHS</span><span class="stage-desc">Renewal window opens</span>
+        </div>
+        <div class="timeline-stage ${stage === "six-months" || (remainingDays != null && remainingDays <= 183 && remainingDays > 31) ? "active" : remainingDays != null && remainingDays <= 31 ? "passed" : ""}">
+          <span class="stage-icon">6</span><span class="stage-label">6 MONTHS</span><span class="stage-desc">Pre-contract window</span>
+        </div>
+        <div class="timeline-stage ${stage === "final-month" || (remainingDays != null && remainingDays <= 31 && remainingDays > 0) ? "active" : remainingDays != null && remainingDays <= 0 ? "passed" : ""}">
+          <span class="stage-icon">1</span><span class="stage-label">FINAL MONTH</span><span class="stage-desc">Must decide future</span>
+        </div>
+        <div class="timeline-stage ${remainingDays != null && remainingDays <= 0 ? "active" : ""}">
+          <span class="stage-icon">0</span><span class="stage-label">EXPIRED</span><span class="stage-desc">Free agent</span>
+        </div>
+      </div>
+      <p class="muted">${isFreeAgent ? "You are a free agent. Your agent is finding clubs." : remainingDays != null && remainingDays > 0 ? `${remainingDays} days until contract expiry.` : "Contract has expired."}</p>
+    </section>
+
+    <!-- Contract History -->
+    ${history.length > 0 ? `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">HISTORY</div><h2>Contract History</h2></div><span class="live-tag">${history.length} ENTRIES</span></div>
+      <div class="transfer-list">${history
+        .slice()
+        .reverse()
+        .map((entry) => `
+        <article class="transfer-agent">
+          <div>
+            <b>${esc(entry.type?.toUpperCase() ?? "EVENT")}</b>
+            <small>${entry.date != null ? formatDate(entry.date) : "—"} · ${entry.clubId ? career.clubs.find((c) => c.id === entry.clubId)?.name ?? entry.clubId : "—"}</small>
+            ${entry.years ? `<small>${entry.years} years · €${formatDecimal(entry.weeklyWage ?? 0)}/wk</small>` : ""}
+            ${entry.reason ? `<small>${esc(entry.reason)}</small>` : ""}
+          </div>
+        </article>
+      `).join("")}</div>
+    </section>
+    ` : ""}
+
+    <!-- Active Negotiations -->
+    ${negotiations.length > 0 ? `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">NEGOTIATIONS</div><h2>Active Contract Negotiations</h2></div><span class="live-tag">${negotiations.length} ACTIVE</span></div>
+      <div class="transfer-list">${negotiations
+        .map((neg) => `
+        <article class="transfer-agent negotiation-item is-${esc(neg.status)}">
+          <div>
+            <b>${esc(neg.playerName)}</b>
+            <small>${esc(neg.clubName)} · €${formatDecimal(neg.offer.weeklyWage)}/wk · ${neg.offer.years}y · ${esc(neg.offer.squadRole)} · Bonus €${formatDecimal(neg.offer.signingBonus)}${neg.offer.releaseClause ? ` · Release €${formatDecimal(neg.offer.releaseClause)}` : ""}</small>
+            ${neg.response ? `<small class="negotiation-response">${esc(neg.response.message)}</small>` : ""}
+          </div>
+          <div class="agent-actions">
+            <span class="negotiation-status">${esc(neg.status)}</span>
+            ${["awaiting-response", "counteroffer"].includes(neg.status) ? `<button class="button-quiet" data-action="withdraw-negotiation" data-negotiation-id="${esc(neg.id)}">Withdraw</button>` : ""}
+          </div>
+        </article>
+      `).join("")}</div>
+    </section>
+    ` : ""}
+
+    <!-- User Contract Expiry Decision -->
+    ${userDecision && !userDecision.resolved ? `
+    <section class="panel contract-expiry-panel">
+      <div class="panel-heading"><div><div class="eyebrow danger">CONTRACT EXPIRED</div><h2>Decision Required</h2></div><span class="live-tag danger">SIMULATION PAUSED</span></div>
+      <div class="contract-expiry-content">
+        <p class="warning">Your contract with ${esc(userDecision.formerClubName ?? "your club")} has expired. You must decide your future before the season can continue.</p>
+        <div class="contract-offer-comparison">
+          <div class="offer-card club-offer">
+            <div class="offer-label">CLUB RENEWAL OFFER</div>
+            <div class="offer-details">
+              <div><span>Wage</span><b>€${formatDecimal(userDecision.clubOffer?.weeklyWage ?? 0)}/wk</b></div>
+              <div><span>Years</span><b>${userDecision.clubOffer?.years ?? 0}</b></div>
+              <div><span>Role</span><b>${esc(userDecision.clubOffer?.squadRole ?? "—")}</b></div>
+              <div><span>Bonus</span><b>€${formatDecimal(userDecision.clubOffer?.signingBonus ?? 0)}</b></div>
+            </div>
+          </div>
+          ${userDecision.negotiation ? `
+          <div class="offer-card user-counter">
+            <div class="offer-label">YOUR COUNTER</div>
+            <div class="offer-details">
+              <div><span>Wage</span><b>€${formatDecimal(userDecision.negotiation.requested?.weeklyWage ?? 0)}/wk</b></div>
+              <div><span>Years</span><b>${userDecision.negotiation.requested?.years ?? 0}</b></div>
+              <div><span>Role</span><b>${esc(userDecision.negotiation.requested?.squadRole ?? "—")}</b></div>
+              <div><span>Bonus</span><b>€${formatDecimal(userDecision.negotiation.requested?.signingBonus ?? 0)}</b></div>
+            </div>
+          </div>
+          ` : ""}
+        </div>
+        <div class="contract-expiry-actions">
+          <button class="button-primary" data-action="accept-contract-renewal">Accept Club Offer</button>
+          <button class="button-primary" data-action="open-contract-negotiation" data-kind="renewal">Negotiate / Counter</button>
+          <button class="button-quiet danger" data-action="decline-contract-renewal">Decline & Become Free Agent</button>
+        </div>
+      </div>
+    </section>
+    ` : ""}
+
+    <!-- Free Agent Opportunities -->
+    ${isFreeAgent && freeAgentOpps.length > 0 ? `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">FREE AGENCY</div><h2>Interested Clubs</h2></div><span class="live-tag">${freeAgentOpps.length} OFFERS</span></div>
+      <div class="free-agent-grid">${freeAgentOpps
+        .map((opp) => `
+        <article class="free-agent-card">
+          <header><b>${esc(opp.clubName)}</b><span class="status-pill">${esc(opp.leagueName)}</span></header>
+          <div class="free-agent-meta">
+            <span>${opp.reputation} REP</span><span>Interest: ${opp.interest}%</span>
+          </div>
+          <div class="free-agent-details">
+            <div><small>WAGE OFFER</small><b>€${formatDecimal(opp.offer?.weeklyWage ?? 0)}/wk</b></div>
+            <div><small>YEARS</small><b>${opp.offer?.years ?? 0}</b></div>
+            <div><small>ROLE</small><b>${esc(opp.offer?.squadRole ?? "—")}</b></div>
+            <div><small>BONUS</small><b>€${formatDecimal(opp.offer?.signingBonus ?? 0)}</b></div>
+            <div><small>REASON</small><b>${esc(opp.reason ?? "Squad need")}</b></div>
+          </div>
+          <footer><button class="button-primary" data-action="accept-free-agent-offer" data-club-id="${esc(opp.clubId)}">Accept Offer</button></footer>
+        </article>
+      `).join("")}</div>
+    </section>
+    ` : ""}
+
+    <!-- Teammates Expiring -->
+    ${teammates.length > 0 ? `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">TEAM EXPIRIES</div><h2>Teammates Approaching Contract Expiry</h2></div><span class="live-tag">${teammates.length} PLAYERS</span></div>
+      <table class="world-roster-table">
+        <thead><tr><th>PLAYER</th><th>POS</th><th>OVR</th><th>AGE</th><th>EXPIRES IN</th><th>STAGE</th><th>ROLE</th></tr></thead>
+        <tbody>${teammates
+          .map((t) => `
+          <tr>
+            <td><b>${playerProfileLink(t.player, `${t.player.first} ${t.player.last}`)}</b></td>
+            <td>${esc(t.player.position)}</td>
+            <td class="world-rating">${t.player.overall}</td>
+            <td>${t.player.dob != null ? ageOn(t.player.dob, currentDay()) : "—"}</td>
+            <td>${t.remaining != null ? `${t.remaining} days` : "—"}</td>
+            <td><span class="contract-stage is-${esc(t.stage)}">${{ "twelve-months": "12 Months", "six-months": "6 Months", "final-month": "Final Month", expired: "Expired", normal: "—" }[t.stage] ?? t.stage}</span></td>
+            <td>${esc(t.player.contract?.squadRole ?? "—")}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </section>
+    ` : ""}
+
+    <!-- Club Contract Decisions (Manager Career) -->
+    ${career.isManagerCareer ? `
+    <section class="panel">
+      <div class="panel-heading"><div><div class="eyebrow">CLUB DECISIONS</div><h2>Contract Decisions</h2></div><span class="live-tag">MANAGER MODE</span></div>
+      <p class="muted">As a manager, you can review and approve contract renewals, release players, and manage the transfer list.</p>
+      <div class="dashboard-grid">
+        <section class="panel"><button class="button-primary" data-screen="transfers-list" data-tab="expiries">Review Contract Expiries</button></section>
+        <section class="panel"><button class="button-primary" data-screen="transfers-list" data-tab="negotiations">Review Negotiations</button></section>
+        <section class="panel"><button class="button-primary" data-screen="transfers-list" data-tab="transfer-list">Manage Transfer List</button></section>
+        <section class="panel"><button class="button-primary" data-screen="transfers-list" data-tab="free-agents">Browse Free Agents</button></section>
+      </div>
+    </section>
+    ` : ""}
+  `;
 }
 
 function renderTransfersList() {

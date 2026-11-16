@@ -2316,6 +2316,332 @@ td:first-child {
   margin-bottom: 10px;
 }
 
+/* ===== Contracts tab: main panel, grid, timeline, expiry panel ===== */
+.contract-main-panel {
+  margin-bottom: 16px;
+}
+
+.contract-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.contract-card {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(145deg, #121d2c, #0e1622);
+}
+
+.contract-card .card-label {
+  color: var(--muted);
+  font: 10px "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+}
+
+.contract-card .big-number {
+  margin: 4px 0 6px;
+  font-size: 22px;
+}
+
+.contract-card .muted {
+  font-size: 11px;
+}
+
+.contract-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.contract-detail-row.warning {
+  color: var(--amber);
+}
+
+.contract-detail-row small {
+  color: var(--muted);
+  margin-left: 10px;
+}
+
+.contract-timeline {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 8px;
+  background: rgba(10, 16, 22, .6);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.timeline-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: 6px;
+  background: rgba(20, 27, 32, .8);
+  border: 1px solid var(--line);
+  opacity: .5;
+  transition: opacity .2s, border-color .2s, background .2s;
+}
+
+.timeline-stage.active {
+  opacity: 1;
+  border-color: var(--lime);
+  background: rgba(40, 55, 31, .6);
+}
+
+.timeline-stage.passed {
+  opacity: .4;
+  border-color: #333;
+}
+
+.stage-icon {
+  font: 700 18px "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
+  color: var(--lime);
+}
+
+.stage-label {
+  font: 600 11px "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
+  color: var(--text);
+}
+
+.stage-desc {
+  font: 10px "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  color: var(--muted);
+  text-align: center;
+}
+
+.contract-expiry-panel {
+  border-color: var(--red) !important;
+  background: linear-gradient(145deg, rgba(37, 15, 15, .8), rgba(15, 10, 10, .9)) !important;
+}
+
+.contract-expiry-panel .panel-heading {
+  border-bottom: 1px solid var(--red);
+}
+
+.contract-expiry-content {
+  margin-top: 16px;
+}
+
+.contract-expiry-content .warning {
+  color: var(--amber);
+  margin-bottom: 16px;
+}
+
+.contract-offer-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.offer-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 20, 25, .7);
+}
+
+.offer-card.club-offer {
+  border-color: var(--blue);
+  background: rgba(15, 25, 35, .7);
+}
+
+.offer-card.user-counter {
+  border-color: var(--amber);
+  background: rgba(35, 25, 15, .7);
+}
+
+.offer-label {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font: 600 11px "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.offer-card.club-offer .offer-label {
+  color: var(--blue);
+}
+
+.offer-card.user-counter .offer-label {
+  color: var(--amber);
+}
+
+.offer-details {
+  display: grid;
+  gap: 8px;
+}
+
+.offer-details div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.contract-expiry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.negotiation-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.negotiation-response {
+  color: var(--text) !important;
+  font-style: italic;
+}
+
+.free-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.free-agent-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #121d2c, #0e1622);
+}
+
+.free-agent-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.free-agent-card header b {
+  font-size: 14px;
+}
+
+.free-agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.free-agent-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.free-agent-details small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.free-agent-card footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Contract status badges */
+.contract-status-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font: 600 11px "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.contract-status-badge.status-active {
+  background: rgba(101, 212, 110, .15);
+  color: #65d46e;
+  border: 1px solid rgba(101, 212, 110, .3);
+}
+
+.contract-status-badge.status-expiring {
+  background: rgba(240, 200, 106, .15);
+  color: #f0c86a;
+  border: 1px solid rgba(240, 200, 106, .3);
+}
+
+.contract-status-badge.status-final-month {
+  background: rgba(239, 107, 107, .15);
+  color: #ef6b6b;
+  border: 1px solid rgba(239, 107, 107, .3);
+}
+
+.contract-status-badge.status-expired {
+  background: rgba(239, 107, 107, .15);
+  color: #ef6b6b;
+  border: 1px solid rgba(239, 107, 107, .3);
+}
+
+.contract-status-badge.status-free-agent {
+  background: rgba(112, 215, 232, .15);
+  color: #70d7e8;
+  border: 1px solid rgba(112, 215, 232, .3);
+}
+
+.contract-status-badge.status-negotiating {
+  background: rgba(240, 200, 106, .15);
+  color: #f0c86a;
+  border: 1px solid rgba(240, 200, 106, .3);
+}
+
+.contract-status-badge.status-renewal-offered {
+  background: rgba(112, 215, 232, .15);
+  color: #70d7e8;
+  border: 1px solid rgba(112, 215, 232, .3);
+}
+
+/* Danger variants */
+.live-tag.danger {
+  background: rgba(239, 107, 107, .2);
+  color: #ef6b6b;
+  border: 1px solid rgba(239, 107, 107, .3);
+}
+
+.eyebrow.danger {
+  color: #ef6b6b;
+}
+
+.button-quiet.danger {
+  border-color: #5c2a2a;
+  color: #ef6b6b;
+}
+
+.button-quiet.danger:hover {
+  border-color: #ef6b6b;
+  background: rgba(239, 107, 107, .1);
+}
+
 .transfer-agent,
 .transfer-offer {
   display: flex;

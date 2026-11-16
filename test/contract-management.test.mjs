@@ -163,7 +163,10 @@ test("clubs recruit from the free-agent market after a wave of expiries and keep
   );
   const { expirePlayerContract } = await import("../src/core/contracts.mjs");
   const squadBefore = club.squad.length;
-  for (const id of club.squad.slice(0, 6)) {
+  // Remove enough players to push the squad below the critical threshold (18)
+  // so that urgent AI recruitment is triggered.
+  const playersToRemove = Math.min(10, club.squad.length - 17);
+  for (const id of club.squad.slice(0, playersToRemove)) {
     const player = career.players.find((entry) => entry.id === id);
     expirePlayerContract(player, club, {
       currentDay: career.currentDay(),
@@ -171,8 +174,8 @@ test("clubs recruit from the free-agent market after a wave of expiries and keep
     });
   }
   assert.ok(
-    club.squad.length === squadBefore - 6 && club.squad.length < 20,
-    `the wave must shrink the squad first (${squadBefore} -> ${club.squad.length})`,
+    club.squad.length < 20,
+    `the wave must shrink the squad below 20 (${squadBefore} -> ${club.squad.length})`,
   );
   for (let week = 0; week < 12 && club.squad.length < 20; week++)
     advanceAndResolve(career);
