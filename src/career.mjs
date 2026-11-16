@@ -495,6 +495,10 @@ export class Career {
     this._playerById = new Map();
     this._playersByClubId = new Map();
     this._worldPerformerById = new Map();
+    this._wageBillCache = new Map();
+    this._wageBillCacheValid = false;
+    this._squadNeedsCache = new Map();
+    this._squadNeedsCacheValid = false;
     const selectedWorldLeague = options.leagueId
       ? data.careerLeagues?.find((entry) => entry.id === options.leagueId)
       : null;
@@ -841,6 +845,10 @@ export class Career {
           this._worldPerformerById.set(performer.id, performer);
       }
     }
+    this._wageBillCache.clear();
+    this._wageBillCacheValid = false;
+    this._squadNeedsCache.clear();
+    this._squadNeedsCacheValid = false;
   }
 
   playersForClub(clubId) {
@@ -848,6 +856,44 @@ export class Career {
       this._playersByClubId?.get(clubId) ??
       (this.players ?? []).filter((player) => player.clubId === clubId)
     );
+  }
+
+  /** Get cached wage bill for a club, computing it if necessary. */
+  getWageBill(clubId) {
+    if (!this._wageBillCacheValid) {
+      this._wageBillCache.clear();
+      for (const club of this.clubs ?? []) {
+        const squad = this._playersByClubId?.get(club.id) ?? [];
+        let total = 0;
+        for (const player of squad) {
+          player.contract ??= {};
+          const fallback =
+            900 +
+            Math.max(0, Number(player.overall ?? 50) - 50) * 250 +
+            Math.max(0, Number(player.age ?? 24) - 30) * 75;
+          const wage = Math.max(0, Number(player.contract.wage ?? fallback));
+          player.contract.wage = wage;
+          total += wage;
+        }
+        this._wageBillCache.set(club.id, total);
+      }
+      this._wageBillCacheValid = true;
+    }
+    return this._wageBillCache.get(clubId) ?? 0;
+  }
+
+  /** Get cached squad needs assessment for a club. */
+  getSquadNeeds(clubId, dayIndex = 0) {
+    const cacheKey = `${clubId}-${dayIndex}`;
+    if (!this._squadNeedsCacheValid || !this._squadNeedsCache.has(cacheKey)) {
+      const club = this._clubById?.get(clubId);
+      if (club) {
+        const needs = assessClubSquadNeeds(club, this.players, { dayIndex });
+        this._squadNeedsCache.set(cacheKey, needs);
+      }
+    }
+    this._squadNeedsCacheValid = true;
+    return this._squadNeedsCache.get(cacheKey) ?? {};
   }
 
   developWorldPlayers() {
@@ -8109,7 +8155,7 @@ export class Career {
         return (
           finance.transferBudget >= value * 0.65 &&
           finance.balance >= value * 0.65 &&
-          club.wageBill(this.players) + wage <= finance.wageBudget
+          this.getWageBill(club.id) + wage <= finance.wageBudget
         );
       })
       .map(({ club, league, fit }) => {
@@ -8118,7 +8164,7 @@ export class Career {
           desiredWeeklyWage(this.player, club, {
             offeredRole: "Important Player",
           }),
-          Math.max(500, finance.wageBudget - club.wageBill(this.players)),
+          Math.max(500, finance.wageBudget - this.getWageBill(club.id)),
         );
         const fee = Math.min(
           Math.round(value * (0.82 + fit.score / 350)),
@@ -8170,7 +8216,7 @@ export class Career {
         fee > finance.transferBudget ||
         fee > finance.balance ||
         wage <= 0 ||
-        club.wageBill(this.players) + wage > finance.wageBudget
+        this.getWageBill(club.id) + wage > finance.wageBudget
       )
         throw new Error(
           "The proposed terms exceed the destination club's budgets.",
@@ -9032,7 +9078,7 @@ export class Career {
       Math.round(Number(wage ?? player.contract?.wage ?? player.overall * 900)),
     );
     if (
-      this.club.financials().wageBudget - this.club.wageBill(this.players) <
+      this.club.financials().wageBudget - this.getWageBill(this.club.id) <
       agreedWage
     )
       throw new Error(
@@ -10414,9 +10460,7 @@ export class Career {
       const club = clubsById.get(player.clubId) ?? null;
       if (!club || club.isUserClub) continue;
       const finance = ensureClubFinance(club);
-      const squadPlayers = this.players.filter(
-        (entry) => entry.clubId === club.id,
-      );
+      const squadPlayers = this.playersForClub(club.id);
       const positionalDepth = squadPlayers.filter(
         (entry) =>
           normalizePosition(entry.position) ===
@@ -10424,7 +10468,7 @@ export class Career {
       ).length;
       const decision = aiContractDecision(player, club, {
         currentDay: day,
-        wageBill: club.wageBill(this.players),
+        wageBill: this.getWageBill(club.id),
         squadSize: squadPlayers.length,
         positionalDepth,
         ageOfPlayer: ageOn(player.dob, day),
@@ -10438,7 +10482,7 @@ export class Career {
       });
       if (decision.action === "renew") {
         const offer = aiRenewalOffer(player, club, {
-          wageBill: club.wageBill(this.players),
+          wageBill: this.getWageBill(club.id),
         });
         // AI renewals are usually agreed; a demanding star can still stall.
         const negotiation = createContractNegotiation({
@@ -10502,18 +10546,17 @@ export class Career {
       if (priority <= 1 && !this.isTransferWindowWeek(day)) continue;
       if (priority <= 0) continue;
       const finance = ensureClubFinance(club);
-      const squadPlayers = this.players.filter(
-        (entry) => entry.clubId === club.id,
-      );
-      const needs = assessClubSquadNeeds(club, this.players, { dayIndex: day });
+      const squadPlayers = this.playersForClub(club.id);
+      const needs = this.getSquadNeeds(club.id, day);
       const wantedPosition = priorityRecruitmentPosition(
         needs,
-        this.players,
+        squadPlayers,
         club,
       );
       const limit = Number(club.registrationLimit ?? 25);
       const urgency = priority >= 3;
       // Even urgent clubs respect registration limits and wage budgets.
+      const wageBill = this.getWageBill(club.id);
       for (const agent_ of this.freeAgents({
         position: wantedPosition ?? undefined,
       })) {
@@ -10525,7 +10568,6 @@ export class Career {
         const freeSince = player.contract?.freeSinceDay ?? day - 21;
         if (Number.isFinite(Number(freeSince)) && day - Number(freeSince) < 14)
           continue;
-        const wageBill = club.wageBill(this.players);
         const wage = freeAgentExpectedWage(player);
         if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
         const positionalNeed = Number(
@@ -10659,7 +10701,7 @@ export class Career {
     );
     // Performance nudges the opening position, within what the wage budget allows.
     const finance = club ? ensureClubFinance(club) : { wageBudget: base * 80 };
-    const wageBill = club ? club.wageBill(this.players) : 0;
+    const wageBill = club ? this.getWageBill(club.id) : 0;
     const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
     const form = Number(player.lastMatchRating ?? 6.5);
     const factor = clamp(1 + (form - 6.6) * 0.06, 0.95, 1.3);
@@ -10708,7 +10750,7 @@ export class Career {
     if (!club) throw new Error("Your former club is no longer available.");
     const requested = createContractOffer(offer);
     const finance = ensureClubFinance(club);
-    const wageBill = club.wageBill(this.players);
+    const wageBill = this.getWageBill(club.id);
     const room = Math.max(0, Number(finance.wageBudget ?? 0) - wageBill);
     const opening =
       decision.clubOffer ??
@@ -10881,7 +10923,7 @@ export class Career {
       if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
       const needs = this.transferNeedAssessment(club, day, playersByClub);
       const finance = ensureClubFinance(club);
-      const wageBill = club.wageBill(this.players);
+      const wageBill = this.getWageBill(club.id);
       const wage = freeAgentExpectedWage(this.player);
       if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
       const positionalNeed = Number(
@@ -10990,92 +11032,67 @@ export class Career {
   /** The searchable free-agent market: every unattached professional player. */
   freeAgents(filters = {}) {
     const query = String(filters.query ?? "").toLowerCase();
-    return this.players
-      .filter(
-        (player) =>
-          !player.clubId &&
-          player.id !== this.player.id &&
-          !player.source?.startsWith("academy"),
-      )
-      .filter((player) => player.contract?.status !== CONTRACT_STATUSES.RETIRED)
-      .filter(
-        (player) =>
-          !filters.position ||
-          normalizePosition(player.position) ===
-            normalizePosition(filters.position),
-      )
-      .filter(
-        (player) =>
-          !filters.nationality || player.nationality === filters.nationality,
-      )
-      .filter(
-        (player) =>
-          !filters.minAge ||
-          ageOn(player.dob, this.currentDay()) >= Number(filters.minAge),
-      )
-      .filter(
-        (player) =>
-          !filters.maxAge ||
-          ageOn(player.dob, this.currentDay()) <= Number(filters.maxAge),
-      )
-      .filter(
-        (player) =>
-          !filters.minOverall || player.overall >= Number(filters.minOverall),
-      )
-      .filter(
-        (player) =>
-          !filters.minPotential ||
-          player.potential >= Number(filters.minPotential),
-      )
-      .filter(
-        (player) =>
-          !filters.maxExpectedWage ||
-          freeAgentExpectedWage(player) <= Number(filters.maxExpectedWage),
-      )
-      .filter(
-        (player) =>
-          !query ||
-          `${player.first} ${player.last}`.toLowerCase().includes(query),
-      )
-      .map((player) => ({
+    const minAge = filters.minAge != null ? Number(filters.minAge) : null;
+    const maxAge = filters.maxAge != null ? Number(filters.maxAge) : null;
+    const minOverall = filters.minOverall != null ? Number(filters.minOverall) : null;
+    const minPotential = filters.minPotential != null ? Number(filters.minPotential) : null;
+    const maxExpectedWage = filters.maxExpectedWage != null ? Number(filters.maxExpectedWage) : null;
+    const position = filters.position ? normalizePosition(filters.position) : null;
+    const nationality = filters.nationality ?? null;
+    const currentDay = this.currentDay();
+    const clubById = this._clubById;
+
+    const results = [];
+    for (const player of this.players) {
+      if (!player) continue;
+      if (player.clubId) continue;
+      if (player.id === this.player.id) continue;
+      if (player.source?.startsWith("academy")) continue;
+      if (player.contract?.status === CONTRACT_STATUSES.RETIRED) continue;
+      if (position && normalizePosition(player.position) !== position) continue;
+      if (nationality && player.nationality !== nationality) continue;
+      if (minAge != null && ageOn(player.dob, currentDay) < minAge) continue;
+      if (maxAge != null && ageOn(player.dob, currentDay) > maxAge) continue;
+      if (minOverall != null && player.overall < minOverall) continue;
+      if (minPotential != null && player.potential < minPotential) continue;
+      if (maxExpectedWage != null && freeAgentExpectedWage(player) > maxExpectedWage) continue;
+      if (query && !`${player.first} ${player.last}`.toLowerCase().includes(query)) continue;
+
+      const formerClubId = player.formerClubId ?? player.releasedFromClubId;
+      results.push({
         player,
-        formerClub:
-          this.clubs.find(
-            (club) =>
-              club.id === (player.formerClubId ?? player.releasedFromClubId),
-          ) ?? null,
+        formerClub: formerClubId ? (clubById?.get(formerClubId) ?? null) : null,
         expectedWage: freeAgentExpectedWage(player),
         marketValue: player.marketValue ?? player.value ?? 0,
         preContract:
           player.contract?.preContract?.status === "agreed"
             ? player.contract.preContract
             : null,
-      }));
+      });
+    }
+    return results;
   }
 
   /** Sorted player cards for the Contract Expiries tab. */
   contractExpiries({ days = 400, clubId = null } = {}) {
     const day = this.currentDay();
-    return this.players
-      .filter((player) => player.clubId && player.id !== this.player.id)
-      .filter((player) => clubId == null || player.clubId === clubId)
-      .map((player) => {
-        const remaining = daysUntilExpiry(player.contract, day);
-        const stage = contractStageLabel(player.contract, day);
-        return {
-          player,
-          club: this.clubs.find((club) => club.id === player.clubId) ?? null,
-          remaining,
-          stage,
-        };
-      })
-      .filter(
-        (entry) =>
-          entry.remaining != null &&
-          entry.remaining >= 0 &&
-          entry.remaining <= days,
-      )
-      .sort((left, right) => left.remaining - right.remaining);
+    const clubById = this._clubById;
+    const results = [];
+    for (const player of this.players) {
+      if (!player || !player.clubId || player.id === this.player.id) continue;
+      if (clubId != null && player.clubId !== clubId) continue;
+      const remaining = daysUntilExpiry(player.contract, day);
+      if (remaining == null || remaining < 0 || remaining > days) continue;
+      const stage = contractStageLabel(player.contract, day);
+      results.push({
+        player,
+        club: clubById?.get(player.clubId) ?? null,
+        remaining,
+        stage,
+      });
+    }
+    results.sort((left, right) => left.remaining - right.remaining);
+    return results;
   }
 
   /**
@@ -11309,12 +11326,10 @@ export class Career {
         if (club.id === this.club.id) continue; // the user acts through signFreeAgent
         if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
         const finance = club.finances ?? {};
-        const wageBill = club.wageBill(this.players);
+        const wageBill = this.getWageBill(club.id);
         const wage = freeAgentExpectedWage(player);
         if (wageBill + wage > Number(finance.wageBudget ?? 0)) continue;
-        const needs = assessClubSquadNeeds(club, this.players, {
-          dayIndex: day,
-        });
+        const needs = this.getSquadNeeds(club.id, day);
         const positionalNeed = Number(
           needs?.[normalizePosition(player.position)]?.demand ?? 0,
         );
@@ -15260,7 +15275,9 @@ export class Career {
       const nextWeek = this.week + 1;
       const matchday = this.calendar[nextWeek]?.matchday;
       if (Number.isFinite(matchday) && this.dayCursor >= matchday) {
+        this._simulationLock = false;
         const result = this.simulateOneWeek();
+        this._simulationLock = true;
         this.dayCursor = this.calendar[this.week]?.matchday ?? this.dayCursor;
         return {
           ...result,
