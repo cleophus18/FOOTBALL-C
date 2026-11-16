@@ -3595,7 +3595,8 @@ test("a full Premier League season completes with 38 matches per club", async ()
   );
   for (const row of career.league.table.rows.values()) row.played = 0;
   let weeks = 0;
-  while (!career.seasonComplete && weeks < 46) {
+  const maxWeeks = career.calendar.length + 10;
+  while (!career.seasonComplete && weeks < maxWeeks) {
     advanceAndResolve(career);
     weeks++;
   }
@@ -3770,7 +3771,8 @@ test("season awards are recorded on every winner, including legends and other le
   const data = await loadData();
   const career = createCareer(data, options(55101));
   let weeks = 0;
-  while (!career.seasonComplete && weeks < 44) {
+  const maxWeeks = career.calendar.length + 10;
+  while (!career.seasonComplete && weeks < maxWeeks) {
     advanceAndResolve(career);
     weeks++;
   }
@@ -3826,7 +3828,8 @@ test("season awards are recorded on every winner, including legends and other le
 test("league winners receive a league champion trophy", async () => {
   const career = createCareer(await loadData(), options(55103));
   let weeks = 0;
-  while (!career.seasonComplete && weeks < 44) {
+  const maxWeeks = career.calendar.length + 10;
+  while (!career.seasonComplete && weeks < maxWeeks) {
     advanceAndResolve(career);
     weeks++;
   }

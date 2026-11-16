@@ -6981,17 +6981,19 @@ export class Career {
     }
     const isLegacy = league.fixtureStartWeek === undefined;
     const startWeek = isLegacy ? 0 : (league.fixtureStartWeek ?? 2);
+    const configuredEndWeek = league.fixtureEndWeek ?? Math.min(this.calendar.length - 2, 43);
     const planned = planLeagueWeeks(this.calendar, {
       startWeek,
-      endWeek: Math.min(this.calendar.length - 2, 43),
+      endWeek: configuredEndWeek,
       breakWeeks: [8, 16, 24, 32],
     });
     if (planned.weeks.length < league.fixtures.length) {
+      const secondPhaseStart = configuredEndWeek + 2;
       planned.weeks.push(
         ...planLeagueWeeks(this.calendar, {
-          startWeek: 45,
+          startWeek: secondPhaseStart,
           endWeek: this.calendar.length - 2,
-          breakWeeks: [48],
+          breakWeeks: [secondPhaseStart + 3],
         }).weeks,
       );
     }
@@ -7187,7 +7189,7 @@ export class Career {
         }
       }
     }
-    this.applyCoachFormations();
+this.applyCoachFormations();
     this.calendar = seasonWeeks(this.season, this.seasonWeekCount);
     this.dayCursor = this.calendar[0]?.day - 1;
     this.transferMarketState = {
@@ -12300,7 +12302,7 @@ export class Career {
       this.worldCup?.nextYear - 1 === this.season &&
       !["complete", "cancelled"].includes(this.worldCup.tournament?.status);
     if (this.week + 1 >= this.calendar.length && worldCupDueThisSeason) {
-      this.seasonWeekCount = Math.max(this.seasonWeekCount + 2, 58);
+      this.seasonWeekCount = Math.max(this.seasonWeekCount + 2, this.calendar.length + 2);
       this.calendar = seasonWeeks(this.season, this.seasonWeekCount);
     }
     if (this.week + 1 >= this.calendar.length) {
@@ -12347,6 +12349,10 @@ export class Career {
     const progression = this.data.careerSettings.training;
     const financeDay = this.calendar[this.week]?.day ?? this.currentDay();
     const contractDay = this.calendar[this.week]?.matchday ?? this.currentDay();
+    // Process World Cup calendar first so international matches take priority
+    // over contract expiry pauses.
+    const internationalReport = this.processWorldCupCalendar();
+    const worldCupUserMatch = internationalReport?.worldCupUserMatch ?? null;
     // The contract lifecycle runs on the matchday so expiries that fall within
     // the current week are caught before finances and matches are processed.
     this.processContractLifecycle(contractDay);
@@ -12354,7 +12360,7 @@ export class Career {
       const pausedReport = {
         week: this.week,
         fixtures: [],
-        userMatch: null,
+        userMatch: worldCupUserMatch,
         contractExpiryPaused: true,
         headlines: [
           `CONTRACT EXPIRED: Your ${this.userContractDecision.formerClubName ?? "club"} contract has run out. Decide your future before the season continues.`,
@@ -12463,10 +12469,9 @@ export class Career {
     this.applyCoachFormations(
       this.calendar[this.week]?.matchday ?? this.currentDay(),
     );
-    const internationalReport = this.processWorldCupCalendar();
-
+    // World Cup calendar already processed earlier for contract expiry priority
     const fixtures = [];
-    let userMatch = internationalReport?.worldCupUserMatch ?? null;
+    let userMatch = worldCupUserMatch;
     if (userMatch?.worldCupFixtureRecord)
       fixtures.push(userMatch.worldCupFixtureRecord);
     const championsLeagueFixtureForWeek = this.getChampionsLeagueFixtureForWeek(
