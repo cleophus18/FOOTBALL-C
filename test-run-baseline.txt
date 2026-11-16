@@ -1,0 +1,2376 @@
+﻿TAP version 13
+# Subtest: Ballon d'Or race reflects performance evidence and exposes a ranked watchlist
+ok 1 - Ballon d'Or race reflects performance evidence and exposes a ranked watchlist
+  ---
+  duration_ms: 2364.7284
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or winner is determined by journalist voting, not raw score
+ok 2 - Ballon d'Or winner is determined by journalist voting, not raw score
+  ---
+  duration_ms: 1947.5672
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or ceremony uses journalist voting for winner
+ok 3 - Ballon d'Or ceremony uses journalist voting for winner
+  ---
+  duration_ms: 5713.5298
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or scoring allows outstanding goalkeepers to win without position multipliers
+ok 4 - Ballon d'Or scoring allows outstanding goalkeepers to win without position multipliers
+  ---
+  duration_ms: 1398.4564
+  type: 'test'
+  ...
+# Subtest: poor season lowers an elite player's race score and low rated excellence still has merit
+ok 5 - poor season lowers an elite player's race score and low rated excellence still has merit
+  ---
+  duration_ms: 1227.2824
+  type: 'test'
+  ...
+# Subtest: winning any league improves a player's Ballon d'Or chance
+ok 6 - winning any league improves a player's Ballon d'Or chance
+  ---
+  duration_ms: 1161.253
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or categories stay capped and individual form beats team bias
+ok 7 - Ballon d'Or categories stay capped and individual form beats team bias
+  ---
+  duration_ms: 1250.4442
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or eligibility requires an individual award, not team honours
+ok 8 - Ballon d'Or eligibility requires an individual award, not team honours
+  ---
+  duration_ms: 1308.9715
+  type: 'test'
+  ...
+# Subtest: World Cup performances add a separate Ballon d'Or component once per race
+ok 9 - World Cup performances add a separate Ballon d'Or component once per race
+  ---
+  duration_ms: 1047.3773
+  type: 'test'
+  ...
+# Subtest: Ballon d'Or ceremony archive shows voting-based top 10
+ok 10 - Ballon d'Or ceremony archive shows voting-based top 10
+  ---
+  duration_ms: 4367.3236
+  type: 'test'
+  ...
+# Subtest: Champions League goals and assists materially raise the European category
+ok 11 - Champions League goals and assists materially raise the European category
+  ---
+  duration_ms: 1011.8589
+  type: 'test'
+  ...
+# Subtest: World Player of the Season rewards the best global league and tournament performer
+ok 12 - World Player of the Season rewards the best global league and tournament performer
+  ---
+  duration_ms: 930.4761
+  type: 'test'
+  ...
+# Subtest: major World Cup nations reuse existing stars and South Africa remains in the tournament pool
+ok 13 - major World Cup nations reuse existing stars and South Africa remains in the tournament pool
+  ---
+  duration_ms: 930.0422
+  type: 'test'
+  ...
+# Subtest: existing World Cup nations are completed with positional NPCs when needed
+ok 14 - existing World Cup nations are completed with positional NPCs when needed
+  ---
+  duration_ms: 683.4202
+  type: 'test'
+  ...
+# Subtest: good seasons improve transfer interest and club trophies fund future signings
+ok 15 - good seasons improve transfer interest and club trophies fund future signings
+  ---
+  duration_ms: 608.5957
+  type: 'test'
+  ...
+# Subtest: career creation builds a seeded 20-club double round-robin
+ok 16 - career creation builds a seeded 20-club double round-robin
+  ---
+  duration_ms: 1332.6432
+  type: 'test'
+  ...
+# Subtest: generated NPCs start below 90 and restores keep at most four 90+ players
+ok 17 - generated NPCs start below 90 and restores keep at most four 90+ players
+  ---
+  duration_ms: 1647.7283
+  type: 'test'
+  ...
+# Subtest: career player always starts at 70 overall regardless of supplied rating
+ok 18 - career player always starts at 70 overall regardless of supplied rating
+  ---
+  duration_ms: 4846.9591
+  type: 'test'
+  ...
+# Subtest: creation details, body and attribute choices are stored on the player
+ok 19 - creation details, body and attribute choices are stored on the player
+  ---
+  duration_ms: 356.1169
+  type: 'test'
+  ...
+# Subtest: a player's body decides how his stats are shaped, from creation onward
+ok 20 - a player's body decides how his stats are shaped, from creation onward
+  ---
+  duration_ms: 2503.1497
+  type: 'test'
+  ...
+# Subtest: every generated player in the world gets a believable body
+ok 21 - every generated player in the world gets a believable body
+  ---
+  duration_ms: 333.7534
+  type: 'test'
+  ...
+# Subtest: individual focus guides natural development without immediate attribute purchases
+ok 22 - individual focus guides natural development without immediate attribute purchases
+  ---
+  duration_ms: 521.8227
+  type: 'test'
+  ...
+# Subtest: correcting a career player's wrong XI role does not duplicate them
+ok 23 - correcting a career player's wrong XI role does not duplicate them
+  ---
+  duration_ms: 327.5164
+  type: 'test'
+  ...
+# Subtest: coach substitutions replace fatigued players for both live teams
+ok 24 - coach substitutions replace fatigued players for both live teams
+  ---
+  duration_ms: 1936.7462
+  type: 'test'
+  ...
+# Subtest: all supported formations provide a complete playable XI
+ok 25 - all supported formations provide a complete playable XI
+  ---
+  duration_ms: 783.0122
+  type: 'test'
+  ...
+# Subtest: coaches keep the best players within their positional category
+ok 26 - coaches keep the best players within their positional category
+  ---
+  duration_ms: 3.6726
+  type: 'test'
+  ...
+# Subtest: coaches never move players between goalkeeper, defence, midfield, and forward
+ok 27 - coaches never move players between goalkeeper, defence, midfield, and forward
+  ---
+  duration_ms: 2.8683
+  type: 'test'
+  ...
+# Subtest: player careers negotiate with the manager instead of controlling formation or transfers
+ok 28 - player careers negotiate with the manager instead of controlling formation or transfers
+  ---
+  duration_ms: 984.663
+  type: 'test'
+  ...
+# Subtest: an approved transfer request moves the player and a declined request does not
+ok 29 - an approved transfer request moves the player and a declined request does not
+  ---
+  duration_ms: 858.5037
+  type: 'test'
+  ...
+# Subtest: an approved request for a better teammate signs the requested player
+ok 30 - an approved request for a better teammate signs the requested player
+  ---
+  duration_ms: 439.3224
+  type: 'test'
+  ...
+# Subtest: the coach can release a low-rated player when no club can buy him
+ok 31 - the coach can release a low-rated player when no club can buy him
+  ---
+  duration_ms: 385.0049
+  type: 'test'
+  ...
+# Subtest: a full destination club can release its weakest player to accept the user
+ok 32 - a full destination club can release its weakest player to accept the user
+  ---
+  duration_ms: 313.2035
+  type: 'test'
+  ...
+# Subtest: approved playing-time and development requests affect selection and training
+ok 33 - approved playing-time and development requests affect selection and training
+  ---
+  duration_ms: 341.426
+  type: 'test'
+  ...
+# Subtest: player conversations and retirement persist without deleting career records
+ok 34 - player conversations and retirement persist without deleting career records
+  ---
+  duration_ms: 771.7991
+  type: 'test'
+  ...
+# Subtest: custom squad selection swaps a substitute into the selected matchday slot
+ok 35 - custom squad selection swaps a substitute into the selected matchday slot
+  ---
+  duration_ms: 634.8539
+  type: 'test'
+  ...
+# Subtest: career player in a custom starting XI is marked on the pitch, not on the bench
+ok 36 - career player in a custom starting XI is marked on the pitch, not on the bench
+  ---
+  duration_ms: 1438.7838
+  type: 'test'
+  ...
+# Subtest: a player excluded from the squad cannot appear in the match
+ok 37 - a player excluded from the squad cannot appear in the match
+  ---
+  duration_ms: 1379.0559
+  type: 'test'
+  ...
+# Subtest: injured and suspended players are excluded from the player match
+ok 38 - injured and suspended players are excluded from the player match
+  ---
+  duration_ms: 2224.6034
+  type: 'test'
+  ...
+# Subtest: custom XI assignments preserve both slots when a formation repeats a position
+ok 39 - custom XI assignments preserve both slots when a formation repeats a position
+  ---
+  duration_ms: 242.4798
+  type: 'test'
+  ...
+# Subtest: Real Madrid uses a formation with two strikers
+ok 40 - Real Madrid uses a formation with two strikers
+  ---
+  duration_ms: 0.2469
+  type: 'test'
+  ...
+# Subtest: clubs with empty imported rosters receive a full generated squad in every playable league
+ok 41 - clubs with empty imported rosters receive a full generated squad in every playable league
+  ---
+  duration_ms: 1319.4327
+  type: 'test'
+  ...
+# Subtest: key moments offer more than 30 position-specific action choices
+ok 42 - key moments offer more than 30 position-specific action choices
+  ---
+  duration_ms: 1196.607
+  type: 'test'
+  ...
+# Subtest: live key moments cover the responsibilities of every position
+ok 43 - live key moments cover the responsibilities of every position
+  ---
+  duration_ms: 266.9808
+  type: 'test'
+  ...
+# Subtest: selected passing actions resolve with their own attributes and match effects
+ok 44 - selected passing actions resolve with their own attributes and match effects
+  ---
+  duration_ms: 1090.064
+  type: 'test'
+  ...
+# Subtest: player roles change match behavior and cover specialist styles
+ok 45 - player roles change match behavior and cover specialist styles
+  ---
+  duration_ms: 306.5261
+  type: 'test'
+  ...
+# Subtest: the agent gate enables transfer offers and a transfer acceptance path
+ok 46 - the agent gate enables transfer offers and a transfer acceptance path
+  ---
+  duration_ms: 353.8189
+  type: 'test'
+  ...
+# Subtest: hiring an agent requires enough money and charges the user
+ok 47 - hiring an agent requires enough money and charges the user
+  ---
+  duration_ms: 233.0052
+  type: 'test'
+  ...
+# Subtest: limited destination searches accept a move into another playable league
+ok 48 - limited destination searches accept a move into another playable league
+  ---
+  duration_ms: 395.5046
+  type: 'test'
+  ...
+# Subtest: manager transfers reconcile the destination squad and survive save restoration
+ok 49 - manager transfers reconcile the destination squad and survive save restoration
+  ---
+  duration_ms: 720.4223
+  type: 'test'
+  ...
+# Subtest: background leagues record player scoring and rating stats for cross-league browsing
+ok 50 - background leagues record player scoring and rating stats for cross-league browsing
+  ---
+  duration_ms: 4119.3396
+  type: 'test'
+  ...
+# Subtest: background-league player match histories are recorded and saved
+ok 51 - background-league player match histories are recorded and saved
+  ---
+  duration_ms: 4062.9415
+  type: 'test'
+  ...
+# Subtest: world-league match stats avoid goalkeeper assists and cap individual match scoring
+ok 52 - world-league match stats avoid goalkeeper assists and cap individual match scoring
+  ---
+  duration_ms: 271.6427
+  type: 'test'
+  ...
+# Subtest: world-league player records use the simulated scorers and match statistics
+ok 53 - world-league player records use the simulated scorers and match statistics
+  ---
+  duration_ms: 231.8278
+  type: 'test'
+  ...
+# Subtest: career player starts only in their natural position across every field role
+ok 54 - career player starts only in their natural position across every field role
+  ---
+  duration_ms: 279.8357
+  type: 'test'
+  ...
+# Subtest: the best natural-position player starts and the user can replace them when tired
+ok 55 - the best natural-position player starts and the user can replace them when tired
+  ---
+  duration_ms: 1142.0132
+  type: 'test'
+  ...
+# Subtest: a top-rated career player starts even when manager trust is low
+ok 56 - a top-rated career player starts even when manager trust is low
+  ---
+  duration_ms: 256.7141
+  type: 'test'
+  ...
+# Subtest: developer mode edits attributes and shirt numbers persist
+ok 57 - developer mode edits attributes and shirt numbers persist
+  ---
+  duration_ms: 567.6438
+  type: 'test'
+  ...
+# Subtest: ST substitute enters only in the ST slot and does not replace another position
+ok 58 - ST substitute enters only in the ST slot and does not replace another position
+  ---
+  duration_ms: 1019.8921
+  type: 'test'
+  ...
+# Subtest: a poorly rated player can be substituted without losing the match result
+ok 59 - a poorly rated player can be substituted without losing the match result
+  ---
+  duration_ms: 949.396
+  type: 'test'
+  ...
+# Subtest: 50 safe match situations include career-once events and persist their usage
+ok 60 - 50 safe match situations include career-once events and persist their usage
+  ---
+  duration_ms: 485.2643
+  type: 'test'
+  ...
+# Subtest: weekly matches drive player performance, training and league results
+ok 61 - weekly matches drive player performance, training and league results
+  ---
+  duration_ms: 3378.6256
+  type: 'test'
+  ...
+# Subtest: played matches record and persist match histories for NPC players
+ok 62 - played matches record and persist match histories for NPC players
+  ---
+  duration_ms: 3220.768
+  type: 'test'
+  ...
+# Subtest: league scorer totals follow every club's recorded goals and teammate ratings are saved
+ok 63 - league scorer totals follow every club's recorded goals and teammate ratings are saved
+  ---
+  duration_ms: 2679.9531
+  type: 'test'
+  ...
+# Subtest: weak foot and skill moves are not purchased with training points
+ok 64 - weak foot and skill moves are not purchased with training points
+  ---
+  duration_ms: 163.1182
+  type: 'test'
+  ...
+# Subtest: weak foot and skill moves improve relevant in-match outcomes
+ok 65 - weak foot and skill moves improve relevant in-match outcomes
+  ---
+  duration_ms: 164.3083
+  type: 'test'
+  ...
+# Subtest: assists and the award race use league-only player totals
+ok 66 - assists and the award race use league-only player totals
+  ---
+  duration_ms: 2620.53
+  type: 'test'
+  ...
+# Subtest: salary and match bonuses update a saved player balance without a transaction log
+ok 67 - salary and match bonuses update a saved player balance without a transaction log
+  ---
+  duration_ms: 958.5771
+  type: 'test'
+  ...
+# Subtest: fan approval reacts to good and poor performances and forecasts the next fixture
+ok 68 - fan approval reacts to good and poor performances and forecasts the next fixture
+  ---
+  duration_ms: 197.1044
+  type: 'test'
+  ...
+# Subtest: domestic award races ignore players with only non-league appearances
+ok 69 - domestic award races ignore players with only non-league appearances
+  ---
+  duration_ms: 170.6154
+  type: 'test'
+  ...
+# Subtest: hiring a manager spends personal funds, saves the hire, and applies the new tactics
+ok 70 - hiring a manager spends personal funds, saves the hire, and applies the new tactics
+  ---
+  duration_ms: 422.3323
+  type: 'test'
+  ...
+# Subtest: Messi is at Barcelona and Ronaldo is at Manchester United
+ok 71 - Messi is at Barcelona and Ronaldo is at Manchester United
+  ---
+  duration_ms: 31.2954
+  type: 'test'
+  ...
+# Subtest: Messi and Ronaldo use normal player ratings and development
+ok 72 - Messi and Ronaldo use normal player ratings and development
+  ---
+  duration_ms: 349.2258
+  type: 'test'
+  ...
+# Subtest: restoring old saves removes Messi and Ronaldo's legacy legend protection
+ok 73 - restoring old saves removes Messi and Ronaldo's legacy legend protection
+  ---
+  duration_ms: 446.7755
+  type: 'test'
+  ...
+# Subtest: changing the career player's position recalculates overall for the new role
+ok 74 - changing the career player's position recalculates overall for the new role
+  ---
+  duration_ms: 171.6236
+  type: 'test'
+  ...
+# Subtest: key-moment decisions change the live score and count only after full time
+ok 75 - key-moment decisions change the live score and count only after full time
+  ---
+  duration_ms: 1253.4837
+  type: 'test'
+  ...
+# Subtest: live match clock pauses at key moments and resumes after a decision
+ok 76 - live match clock pauses at key moments and resumes after a decision
+  ---
+  duration_ms: 806.0049
+  type: 'test'
+  ...
+# Subtest: full time resolves key moments that were left beyond the match clock
+ok 77 - full time resolves key moments that were left beyond the match clock
+  ---
+  duration_ms: 823.2828
+  type: 'test'
+  ...
+# Subtest: an in-match injury ends the player's participation and carries into recovery
+ok 78 - an in-match injury ends the player's participation and carries into recovery
+  ---
+  duration_ms: 1296.002
+  type: 'test'
+  ...
+# Subtest: AI players develop with potential and context, and world-player growth persists
+ok 79 - AI players develop with potential and context, and world-player growth persists
+  ---
+  duration_ms: 587.6378
+  type: 'test'
+  ...
+# Subtest: finishing tendencies and goalkeeper quality affect scoring chances
+ok 80 - finishing tendencies and goalkeeper quality affect scoring chances
+  ---
+  duration_ms: 196.0314
+  type: 'test'
+  ...
+# Subtest: elite defenders and goalkeepers stop more goals across repeated matches
+ok 81 - elite defenders and goalkeepers stop more goals across repeated matches
+  ---
+  duration_ms: 2620.2008
+  type: 'test'
+  ...
+# Subtest: saving and restoring during a live match preserves its pending goals and score
+ok 82 - saving and restoring during a live match preserves its pending goals and score
+  ---
+  duration_ms: 933.1372
+  type: 'test'
+  ...
+# Subtest: saving at a key moment resumes the paused decision without duplicating the result
+ok 83 - saving at a key moment resumes the paused decision without duplicating the result
+  ---
+  duration_ms: 904.5555
+  type: 'test'
+  ...
+# Subtest: career creation supports a roster-backed club in an imported league
+ok 84 - career creation supports a roster-backed club in an imported league
+  ---
+  duration_ms: 77.3172
+  type: 'test'
+  ...
+# Subtest: restoring a legacy save normalizes imported real-player countries
+ok 85 - restoring a legacy save normalizes imported real-player countries
+  ---
+  duration_ms: 444.2669
+  type: 'test'
+  ...
+# Subtest: all listed Premier League clubs build playable generated squads
+ok 86 - all listed Premier League clubs build playable generated squads
+  ---
+  duration_ms: 165.0627
+  type: 'test'
+  ...
+# Subtest: save and restore preserve standings and future seeded results
+not ok 87 - save and restore preserve standings and future seeded results
+  ---
+  duration_ms: 4814.7587
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\career.test.mjs:3351:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+        {
+    +     away: 'Fulham',
+    +     awayGoals: 1,
+    -     away: 'Ipswich Town',
+    -     awayGoals: 0,
+          home: 'Arsenal',
+    +     homeGoals: 3
+    +   },
+    +   {
+    +     away: 'Everton',
+    +     awayGoals: 2,
+    +     home: 'Hull City',
+          homeGoals: 2
+        },
+        {
+    +     away: 'Crystal Palace',
+    +     awayGoals: 2,
+    +     home: 'Ipswich Town',
+    +     homeGoals: 3
+    +   },
+    +   {
+    +     away: 'Coventry City',
+    +     awayGoals: 0,
+    -     away: 'Hull City',
+    -     awayGoals: 1,
+          home: 'Leeds United',
+    +     homeGoals: 0
+    -     homeGoals: 1
+        },
+        {
+    +     away: 'Chelsea',
+    -     away: 'Fulham',
+          awayGoals: 1,
+          home: 'Liverpool',
+          homeGoals: 3
+        },
+        {
+    +     away: 'Brighton & Hove Albion',
+    +     awayGoals: 2,
+    -     away: 'Everton',
+    -     awayGoals: 0,
+          home: 'Manchester City',
+    +     homeGoals: 3
+    -     homeGoals: 0
+        },
+        {
+    +     away: 'Brentford',
+    -     away: 'Crystal Palace',
+          awayGoals: 1,
+          home: 'Manchester United',
+    +     homeGoals: 2
+    -     homeGoals: 1
+        },
+        {
+    +     away: 'Bournemouth',
+    -     away: 'Coventry City',
+          awayGoals: 1,
+          home: 'Newcastle United',
+          homeGoals: 1
+        },
+        {
+    +     away: 'Aston Villa',
+    +     awayGoals: 0,
+    -     away: 'Chelsea',
+    -     awayGoals: 6,
+          home: 'Nottingham Forest',
+    +     homeGoals: 2
+    -     homeGoals: 0
+        },
+        {
+    +     away: 'Tottenham Hotspur',
+    -     away: 'Brighton & Hove Albion',
+          awayGoals: 1,
+          home: 'Sunderland',
+    -     homeGoals: 0
+    -   },
+    -   {
+    -     away: 'Brentford',
+    -     awayGoals: 2,
+    -     home: 'Tottenham Hotspur',
+          homeGoals: 2
+        },
+    -   {
+    -     away: 'Bournemouth',
+    -     awayGoals: 0,
+    -     home: 'Aston Villa',
+    -     homeGoals: 3
+    -   }
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      home: 'Arsenal'
+      away: 'Ipswich Town'
+      homeGoals: 2
+      awayGoals: 0
+    1:
+      home: 'Leeds United'
+      away: 'Hull City'
+      homeGoals: 1
+      awayGoals: 1
+    2:
+      home: 'Liverpool'
+      away: 'Fulham'
+      homeGoals: 3
+      awayGoals: 1
+    3:
+      home: 'Manchester City'
+      away: 'Everton'
+      homeGoals: 0
+      awayGoals: 0
+    4:
+      home: 'Manchester United'
+      away: 'Crystal Palace'
+      homeGoals: 1
+      awayGoals: 1
+    5:
+      home: 'Newcastle United'
+      away: 'Coventry City'
+      homeGoals: 1
+      awayGoals: 1
+    6:
+      home: 'Nottingham Forest'
+      away: 'Chelsea'
+      homeGoals: 0
+      awayGoals: 6
+    7:
+      home: 'Sunderland'
+      away: 'Brighton & Hove Albion'
+      homeGoals: 0
+      awayGoals: 1
+    8:
+      home: 'Tottenham Hotspur'
+      away: 'Brentford'
+      homeGoals: 2
+      awayGoals: 2
+    9:
+      home: 'Aston Villa'
+      away: 'Bournemouth'
+      homeGoals: 3
+      awayGoals: 0
+  actual:
+    0:
+      home: 'Arsenal'
+      away: 'Fulham'
+      homeGoals: 3
+      awayGoals: 1
+    1:
+      home: 'Hull City'
+      away: 'Everton'
+      homeGoals: 2
+      awayGoals: 2
+    2:
+      home: 'Ipswich Town'
+      away: 'Crystal Palace'
+      homeGoals: 3
+      awayGoals: 2
+    3:
+      home: 'Leeds United'
+      away: 'Coventry City'
+      homeGoals: 0
+      awayGoals: 0
+    4:
+      home: 'Liverpool'
+      away: 'Chelsea'
+      homeGoals: 3
+      awayGoals: 1
+    5:
+      home: 'Manchester City'
+      away: 'Brighton & Hove Albion'
+      homeGoals: 3
+      awayGoals: 2
+    6:
+      home: 'Manchester United'
+      away: 'Brentford'
+      homeGoals: 2
+      awayGoals: 1
+    7:
+      home: 'Newcastle United'
+      away: 'Bournemouth'
+      homeGoals: 1
+      awayGoals: 1
+    8:
+      home: 'Nottingham Forest'
+      away: 'Aston Villa'
+      homeGoals: 2
+      awayGoals: 0
+    9:
+      home: 'Sunderland'
+      away: 'Tottenham Hotspur'
+      homeGoals: 2
+      awayGoals: 1
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3366:12)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: league rounds start at the first configured week and completed results include the user match
+ok 88 - league rounds start at the first configured week and completed results include the user match
+  ---
+  duration_ms: 773.2243
+  type: 'test'
+  ...
+# Subtest: one-week simulation completes scheduled matches and stores stats for fixture history
+ok 89 - one-week simulation completes scheduled matches and stores stats for fixture history
+  ---
+  duration_ms: 882.0605
+  type: 'test'
+  ...
+# Subtest: selected World Cup players see only their nation's tournament matches in the fixture list
+ok 90 - selected World Cup players see only their nation's tournament matches in the fixture list
+  ---
+  duration_ms: 153.6219
+  type: 'test'
+  ...
+# Subtest: a full Premier League season completes with 38 matches per club
+not ok 91 - a full Premier League season completes with 38 matches per club
+  ---
+  duration_ms: 16204.5857
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\career.test.mjs:3587:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+        'liverpool:Louie Webb',
+    -   'manchestercity:Erling Haaland'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'liverpool:Louie Webb'
+    1: 'manchestercity:Erling Haaland'
+  actual:
+    0: 'liverpool:Louie Webb'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3682:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: unknown clubs and empty player names are rejected
+ok 92 - unknown clubs and empty player names are rejected
+  ---
+  duration_ms: 24.3605
+  type: 'test'
+  ...
+# Subtest: season awards are recorded on every winner, including legends and other leagues
+not ok 93 - season awards are recorded on every winner, including legends and other leagues
+  ---
+  duration_ms: 14673.2185
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\career.test.mjs:3769:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3777:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: league winners receive a league champion trophy
+not ok 94 - league winners receive a league champion trophy
+  ---
+  duration_ms: 14697.9998
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\career.test.mjs:3826:1'
+  failureType: 'testCodeFailure'
+  error: 'Every playable league must finish, and the Champions League must finish before advancing.'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Career.advanceSeason (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/src/career.mjs:6820:13)
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3835:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: NPC league champions receive player honours and appear in season history
+ok 95 - NPC league champions receive player honours and appear in season history
+  ---
+  duration_ms: 996.1277
+  type: 'test'
+  ...
+# Subtest: league Player of the Season comes from the champion club
+ok 96 - league Player of the Season comes from the champion club
+  ---
+  duration_ms: 171.7797
+  type: 'test'
+  ...
+# Subtest: every playable league receives its own non-global awards
+ok 97 - every playable league receives its own non-global awards
+  ---
+  duration_ms: 162.063
+  type: 'test'
+  ...
+# Subtest: background league strength is measured from the current squad
+ok 98 - background league strength is measured from the current squad
+  ---
+  duration_ms: 145.7468
+  type: 'test'
+  ...
+# Subtest: the trophy case groups identical trophies and shows the total count
+ok 99 - the trophy case groups identical trophies and shows the total count
+  ---
+  duration_ms: 149.8917
+  type: 'test'
+  ...
+# Subtest: legends and other leagues' players keep the trophies they win
+ok 100 - legends and other leagues' players keep the trophies they win
+  ---
+  duration_ms: 406.9031
+  type: 'test'
+  ...
+# Subtest: development remains gradual and preserves the potential estimate
+ok 101 - development remains gradual and preserves the potential estimate
+  ---
+  duration_ms: 226.9128
+  type: 'test'
+  ...
+# Subtest: form lifts the displayed overall above the base and drops it when out of form
+ok 102 - form lifts the displayed overall above the base and drops it when out of form
+  ---
+  duration_ms: 159.1674
+  type: 'test'
+  ...
+# Subtest: injured players are never selected for a match
+ok 103 - injured players are never selected for a match
+  ---
+  duration_ms: 623.8982
+  type: 'test'
+  ...
+# Subtest: a fitter, stronger player is less likely to be injured
+ok 104 - a fitter, stronger player is less likely to be injured
+  ---
+  duration_ms: 128.5934
+  type: 'test'
+  ...
+# Subtest: training injuries are rolled each week and heal over time
+ok 105 - training injuries are rolled each week and heal over time
+  ---
+  duration_ms: 8207.7577
+  type: 'test'
+  ...
+# Subtest: World Cup calendar advances from a prior edition and does not replay a completed edition
+ok 106 - World Cup calendar advances from a prior edition and does not replay a completed edition
+  ---
+  duration_ms: 144.386
+  type: 'test'
+  ...
+# Subtest: the World Cup fixture calendar is unique, scheduled, and save-persistent
+ok 107 - the World Cup fixture calendar is unique, scheduled, and save-persistent
+  ---
+  duration_ms: 1873.8675
+  type: 'test'
+  ...
+# Subtest: selected World Cup group fixtures run in Match Sim and record only international results
+ok 108 - selected World Cup group fixtures run in Match Sim and record only international results
+  ---
+  duration_ms: 1371.7076
+  type: 'test'
+  ...
+# Subtest: selected World Cup knockout fixtures use Match Sim and advance the bracket
+ok 109 - selected World Cup knockout fixtures use Match Sim and advance the bracket
+  ---
+  duration_ms: 930.9587
+  type: 'test'
+  ...
+# Subtest: World Cup fixtures progress by date and completed matches do not replay after loading
+ok 110 - World Cup fixtures progress by date and completed matches do not replay after loading
+  ---
+  duration_ms: 1917.8533
+  type: 'test'
+  ...
+# Subtest: a season cannot finish before its scheduled World Cup resolves
+ok 111 - a season cannot finish before its scheduled World Cup resolves
+  ---
+  duration_ms: 179.7922
+  type: 'test'
+  ...
+# Subtest: the Ballon d'Or ceremony is a next-season, persisted, one-time event
+ok 112 - the Ballon d'Or ceremony is a next-season, persisted, one-time event
+  ---
+  duration_ms: 394.625
+  type: 'test'
+  ...
+# Subtest: legacy World Cup schedules migrate without resetting the career save
+ok 113 - legacy World Cup schedules migrate without resetting the career save
+  ---
+  duration_ms: 368.4905
+  type: 'test'
+  ...
+# Subtest: the available national pool completes a balanced World Cup with durable honours
+ok 114 - the available national pool completes a balanced World Cup with durable honours
+  ---
+  duration_ms: 3307.8999
+  type: 'test'
+  ...
+# Subtest: Champions League starts only after the first domestic season
+ok 115 - Champions League starts only after the first domestic season
+  ---
+  duration_ms: 5598.9199
+  type: 'test'
+  ...
+# Subtest: Messi and Ronaldo appear in UEFA competition only when their clubs qualify
+ok 116 - Messi and Ronaldo appear in UEFA competition only when their clubs qualify
+  ---
+  duration_ms: 2685.9174
+  type: 'test'
+  ...
+# Subtest: Champions League generates eight league-phase matches and all knockout rounds
+    # Subtest: Champions League schedule finishes before the season and leaves two rest days
+    ok 1 - Champions League schedule finishes before the season and leaves two rest days
+      ---
+      duration_ms: 1916.6875
+      type: 'test'
+      ...
+    1..1
+ok 117 - Champions League generates eight league-phase matches and all knockout rounds
+  ---
+  duration_ms: 3205.5383
+  type: 'test'
+  ...
+# Subtest: round of 16 pairs league-phase rank 1 with 16, 2 with 15, and so on
+ok 118 - round of 16 pairs league-phase rank 1 with 16, 2 with 15, and so on
+  ---
+  duration_ms: 3323.7798
+  type: 'test'
+  ...
+# Subtest: Champions League state survives save and restore
+ok 119 - Champions League state survives save and restore
+  ---
+  duration_ms: 3908.7297
+  type: 'test'
+  ...
+# Subtest: main fixture list includes scheduled Champions League matches for the user club
+ok 120 - main fixture list includes scheduled Champions League matches for the user club
+  ---
+  duration_ms: 2984.2368
+  type: 'test'
+  ...
+# Subtest: upcoming Champions League knockout fixtures remain available as the next match
+ok 121 - upcoming Champions League knockout fixtures remain available as the next match
+  ---
+  duration_ms: 2397.3613
+  type: 'test'
+  ...
+# Subtest: a live Champions League winner receives the trophy honour and keeps it after reload
+ok 122 - a live Champions League winner receives the trophy honour and keeps it after reload
+  ---
+  duration_ms: 3091.8222
+  type: 'test'
+  ...
+# Subtest: completed Champions League fixtures retain scores and shared fixture shape
+ok 123 - completed Champions League fixtures retain scores and shared fixture shape
+  ---
+  duration_ms: 2422.3843
+  type: 'test'
+  ...
+# Subtest: weekly simulation completes only Champions League fixtures scheduled for that week
+ok 124 - weekly simulation completes only Champions League fixtures scheduled for that week
+  ---
+  duration_ms: 6058.761
+  type: 'test'
+  ...
+# Subtest: UEFA fixtures can be played through the live match simulation
+ok 125 - UEFA fixtures can be played through the live match simulation
+  ---
+  duration_ms: 5463.4847
+  type: 'test'
+  ...
+# Subtest: season simulation completes domestic leagues and Champions League together
+ok 126 - season simulation completes domestic leagues and Champions League together
+  ---
+  duration_ms: 26348.2644
+  type: 'test'
+  ...
+# Subtest: Champions League standings rank live points and retain form after each matchweek
+ok 127 - Champions League standings rank live points and retain form after each matchweek
+  ---
+  duration_ms: 1231.1856
+  type: 'test'
+  ...
+# Subtest: coaches receive tactical identities and select an eligible XI
+ok 128 - coaches receive tactical identities and select an eligible XI
+  ---
+  duration_ms: 12.2316
+  type: 'test'
+  ...
+# Subtest: accepted youth prospects develop through academy state
+ok 129 - accepted youth prospects develop through academy state
+  ---
+  duration_ms: 1.8486
+  type: 'test'
+  ...
+# Subtest: every professional player gets a normalized contract with start, expiry, wage, status and history
+ok 130 - every professional player gets a normalized contract with start, expiry, wage, status and history
+  ---
+  duration_ms: 2158.5775
+  type: 'test'
+  ...
+# Subtest: contract durations are clamped between 1 and 5 years
+ok 131 - contract durations are clamped between 1 and 5 years
+  ---
+  duration_ms: 2239.2467
+  type: 'test'
+  ...
+# Subtest: contract stage labels follow the 12/6/1 month lifecycle
+ok 132 - contract stage labels follow the 12/6/1 month lifecycle
+  ---
+  duration_ms: 1.2641
+  type: 'test'
+  ...
+# Subtest: remaining duration returns years and months without going negative
+ok 133 - remaining duration returns years and months without going negative
+  ---
+  duration_ms: 0.7136
+  type: 'test'
+  ...
+# Subtest: the weekly advance processes stage notifications and expiry idempotently
+ok 134 - the weekly advance processes stage notifications and expiry idempotently
+  ---
+  duration_ms: 3973.2137
+  type: 'test'
+  ...
+# Subtest: processing the same day twice never duplicates expiry or notifications
+ok 135 - processing the same day twice never duplicates expiry or notifications
+  ---
+  duration_ms: 1283.1607
+  type: 'test'
+  ...
+# Subtest: a renewal negotiation can be accepted and updates the contract and ledger
+ok 136 - a renewal negotiation can be accepted and updates the contract and ledger
+  ---
+  duration_ms: 1292.184
+  type: 'test'
+  ...
+# Subtest: a lowball renewal is rejected or countered, never silently accepted
+ok 137 - a lowball renewal is rejected or countered, never silently accepted
+  ---
+  duration_ms: 1115.9553
+  type: 'test'
+  ...
+# Subtest: an offer can be withdrawn
+ok 138 - an offer can be withdrawn
+  ---
+  duration_ms: 1199.361
+  type: 'test'
+  ...
+# Subtest: the user can sign a genuine free agent with no fee but ledgered costs
+ok 139 - the user can sign a genuine free agent with no fee but ledgered costs
+  ---
+  duration_ms: 1125.9627
+  type: 'test'
+  ...
+# Subtest: signing a player already contracted elsewhere is refused
+ok 140 - signing a player already contracted elsewhere is refused
+  ---
+  duration_ms: 1107.3134
+  type: 'test'
+  ...
+# Subtest: pre-contract agreements follow the six-month rule and cannot double-sign
+ok 141 - pre-contract agreements follow the six-month rule and cannot double-sign
+  ---
+  duration_ms: 1163.1757
+  type: 'test'
+  ...
+# Subtest: a pre-contract completes automatically when the original contract expires
+ok 142 - a pre-contract completes automatically when the original contract expires
+  ---
+  duration_ms: 6387.5525
+  type: 'test'
+  ...
+# Subtest: AI clubs sign suitable free agents; elite players attract elite clubs
+ok 143 - AI clubs sign suitable free agents; elite players attract elite clubs
+  ---
+  duration_ms: 5661.5064
+  type: 'test'
+  ...
+# Subtest: free-agent opening offers respect wage space and squad role
+ok 144 - free-agent opening offers respect wage space and squad role
+  ---
+  duration_ms: 0.2858
+  type: 'test'
+  ...
+# Subtest: agent fees scale with wages and never fall below the floor
+ok 145 - agent fees scale with wages and never fall below the floor
+  ---
+  duration_ms: 0.1367
+  type: 'test'
+  ...
+# Subtest: negotiations consider personality, manager trust and club standing
+ok 146 - negotiations consider personality, manager trust and club standing
+  ---
+  duration_ms: 0.2612
+  type: 'test'
+  ...
+# Subtest: career save and reload preserves contracts, negotiations and free-agent state
+ok 147 - career save and reload preserves contracts, negotiations and free-agent state
+  ---
+  duration_ms: 1660.0461
+  type: 'test'
+  ...
+# Subtest: a free agent never remains registered at his former club and wages stop
+ok 148 - a free agent never remains registered at his former club and wages stop
+  ---
+  duration_ms: 839.6271
+  type: 'test'
+  ...
+# Subtest: no player appears at two clubs simultaneously after expiry and re-signing
+ok 149 - no player appears at two clubs simultaneously after expiry and re-signing
+  ---
+  duration_ms: 736.6009
+  type: 'test'
+  ...
+# Subtest: AI managers renew important affordable players entering the final year
+ok 150 - AI managers renew important affordable players entering the final year
+  ---
+  duration_ms: 2484.4758
+  type: 'test'
+  ...
+# Subtest: AI managers refuse to renew declining, overpaid squad players and record the reason
+ok 151 - AI managers refuse to renew declining, overpaid squad players and record the reason
+  ---
+  duration_ms: 0.7878
+  type: 'test'
+  ...
+# Subtest: clubs recruit from the free-agent market after a wave of expiries and keep squads playable
+not ok 152 - clubs recruit from the free-agent market after a wave of expiries and keep squads playable
+  ---
+  duration_ms: 1783.9298
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\contract-management.test.mjs:159:1'
+  failureType: 'testCodeFailure'
+  error: 'the wave must shrink the squad first (29 -> 23)'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:173:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: expired players appear on the free-agent market exactly once
+ok 153 - expired players appear on the free-agent market exactly once
+  ---
+  duration_ms: 2055.7307
+  type: 'test'
+  ...
+# Subtest: AI clubs complete free-agent signings that register, pay and record history
+ok 154 - AI clubs complete free-agent signings that register, pay and record history
+  ---
+  duration_ms: 2201.6457
+  type: 'test'
+  ...
+# Subtest: the squad-management controller prioritises critical clubs and goalkeeper cover
+ok 155 - the squad-management controller prioritises critical clubs and goalkeeper cover
+  ---
+  duration_ms: 1.1435
+  type: 'test'
+  ...
+# Subtest: the user's expiring contract pauses the simulation until a decision
+not ok 156 - the user's expiring contract pauses the simulation until a decision
+  ---
+  duration_ms: 1503.5796
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\contract-management.test.mjs:295:1'
+  failureType: 'testCodeFailure'
+  error: 'the expiry must open a pending decision'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: ~
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:299:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: accepting the club's renewal updates the contract and resumes the sim
+not ok 157 - accepting the club's renewal updates the contract and resumes the sim
+  ---
+  duration_ms: 1631.0618
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\contract-management.test.mjs:324:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of null (reading 'clubOffer')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:332:45)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: declining the renewal converts the user to a free agent with history preserved
+not ok 158 - declining the renewal converts the user to a free agent with history preserved
+  ---
+  duration_ms: 1442.8061
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\contract-management.test.mjs:357:1'
+  failureType: 'testCodeFailure'
+  error: 'There is no contract decision to decline.'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Career.declineUserContract (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/src/career.mjs:10174:13)
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:365:25)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: the agent searches immediately across every playable league with no cooldown
+ok 159 - the agent searches immediately across every playable league with no cooldown
+  ---
+  duration_ms: 1110.9569
+  type: 'test'
+  ...
+# Subtest: the agent presents several comparable opportunities
+ok 160 - the agent presents several comparable opportunities
+  ---
+  duration_ms: 1273.9053
+  type: 'test'
+  ...
+# Subtest: accepting a free-agent offer joins, registers and records the transfer
+ok 161 - accepting a free-agent offer joins, registers and records the transfer
+  ---
+  duration_ms: 1139.7787
+  type: 'test'
+  ...
+# Subtest: no player is ever registered at two clubs after free-agency moves
+ok 162 - no player is ever registered at two clubs after free-agency moves
+  ---
+  duration_ms: 4669.2283
+  type: 'test'
+  ...
+# Subtest: contract-expiry decisions, free-agent state and opportunities survive save/load
+ok 163 - contract-expiry decisions, free-agent state and opportunities survive save/load
+  ---
+  duration_ms: 2012.9582
+  type: 'test'
+  ...
+# Subtest: a multi-season sim keeps every club playable with goalkeepers
+ok 164 - a multi-season sim keeps every club playable with goalkeepers
+  ---
+  duration_ms: 28885.4603
+  type: 'test'
+  ...
+# Subtest: aiContractDecision and aiRenewalOffer are deterministic and budget-aware
+ok 165 - aiContractDecision and aiRenewalOffer are deterministic and budget-aware
+  ---
+  duration_ms: 0.706
+  type: 'test'
+  ...
+# Subtest: contract renewal phases follow 12/6/3 month windows
+ok 166 - contract renewal phases follow 12/6/3 month windows
+  ---
+  duration_ms: 1.7255
+  type: 'test'
+  ...
+# Subtest: normalizeContract produces consistent expiry/start and legacy fields
+ok 167 - normalizeContract produces consistent expiry/start and legacy fields
+  ---
+  duration_ms: 1.2595
+  type: 'test'
+  ...
+# Subtest: signing and expiring contracts update player state
+ok 168 - signing and expiring contracts update player state
+  ---
+  duration_ms: 2.2201
+  type: 'test'
+  ...
+# Subtest: evaluateContractOffer can reject unreasonable offers
+ok 169 - evaluateContractOffer can reject unreasonable offers
+  ---
+  duration_ms: 0.802
+  type: 'test'
+  ...
+# Subtest: high-overall scorers receive stronger production multipliers
+ok 170 - high-overall scorers receive stronger production multipliers
+  ---
+  duration_ms: 2.0998
+  type: 'test'
+  ...
+# Subtest: only a fully developed, form-boosted 99 OVR receives peak production
+ok 171 - only a fully developed, form-boosted 99 OVR receives peak production
+  ---
+  duration_ms: 0.4491
+  type: 'test'
+  ...
+# Subtest: elite goalkeepers do not receive outfield scoring rates
+ok 172 - elite goalkeepers do not receive outfield scoring rates
+  ---
+  duration_ms: 0.2677
+  type: 'test'
+  ...
+# Subtest: Messi and Ronaldo use the same normal profile as any other high-rated player
+ok 173 - Messi and Ronaldo use the same normal profile as any other high-rated player
+  ---
+  duration_ms: 1.7287
+  type: 'test'
+  ...
+# Subtest: configured club access uses final standings, titleholders and one unique entry per club
+not ok 174 - configured club access uses final standings, titleholders and one unique entry per club
+  ---
+  duration_ms: 10.1589
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\europe.test.mjs:20:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + Set(7) {
+    - Set(6) {
+        'e1',
+        'e2',
+        'e4',
+    +   'e5',
+        'f1',
+        'f4',
+        'f5'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/europe.test.mjs:43:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1103:25)
+    Test.start (node:internal/test_runner/test:1000:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17)
+  ...
+# Subtest: promotion and relegation preserve division sizes and return club moves
+ok 175 - promotion and relegation preserve division sizes and return club moves
+  ---
+  duration_ms: 2.3632
+  type: 'test'
+  ...
+# Subtest: coefficient history is points-per-club and performance places use the highest coefficients
+ok 176 - coefficient history is points-per-club and performance places use the highest coefficients
+  ---
+  duration_ms: 0.8614
+  type: 'test'
+  ...
+# Subtest: FC 25 roster import groups supported leagues and normalizes player stats
+ok 177 - FC 25 roster import groups supported leagues and normalizes player stats
+  ---
+  duration_ms: 28.9115
+  type: 'test'
+  ...
+# Subtest: FC 25 roster import rejects CSV without required data columns
+ok 178 - FC 25 roster import rejects CSV without required data columns
+  ---
+  duration_ms: 2.1014
+  type: 'test'
+  ...
+# Subtest: FC 26 ratings import accepts supplied headers and fills blank league from club mapping
+ok 179 - FC 26 ratings import accepts supplied headers and fills blank league from club mapping
+  ---
+  duration_ms: 7.484
+  type: 'test'
+  ...
+# Subtest: FC 26 real-player rows with blank country fields use their real nationalities
+ok 180 - FC 26 real-player rows with blank country fields use their real nationalities
+  ---
+  duration_ms: 3.7304
+  type: 'test'
+  ...
+# Subtest: FC 26 single-name football nicknames receive full imported names
+ok 181 - FC 26 single-name football nicknames receive full imported names
+  ---
+  duration_ms: 4.9403
+  type: 'test'
+  ...
+# Subtest: imported player profiles carry identity and financial fields into the game
+ok 182 - imported player profiles carry identity and financial fields into the game
+  ---
+  duration_ms: 7.7941
+  type: 'test'
+  ...
+# Subtest: every imported real player has a country code matching the game data
+not ok 183 - every imported real player has a country code matching the game data
+  ---
+  duration_ms: 56.7504
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:114:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(realPlayers.length >= 90)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:131:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: FC 26 ratings import skips fictional sample rows that masquerade as imported players
+ok 184 - FC 26 ratings import skips fictional sample rows that masquerade as imported players
+  ---
+  duration_ms: 1.7465
+  type: 'test'
+  ...
+# Subtest: combined rosters keep the FC26 player when the same league contains a duplicate
+ok 185 - combined rosters keep the FC26 player when the same league contains a duplicate
+  ---
+  duration_ms: 0.5179
+  type: 'test'
+  ...
+# Subtest: every club across all supported leagues has its own original crest
+not ok 186 - every club across all supported leagues has its own original crest
+  ---
+  duration_ms: 30.8266
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:170:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    96 !== 296
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 296
+  actual: 96
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:178:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: formation shirt color uses the primary color from that club's crest
+ok 187 - formation shirt color uses the primary color from that club's crest
+  ---
+  duration_ms: 4.9967
+  type: 'test'
+  ...
+# Subtest: supplemental player CSV imports role, estimate, performance, and club aliases
+not ok 188 - supplemental player CSV imports role, estimate, performance, and club aliases
+  ---
+  duration_ms: 1.416
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:190:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    2 !== 3
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 3
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:199:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1103:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:785:18)
+    Test.postRun (node:internal/test_runner/test:1232:19)
+    Test.run (node:internal/test_runner/test:1160:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: supplemental player profiles receive complete gameplay and finance fields
+ok 189 - supplemental player profiles receive complete gameplay and finance fields
+  ---
+  duration_ms: 0.5267
+  type: 'test'
+  ...
+# Subtest: competition metadata builds joinable leagues from roster clubs and listed title contenders
+not ok 190 - competition metadata builds joinable leagues from roster clubs and listed title contenders
+  ---
+  duration_ms: 4.7451
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:237:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(PLAYABLE_LEAGUES.includes("Eredivisie"))
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:257:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1103:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:785:18)
+    Test.postRun (node:internal/test_runner/test:1232:19)
+    Test.run (node:internal/test_runner/test:1160:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: career league config contains configured top flights and second divisions
+not ok 191 - career league config contains configured top flights and second divisions
+  ---
+  duration_ms: 48.7779
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:261:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Betway Premiership
+    
+    undefined !== 16
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 16
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:278:12)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: every supplied player is assigned to a playable career club
+not ok 192 - every supplied player is assigned to a playable career club
+  ---
+  duration_ms: 59.9279
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\fc25-roster.test.mjs:293:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    28 !== 67
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 67
+  actual: 28
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:314:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+  ...
+# Subtest: clubs receive distinct migrated finance profiles and ledger entries are idempotent
+ok 193 - clubs receive distinct migrated finance profiles and ledger entries are idempotent
+  ---
+  duration_ms: 5.1537
+  type: 'test'
+  ...
+# Subtest: weekly finances and home match revenue are recorded once
+ok 194 - weekly finances and home match revenue are recorded once
+  ---
+  duration_ms: 54.1537
+  type: 'test'
+  ...
+# Subtest: market values respond to player profile and transfers move money and registration atomically
+ok 195 - market values respond to player profile and transfers move money and registration atomically
+  ---
+  duration_ms: 3.9988
+  type: 'test'
+  ...
+# Subtest: the board only releases transfer money that is genuinely spare
+ok 196 - the board only releases transfer money that is genuinely spare
+  ---
+  duration_ms: 1.7111
+  type: 'test'
+  ...
+# Subtest: a season is only reviewed once, and spending is never re-released
+ok 197 - a season is only reviewed once, and spending is never re-released
+  ---
+  duration_ms: 2.4078
+  type: 'test'
+  ...
+# Subtest: spending transfer money reduces available funds without touching the reserve
+ok 198 - spending transfer money reduces available funds without touching the reserve
+  ---
+  duration_ms: 1.8387
+  type: 'test'
+  ...
+# Subtest: Lamine Yamal keeps his full Spanish name and a separate display name
+ok 199 - Lamine Yamal keeps his full Spanish name and a separate display name
+  ---
+  duration_ms: 946.8252
+  type: 'test'
+  ...
+# Subtest: Lamine Yamal's display name survives an accented/imported variant
+ok 200 - Lamine Yamal's display name survives an accented/imported variant
+  ---
+  duration_ms: 2.5694
+  type: 'test'
+  ...
+# Subtest: João Cancelo keeps his compound Portuguese given name and surname
+ok 201 - João Cancelo keeps his compound Portuguese given name and surname
+  ---
+  duration_ms: 1041.8093
+  type: 'test'
+  ...
+# Subtest: a single-token nickname is not mistaken for a full name
+ok 202 - a single-token nickname is not mistaken for a full name
+  ---
+  duration_ms: 0.9599
+  type: 'test'
+  ...
+# Subtest: Iberian particles and accents split correctly
+ok 203 - Iberian particles and accents split correctly
+  ---
+  duration_ms: 0.643
+  type: 'test'
+  ...
+# Subtest: accented and unaccented names resolve to the same comparison key
+ok 204 - accented and unaccented names resolve to the same comparison key
+  ---
+  duration_ms: 0.3732
+  type: 'test'
+  ...
+# Subtest: the same player with different spacing/accents is a duplicate
+ok 205 - the same player with different spacing/accents is a duplicate
+  ---
+  duration_ms: 1015.908
+  type: 'test'
+  ...
+# Subtest: two different players with similar names are never merged
+ok 206 - two different players with similar names are never merged
+  ---
+  duration_ms: 0.7873
+  type: 'test'
+  ...
+# Subtest: a conflicting date of birth vetoes a name-only match
+ok 207 - a conflicting date of birth vetoes a name-only match
+  ---
+  duration_ms: 0.5466
+  type: 'test'
+  ...
+# Subtest: goalkeepers import with a complete, non-zero attribute line
+ok 208 - goalkeepers import with a complete, non-zero attribute line
+  ---
+  duration_ms: 903.5794
+  type: 'test'
+  ...
+# Subtest: goalkeeper estimation never produces zeroes
+ok 209 - goalkeeper estimation never produces zeroes
+  ---
+  duration_ms: 1.1265
+  type: 'test'
+  ...
+# Subtest: outfield CSV values do not become goalkeeper values
+ok 210 - outfield CSV values do not become goalkeeper values
+  ---
+  duration_ms: 982.4656
+  type: 'test'
+  ...
+# Subtest: goalkeeper OVR is driven only by goalkeeping attributes
+ok 211 - goalkeeper OVR is driven only by goalkeeping attributes
+  ---
+  duration_ms: 1.8462
+  type: 'test'
+  ...
+# Subtest: an outfield player's rating ignores goalkeeper attributes
+ok 212 - an outfield player's rating ignores goalkeeper attributes
+  ---
+  duration_ms: 0.7417
+  type: 'test'
+  ...
+# Subtest: imported and generated goalkeepers use the same rating standard
+ok 213 - imported and generated goalkeepers use the same rating standard
+  ---
+  duration_ms: 4.1361
+  type: 'test'
+  ...
+# Subtest: missing goalkeeper attributes receive sensible fallbacks
+ok 214 - missing goalkeeper attributes receive sensible fallbacks
+  ---
+  duration_ms: 0.3082
+  type: 'test'
+  ...
+# Subtest: training updates goalkeeper OVR and position changes keep attributes
+ok 215 - training updates goalkeeper OVR and position changes keep attributes
+  ---
+  duration_ms: 2.9898
+  type: 'test'
+  ...
+# Subtest: generated goalkeepers receive a full, coherent attribute line
+ok 216 - generated goalkeepers receive a full, coherent attribute line
+  ---
+  duration_ms: 10.9807
+  type: 'test'
+  ...
+# Subtest: generated goalkeepers never share an outfield attribute line
+ok 217 - generated goalkeepers never share an outfield attribute line
+  ---
+  duration_ms: 1.271
+  type: 'test'
+  ...
+# Subtest: goalkeepers develop on their own age curve
+ok 218 - goalkeepers develop on their own age curve
+  ---
+  duration_ms: 20.6224
+  type: 'test'
+  ...
+# Subtest: goalkeeper quality has a meaningful but bounded effect on results
+ok 219 - goalkeeper quality has a meaningful but bounded effect on results
+  ---
+  duration_ms: 0.6775
+  type: 'test'
+  ...
+# Subtest: goalkeeper attributes affect every shot-stopping facet
+ok 220 - goalkeeper attributes affect every shot-stopping facet
+  ---
+  duration_ms: 0.5349
+  type: 'test'
+  ...
+# Subtest: a goalkeeper is selected in goal instead of an outfielder
+ok 221 - a goalkeeper is selected in goal instead of an outfielder
+  ---
+  duration_ms: 2277.5714
+  type: 'test'
+  ...
+# Subtest: goalkeeper statistics are recorded for keepers only
+ok 222 - goalkeeper statistics are recorded for keepers only
+  ---
+  duration_ms: 1.3794
+  type: 'test'
+  ...
+# Subtest: a world-league keeper records saves, shots faced and clean sheets
+ok 223 - a world-league keeper records saves, shots faced and clean sheets
+  ---
+  duration_ms: 7150.3374
+  type: 'test'
+  ...
+# Subtest: every career player carries a display name and full name
+ok 224 - every career player carries a display name and full name
+  ---
+  duration_ms: 1374.3161
+  type: 'test'
+  ...
+# Subtest: save percentage is derived from saves and shots faced
+ok 225 - save percentage is derived from saves and shots faced
+  ---
+  duration_ms: 0.4357
+  type: 'test'
+  ...
+# Subtest: an injured or suspended keeper is replaced by the backup
+ok 226 - an injured or suspended keeper is replaced by the backup
+  ---
+  duration_ms: 1118.5589
+  type: 'test'
+  ...
+# Subtest: the world XI builder never places an outfielder in goal
+ok 227 - the world XI builder never places an outfielder in goal
+  ---
+  duration_ms: 0.6453
+  type: 'test'
+  ...
+# Subtest: legacy saves without identity fields still load
+ok 228 - legacy saves without identity fields still load
+  ---
+  duration_ms: 1241.0561
+  type: 'test'
+  ...
+# Subtest: a legacy save round-trips through save/restore
+ok 229 - a legacy save round-trips through save/restore
+  ---
+  duration_ms: 2354.4748
+  type: 'test'
+  ...
+# Subtest: determinism: the same seed produces identical goalkeeper attributes
+ok 230 - determinism: the same seed produces identical goalkeeper attributes
+  ---
+  duration_ms: 0.5331
+  type: 'test'
+  ...
+# Subtest: the goalkeeper quality helper is bounded for absurd inputs
+ok 231 - the goalkeeper quality helper is bounded for absurd inputs
+  ---
+  duration_ms: 0.2347
+  type: 'test'
+  ...
+# Subtest: clubs receive a persistent hierarchy with real managers for known clubs
+ok 232 - clubs receive a persistent hierarchy with real managers for known clubs
+  ---
+  duration_ms: 5.4962
+  type: 'test'
+  ...
+# Subtest: owner requests create traceable decisions and change relationships
+ok 233 - owner requests create traceable decisions and change relationships
+  ---
+  duration_ms: 1.1497
+  type: 'test'
+  ...
+# Subtest: staff wages are idempotent and manager employment has a career record
+ok 234 - staff wages are idempotent and manager employment has a career record
+  ---
+  duration_ms: 1.6355
+  type: 'test'
+  ...
+# Subtest: World Cup schedule starts exactly four years after career creation
+ok 235 - World Cup schedule starts exactly four years after career creation
+  ---
+  duration_ms: 4.7856
+  type: 'test'
+  ...
+# Subtest: World Cup fixture dates use separate group and knockout matchdays
+ok 236 - World Cup fixture dates use separate group and knockout matchdays
+  ---
+  duration_ms: 1.3593
+  type: 'test'
+  ...
+# Subtest: national team selection creates a balanced 26-player squad
+ok 237 - national team selection creates a balanced 26-player squad
+  ---
+  duration_ms: 1.7808
+  type: 'test'
+  ...
+# Subtest: national team selection rejects squads without sufficient positional cover
+ok 238 - national team selection rejects squads without sufficient positional cover
+  ---
+  duration_ms: 0.6492
+  type: 'test'
+  ...
+# Subtest: national team selection rewards current form over a reputation-free OVR gap
+ok 239 - national team selection rewards current form over a reputation-free OVR gap
+  ---
+  duration_ms: 0.6298
+  type: 'test'
+  ...
+# Subtest: World Cup field sizes fit the available qualified nations
+ok 240 - World Cup field sizes fit the available qualified nations
+  ---
+  duration_ms: 0.3698
+  type: 'test'
+  ...
+# Subtest: international group draws and standings retain all teams and score correctly
+ok 241 - international group draws and standings retain all teams and score correctly
+  ---
+  duration_ms: 1.1457
+  type: 'test'
+  ...
+# Subtest: international group standings use head-to-head before overall goal difference
+ok 242 - international group standings use head-to-head before overall goal difference
+  ---
+  duration_ms: 0.81
+  type: 'test'
+  ...
+# Subtest: club investments reserve cash, complete on schedule, and expand stadium capacity
+ok 243 - club investments reserve cash, complete on schedule, and expand stadium capacity
+  ---
+  duration_ms: 6.1725
+  type: 'test'
+  ...
+# Subtest: unaffordable investments are rejected
+ok 244 - unaffordable investments are rejected
+  ---
+  duration_ms: 1.7017
+  type: 'test'
+  ...
+# Subtest: missing strength data safely falls back instead of reading defence on undefined
+ok 245 - missing strength data safely falls back instead of reading defence on undefined
+  ---
+  duration_ms: 67.1052
+  type: 'test'
+  ...
+# Subtest: event-driven match results replay deterministically from the same seed
+ok 246 - event-driven match results replay deterministically from the same seed
+  ---
+  duration_ms: 58.6503
+  type: 'test'
+  ...
+# Subtest: Messi and Ronaldo use ordinary scoring and stay within the league goal cap
+ok 247 - Messi and Ronaldo use ordinary scoring and stay within the league goal cap
+  ---
+  duration_ms: 983.2966
+  type: 'test'
+  ...
+# Subtest: players already at 50 league goals cannot score again in that league
+ok 248 - players already at 50 league goals cannot score again in that league
+  ---
+  duration_ms: 723.4815
+  type: 'test'
+  ...
+# Subtest: match score, xG, and player and team statistics match simulated events
+ok 249 - match score, xG, and player and team statistics match simulated events
+  ---
+  duration_ms: 5105.386
+  type: 'test'
+  ...
+# Subtest: extra-time aggregation preserves player minutes, events, and team stats
+ok 250 - extra-time aggregation preserves player minutes, events, and team stats
+  ---
+  duration_ms: 19.4338
+  type: 'test'
+  ...
+# Subtest: the selected player role changes their event-driven match actions
+ok 251 - the selected player role changes their event-driven match actions
+  ---
+  duration_ms: 7503.1188
+  type: 'test'
+  ...
+# Subtest: home advantage produces a modest long-run scoring benefit
+ok 252 - home advantage produces a modest long-run scoring benefit
+  ---
+  duration_ms: 8760.0627
+  type: 'test'
+  ...
+# Subtest: higher-quality squads and goalkeepers improve match outcomes
+ok 253 - higher-quality squads and goalkeepers improve match outcomes
+  ---
+  duration_ms: 21265.8543
+  type: 'test'
+  ...
+# Subtest: gravity is the real thing and a free fall follows h = ½gt²
+ok 254 - gravity is the real thing and a free fall follows h = ½gt²
+  ---
+  duration_ms: 3.8113
+  type: 'test'
+  ...
+# Subtest: each bounce loses energy, so hops get lower and shorter
+ok 255 - each bounce loses energy, so hops get lower and shorter
+  ---
+  duration_ms: 1.4815
+  type: 'test'
+  ...
+# Subtest: restitution and the resting threshold behave like a real ball
+ok 256 - restitution and the resting threshold behave like a real ball
+  ---
+  duration_ms: 0.3817
+  type: 'test'
+  ...
+# Subtest: a hard impact squashes more than a soft one
+ok 257 - a hard impact squashes more than a soft one
+  ---
+  duration_ms: 0.2697
+  type: 'test'
+  ...
+# Subtest: the ball always stays on or above the floor and keeps moving
+ok 258 - the ball always stays on or above the floor and keeps moving
+  ---
+  duration_ms: 2.1305
+  type: 'test'
+  ...
+# Subtest: screen transform anchors the squash at the floor and shrinks with height
+ok 259 - screen transform anchors the squash at the floor and shrinks with height
+  ---
+  duration_ms: 0.4342
+  type: 'test'
+  ...
+# Subtest: physique: a heavy player is slower and stronger, a short one jumps less
+ok 260 - physique: a heavy player is slower and stronger, a short one jumps less
+  ---
+  duration_ms: 0.9679
+  type: 'test'
+  ...
+# Subtest: physique: a neutral build changes nothing, and the pass is idempotent
+ok 261 - physique: a neutral build changes nothing, and the pass is idempotent
+  ---
+  duration_ms: 2.0938
+  type: 'test'
+  ...
+# Subtest: physique: build labels read like a scouting report
+ok 262 - physique: build labels read like a scouting report
+  ---
+  duration_ms: 0.6149
+  type: 'test'
+  ...
+# Subtest: central database follows the supplied schema and indexes imported players
+not ok 263 - central database follows the supplied schema and indexes imported players
+  ---
+  duration_ms: 995.4046
+  type: 'test'
+  location: 'C:\\Users\\cleot\\Documents\\games\\FOOTBALL C\\test\\player-database.test.mjs:16:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/player-database.test.mjs:40:10)
+    async Test.run (node:internal/test_runner/test:1110:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+  ...
+# Subtest: central loader uses the canonical player database for new career data
+ok 264 - central loader uses the canonical player database for new career data
+  ---
+  duration_ms: 4564.9765
+  type: 'test'
+  ...
+# Subtest: new careers in all five leagues contain only players from the master database
+ok 265 - new careers in all five leagues contain only players from the master database
+  ---
+  duration_ms: 4445.674
+  type: 'test'
+  ...
+# Subtest: full master rosters can transfer within their database-sized registration limit
+ok 266 - full master rosters can transfer within their database-sized registration limit
+  ---
+  duration_ms: 2464.4024
+  type: 'test'
+  ...
+# Subtest: CSV parsing preserves quoted commas, quotes, and UTF-8 names
+ok 267 - CSV parsing preserves quoted commas, quotes, and UTF-8 names
+  ---
+  duration_ms: 87.5386
+  type: 'test'
+  ...
+# Subtest: database validation rejects duplicate shirt numbers within a club
+ok 268 - database validation rejects duplicate shirt numbers within a club
+  ---
+  duration_ms: 59.8186
+  type: 'test'
+  ...
+# Subtest: legacy migration preserves old career IDs and deduplicates repeated source rows
+ok 269 - legacy migration preserves old career IDs and deduplicates repeated source rows
+  ---
+  duration_ms: 52.0228
+  type: 'test'
+  ...
+# Subtest: player levels and contextual decisions distinguish elite strikers and playmakers
+ok 270 - player levels and contextual decisions distinguish elite strikers and playmakers
+  ---
+  duration_ms: 22.1104
+  type: 'test'
+  ...
+# Subtest: relevant attributes dominate mismatched overall for specialized actions
+ok 271 - relevant attributes dominate mismatched overall for specialized actions
+  ---
+  duration_ms: 2.405
+  type: 'test'
+  ...
+# Subtest: NPC match performances and position-specific ratings respond to ability and fatigue
+ok 272 - NPC match performances and position-specific ratings respond to ability and fatigue
+  ---
+  duration_ms: 9.8786
+  type: 'test'
+  ...
+# Subtest: background quick-match probabilities remain seeded and are affected by player XI quality
+ok 273 - background quick-match probabilities remain seeded and are affected by player XI quality
+  ---
+  duration_ms: 59.079
+  type: 'test'
+  ...
+# Subtest: registry includes data definitions for every gameplay style and tiers
+ok 274 - registry includes data definitions for every gameplay style and tiers
+  ---
+  duration_ms: 1.4738
+  type: 'test'
+  ...
+# Subtest: long-shot ability is contextual and plus remains probabilistic-strength, not certainty
+ok 275 - long-shot ability is contextual and plus remains probabilistic-strength, not certainty
+  ---
+  duration_ms: 3.6145
+  type: 'test'
+  ...
+# Subtest: finesse and other categories only influence matching match hooks
+ok 276 - finesse and other categories only influence matching match hooks
+  ---
+  duration_ms: 1.959
+  type: 'test'
+  ...
+# Subtest: match performance and passing styles enter normal simulation stats and evidence
+ok 277 - match performance and passing styles enter normal simulation stats and evidence
+  ---
+  duration_ms: 5.3477
+  type: 'test'
+  ...
+# Subtest: valid repeated training/performance evidence unlocks and upgrades without duplicates
+ok 278 - valid repeated training/performance evidence unlocks and upgrades without duplicates
+  ---
+  duration_ms: 1.7794
+  type: 'test'
+  ...
+# Subtest: legacy playstyle arrays migrate safely and legends receive no progression
+ok 279 - legacy playstyle arrays migrate safely and legends receive no progression
+  ---
+  duration_ms: 1.3851
+  type: 'test'
+  ...
+# Subtest: players always receive a category-safe secondary position
+ok 280 - players always receive a category-safe secondary position
+  ---
+  duration_ms: 7.455
+  type: 'test'
+  ...
+# Subtest: players receive a valid personality by default
+ok 281 - players receive a valid personality by default
+  ---
+  duration_ms: 2.0816
+  type: 'test'
+  ...
+# Subtest: identical attributes produce a deterministic OVR
+ok 282 - identical attributes produce a deterministic OVR
+  ---
+  duration_ms: 0.8168
+  type: 'test'
+  ...
+# Subtest: generated strikers keep shooting within an overall-based ceiling
+ok 283 - generated strikers keep shooting within an overall-based ceiling
+  ---
+  duration_ms: 10.7279
+  type: 'test'
+  ...
+# Subtest: position profiles produce different ratings and reward relevant attributes
+ok 284 - position profiles produce different ratings and reward relevant attributes
+  ---
+  duration_ms: 0.9546
+  type: 'test'
+  ...
+# Subtest: goalkeeper OVR uses goalkeeper-specific attributes
+ok 285 - goalkeeper OVR uses goalkeeper-specific attributes
+  ---
+  duration_ms: 22.5203
+  type: 'test'
+  ...
+# Subtest: potential is separate from current OVR and history records only real changes
+ok 286 - potential is separate from current OVR and history records only real changes
+  ---
+  duration_ms: 1.1724
+  type: 'test'
+  ...
+# Subtest: imported starting OVR is calibrated while attributes continue to drive development
+ok 287 - imported starting OVR is calibrated while attributes continue to drive development
+  ---
+  duration_ms: 0.4754
+  type: 'test'
+  ...
+# Subtest: secondary positions receive a small suitability adjustment
+ok 288 - secondary positions receive a small suitability adjustment
+  ---
+  duration_ms: 0.591
+  type: 'test'
+  ...
+# Subtest: career-player form remains a temporary boost within the same ceiling
+ok 289 - career-player form remains a temporary boost within the same ceiling
+  ---
+  duration_ms: 0.9072
+  type: 'test'
+  ...
+# Subtest: non-career players remain capped by potential when in excellent form
+ok 290 - non-career players remain capped by potential when in excellent form
+  ---
+  duration_ms: 0.4973
+  type: 'test'
+  ...
+# Subtest: Messi and Ronaldo no longer receive fixed legend production profiles
+ok 291 - Messi and Ronaldo no longer receive fixed legend production profiles
+  ---
+  duration_ms: 0.283
+  type: 'test'
+  ...
+# Subtest: NPC overall changes are recorded in rating history
+ok 292 - NPC overall changes are recorded in rating history
+  ---
+  duration_ms: 0.5027
+  type: 'test'
+  ...
+# Subtest: clubs recruit scouts and record the recruitment expense exactly once
+ok 293 - clubs recruit scouts and record the recruitment expense exactly once
+  ---
+  duration_ms: 9.9475
+  type: 'test'
+  ...
+# Subtest: scouting assignments progress and produce estimates from real player data
+ok 294 - scouting assignments progress and produce estimates from real player data
+  ---
+  duration_ms: 3.6024
+  type: 'test'
+  ...
+# Subtest: shortlists are persistent data and youth assignments generate bounded prospects
+ok 295 - shortlists are persistent data and youth assignments generate bounded prospects
+  ---
+  duration_ms: 22.8681
+  type: 'test'
+  ...
+# Subtest: stamina migrates legacy fatigue and stays 0-100
+ok 296 - stamina migrates legacy fatigue and stays 0-100
+  ---
+  duration_ms: 1.7345
+  type: 'test'
+  ...
+# Subtest: stamina loss, fatigue and recovery remain bounded
+ok 297 - stamina loss, fatigue and recovery remain bounded
+  ---
+  duration_ms: 1.7122
+  type: 'test'
+  ...
+# Subtest: stamina loss scales with actual match minutes
+ok 298 - stamina loss scales with actual match minutes
+  ---
+  duration_ms: 0.435
+  type: 'test'
+  ...
+# Subtest: low stamina raises injury risk but Endurance Engine reduces it
+ok 299 - low stamina raises injury risk but Endurance Engine reduces it
+  ---
+  duration_ms: 2.4672
+  type: 'test'
+  ...
+# Subtest: signing and selling players changes squad and team ratings
+ok 300 - signing and selling players changes squad and team ratings
+  ---
+  duration_ms: 43.9305
+  type: 'test'
+  ...
+# Subtest: improving a player raises the relevant team rating
+ok 301 - improving a player raises the relevant team rating
+  ---
+  duration_ms: 11.4663
+  type: 'test'
+  ...
+# Subtest: injury changes matchday rating, not squad or starting-XI rating
+ok 302 - injury changes matchday rating, not squad or starting-XI rating
+  ---
+  duration_ms: 2.456
+  type: 'test'
+  ...
+# Subtest: player-career permissions expose observation/focus only and deny club staff spending
+ok 303 - player-career permissions expose observation/focus only and deny club staff spending
+  ---
+  duration_ms: 2934.6433
+  type: 'test'
+  ...
+# Subtest: manager career can hire specialists and staff costs are ledger-backed and idempotent
+ok 304 - manager career can hire specialists and staff costs are ledger-backed and idempotent
+  ---
+  duration_ms: 2125.3477
+  type: 'test'
+  ...
+# Subtest: coach grade thresholds and specialised ability are meaningful
+ok 305 - coach grade thresholds and specialised ability are meaningful
+  ---
+  duration_ms: 2.1367
+  type: 'test'
+  ...
+# Subtest: season development changes detailed attributes, updates calculated OVR, and cannot be repeated
+ok 306 - season development changes detailed attributes, updates calculated OVR, and cannot be repeated
+  ---
+  duration_ms: 3.7235
+  type: 'test'
+  ...
+# Subtest: older players can decline without independent OVR edits and potential is preserved
+ok 307 - older players can decline without independent OVR edits and potential is preserved
+  ---
+  duration_ms: 8.2754
+  type: 'test'
+  ...
+# Subtest: goalkeeper and world player types retain positional attribute calculations
+ok 308 - goalkeeper and world player types retain positional attribute calculations
+  ---
+  duration_ms: 11.8389
+  type: 'test'
+  ...
+# Subtest: club needs prioritize an undermanned role over a deep, high-quality role
+ok 309 - club needs prioritize an undermanned role over a deep, high-quality role
+  ---
+  duration_ms: 4.4437
+  type: 'test'
+  ...
+# Subtest: high-potential young players can rate as a fit and agent search tiers are bounded
+ok 310 - high-potential young players can rate as a fit and agent search tiers are bounded
+  ---
+  duration_ms: 0.9447
+  type: 'test'
+  ...
+# Subtest: agent searches are window-limited and CPU transfers preserve unique squad membership through save/load
+ok 311 - agent searches are window-limited and CPU transfers preserve unique squad membership through save/load
+  ---
+  duration_ms: 5500.627
+  type: 'test'
+  ...
+# Subtest: coaching ranks cover F through S and profiles migrate with attributes
+    # Subtest: coach salaries scale realistically from beginner to world-class
+    ok 1 - coach salaries scale realistically from beginner to world-class
+      ---
+      duration_ms: 3.108
+      type: 'test'
+      ...
+    1..1
+ok 312 - coaching ranks cover F through S and profiles migrate with attributes
+  ---
+  duration_ms: 9.7166
+  type: 'test'
+  ...
+# Subtest: registered squads are capped and expose a reserve pool
+ok 313 - registered squads are capped and expose a reserve pool
+  ---
+  duration_ms: 2.6251
+  type: 'test'
+  ...
+# Subtest: league fixture dates never share a day and give clubs 1 to 4 days rest
+ok 314 - league fixture dates never share a day and give clubs 1 to 4 days rest
+  ---
+  duration_ms: 2.767
+  type: 'test'
+  ...
+# Subtest: season winners persist trophies on the club record
+    # Subtest: simulate one day advances the calendar one day instead of one week
+    ok 1 - simulate one day advances the calendar one day instead of one week
+      ---
+      duration_ms: 3349.834
+      type: 'test'
+      ...
+    1..1
+ok 315 - season winners persist trophies on the club record
+  ---
+  duration_ms: 3375.7941
+  type: 'test'
+  ...
+# Subtest: formatDecimal renders fractional numbers with exactly two places
+ok 316 - formatDecimal renders fractional numbers with exactly two places
+  ---
+  duration_ms: 1.433
+  type: 'test'
+  ...
+# Subtest: formatDecimal keeps integers readable and rejects invalid values
+ok 317 - formatDecimal keeps integers readable and rejects invalid values
+  ---
+  duration_ms: 0.3032
+  type: 'test'
+  ...
+1..317
+# tests 320
+# suites 0
+# pass 304
+# fail 16
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 145579.4831

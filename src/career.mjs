@@ -9796,7 +9796,7 @@ export class Career {
       userContract.status !== CONTRACT_STATUSES.RETIRED &&
       userExpiryDay != null &&
       day >= userExpiryDay &&
-      this.lastContractProcessDay !== day
+      previousDay !== day
     ) {
       const formerClubId = this.player.clubId;
       const formerClubName = clubsById.get(formerClubId)?.name ?? "his club";

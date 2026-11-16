@@ -1,0 +1,685 @@
+﻿✔ Ballon d'Or race reflects performance evidence and exposes a ranked watchlist (1959.0242ms)
+✔ Ballon d'Or winner is determined by journalist voting, not raw score (1877.3539ms)
+✔ Ballon d'Or ceremony uses journalist voting for winner (5170.0002ms)
+✔ Ballon d'Or scoring allows outstanding goalkeepers to win without position multipliers (1487.2557ms)
+✔ poor season lowers an elite player's race score and low rated excellence still has merit (1145.9461ms)
+✔ winning any league improves a player's Ballon d'Or chance (1035.427ms)
+✔ Ballon d'Or categories stay capped and individual form beats team bias (1268.1069ms)
+✔ Ballon d'Or eligibility requires an individual award, not team honours (997.9535ms)
+✔ World Cup performances add a separate Ballon d'Or component once per race (1000.2884ms)
+✔ Ballon d'Or ceremony archive shows voting-based top 10 (3969.6508ms)
+✔ Champions League goals and assists materially raise the European category (817.4978ms)
+✔ World Player of the Season rewards the best global league and tournament performer (979.1899ms)
+✔ major World Cup nations reuse existing stars and South Africa remains in the tournament pool (713.1717ms)
+✔ existing World Cup nations are completed with positional NPCs when needed (608.9954ms)
+✔ good seasons improve transfer interest and club trophies fund future signings (553.0533ms)
+✔ career creation builds a seeded 20-club double round-robin (964.8807ms)
+✔ generated NPCs start below 90 and restores keep at most four 90+ players (1388.2491ms)
+✔ career player always starts at 70 overall regardless of supplied rating (4326.2862ms)
+✔ creation details, body and attribute choices are stored on the player (344.5302ms)
+✔ a player's body decides how his stats are shaped, from creation onward (2212.7147ms)
+✔ every generated player in the world gets a believable body (334.4502ms)
+✔ individual focus guides natural development without immediate attribute purchases (592.4398ms)
+✔ correcting a career player's wrong XI role does not duplicate them (285.2661ms)
+✔ coach substitutions replace fatigued players for both live teams (1677.0664ms)
+✔ all supported formations provide a complete playable XI (701.4184ms)
+✔ coaches keep the best players within their positional category (2.4301ms)
+✔ coaches never move players between goalkeeper, defence, midfield, and forward (2.2988ms)
+✔ player careers negotiate with the manager instead of controlling formation or transfers (824.0637ms)
+✔ an approved transfer request moves the player and a declined request does not (794.4143ms)
+✔ an approved request for a better teammate signs the requested player (352.6313ms)
+✔ the coach can release a low-rated player when no club can buy him (329.5103ms)
+✔ a full destination club can release its weakest player to accept the user (272.5563ms)
+✔ approved playing-time and development requests affect selection and training (298.7755ms)
+✔ player conversations and retirement persist without deleting career records (807.5484ms)
+✔ custom squad selection swaps a substitute into the selected matchday slot (663.5336ms)
+✔ career player in a custom starting XI is marked on the pitch, not on the bench (1232.433ms)
+✔ a player excluded from the squad cannot appear in the match (1197.5961ms)
+✔ injured and suspended players are excluded from the player match (1983.6644ms)
+✔ custom XI assignments preserve both slots when a formation repeats a position (250.1954ms)
+✔ Real Madrid uses a formation with two strikers (0.3886ms)
+✔ clubs with empty imported rosters receive a full generated squad in every playable league (1113.5031ms)
+✔ key moments offer more than 30 position-specific action choices (1005.5612ms)
+✔ live key moments cover the responsibilities of every position (332.5118ms)
+✔ selected passing actions resolve with their own attributes and match effects (958.7109ms)
+✔ player roles change match behavior and cover specialist styles (296.9141ms)
+✔ the agent gate enables transfer offers and a transfer acceptance path (321.4931ms)
+✔ hiring an agent requires enough money and charges the user (232.0849ms)
+✔ limited destination searches accept a move into another playable league (316.1559ms)
+✔ manager transfers reconcile the destination squad and survive save restoration (626.6852ms)
+✔ background leagues record player scoring and rating stats for cross-league browsing (3331.1129ms)
+✔ background-league player match histories are recorded and saved (3596.994ms)
+✔ world-league match stats avoid goalkeeper assists and cap individual match scoring (245.5994ms)
+✔ world-league player records use the simulated scorers and match statistics (198.1324ms)
+✔ career player starts only in their natural position across every field role (194.7537ms)
+✔ the best natural-position player starts and the user can replace them when tired (974.75ms)
+✔ a top-rated career player starts even when manager trust is low (181.2581ms)
+✔ developer mode edits attributes and shirt numbers persist (398.2379ms)
+✔ ST substitute enters only in the ST slot and does not replace another position (974.7556ms)
+✔ a poorly rated player can be substituted without losing the match result (806.1361ms)
+✔ 50 safe match situations include career-once events and persist their usage (473.6869ms)
+✔ weekly matches drive player performance, training and league results (3196.9148ms)
+✔ played matches record and persist match histories for NPC players (3163.8642ms)
+✔ league scorer totals follow every club's recorded goals and teammate ratings are saved (2628.5398ms)
+✔ weak foot and skill moves are not purchased with training points (168.3952ms)
+✔ weak foot and skill moves improve relevant in-match outcomes (168.6754ms)
+✔ assists and the award race use league-only player totals (2563.0406ms)
+✔ salary and match bonuses update a saved player balance without a transaction log (978.664ms)
+✔ fan approval reacts to good and poor performances and forecasts the next fixture (206.4919ms)
+✔ domestic award races ignore players with only non-league appearances (180.3857ms)
+✔ hiring a manager spends personal funds, saves the hire, and applies the new tactics (425.7054ms)
+✔ Messi is at Barcelona and Ronaldo is at Manchester United (27.5757ms)
+✔ Messi and Ronaldo use normal player ratings and development (363.8088ms)
+✔ restoring old saves removes Messi and Ronaldo's legacy legend protection (506.4221ms)
+✔ changing the career player's position recalculates overall for the new role (154.4586ms)
+✔ key-moment decisions change the live score and count only after full time (1205.4421ms)
+✔ live match clock pauses at key moments and resumes after a decision (738.2753ms)
+✔ full time resolves key moments that were left beyond the match clock (762.6067ms)
+✔ an in-match injury ends the player's participation and carries into recovery (1206.5333ms)
+✔ AI players develop with potential and context, and world-player growth persists (617.8706ms)
+✔ finishing tendencies and goalkeeper quality affect scoring chances (171.3312ms)
+✔ elite defenders and goalkeepers stop more goals across repeated matches (2477.0151ms)
+✔ saving and restoring during a live match preserves its pending goals and score (899.0255ms)
+✔ saving at a key moment resumes the paused decision without duplicating the result (893.5231ms)
+✔ career creation supports a roster-backed club in an imported league (53.3678ms)
+✔ restoring a legacy save normalizes imported real-player countries (416.5526ms)
+✔ all listed Premier League clubs build playable generated squads (163.5386ms)
+✖ save and restore preserve standings and future seeded results (4842.9604ms)
+✔ league rounds start at the first configured week and completed results include the user match (766.4638ms)
+✔ one-week simulation completes scheduled matches and stores stats for fixture history (914.9042ms)
+✔ selected World Cup players see only their nation's tournament matches in the fixture list (159.6887ms)
+✖ a full Premier League season completes with 38 matches per club (15776.1702ms)
+✔ unknown clubs and empty player names are rejected (24.7734ms)
+✖ season awards are recorded on every winner, including legends and other leagues (14854.22ms)
+✖ league winners receive a league champion trophy (14942.5609ms)
+✔ NPC league champions receive player honours and appear in season history (957.4469ms)
+✔ league Player of the Season comes from the champion club (149.0166ms)
+✔ every playable league receives its own non-global awards (144.0369ms)
+✔ background league strength is measured from the current squad (132.6344ms)
+✔ the trophy case groups identical trophies and shows the total count (130.0257ms)
+✔ legends and other leagues' players keep the trophies they win (371.2479ms)
+✔ development remains gradual and preserves the potential estimate (238.9839ms)
+✔ form lifts the displayed overall above the base and drops it when out of form (158.0968ms)
+✔ injured players are never selected for a match (1364.7245ms)
+✔ a fitter, stronger player is less likely to be injured (483.8869ms)
+✔ training injuries are rolled each week and heal over time (21937.9584ms)
+✔ World Cup calendar advances from a prior edition and does not replay a completed edition (278.5831ms)
+✔ the World Cup fixture calendar is unique, scheduled, and save-persistent (3739.4962ms)
+✔ selected World Cup group fixtures run in Match Sim and record only international results (2614.5023ms)
+✔ selected World Cup knockout fixtures use Match Sim and advance the bracket (1890.3972ms)
+✔ World Cup fixtures progress by date and completed matches do not replay after loading (3708.3316ms)
+✔ a season cannot finish before its scheduled World Cup resolves (364.102ms)
+✔ the Ballon d'Or ceremony is a next-season, persisted, one-time event (701.6929ms)
+✔ legacy World Cup schedules migrate without resetting the career save (857.8431ms)
+✔ the available national pool completes a balanced World Cup with durable honours (5614.957ms)
+✔ Champions League starts only after the first domestic season (4333.5793ms)
+✔ Messi and Ronaldo appear in UEFA competition only when their clubs qualify (2211.6193ms)
+▶ Champions League generates eight league-phase matches and all knockout rounds
+  ✔ Champions League schedule finishes before the season and leaves two rest days (1776.4055ms)
+✔ Champions League generates eight league-phase matches and all knockout rounds (3117.5642ms)
+✔ round of 16 pairs league-phase rank 1 with 16, 2 with 15, and so on (2947.2613ms)
+✔ Champions League state survives save and restore (3350.9031ms)
+✔ main fixture list includes scheduled Champions League matches for the user club (2886.6185ms)
+✔ upcoming Champions League knockout fixtures remain available as the next match (2239.29ms)
+✔ a live Champions League winner receives the trophy honour and keeps it after reload (2789.3509ms)
+✔ completed Champions League fixtures retain scores and shared fixture shape (2147.9935ms)
+✔ weekly simulation completes only Champions League fixtures scheduled for that week (4952.8328ms)
+✔ UEFA fixtures can be played through the live match simulation (4612.2603ms)
+✔ season simulation completes domestic leagues and Champions League together (25139.3495ms)
+✔ Champions League standings rank live points and retain form after each matchweek (1229.6912ms)
+✔ coaches receive tactical identities and select an eligible XI (10.5982ms)
+✔ accepted youth prospects develop through academy state (1.7195ms)
+✔ every professional player gets a normalized contract with start, expiry, wage, status and history (2089.6884ms)
+✔ contract durations are clamped between 1 and 5 years (1648.5365ms)
+✔ contract stage labels follow the 12/6/1 month lifecycle (0.8885ms)
+✔ remaining duration returns years and months without going negative (0.565ms)
+✔ the weekly advance processes stage notifications and expiry idempotently (3445.3486ms)
+✔ processing the same day twice never duplicates expiry or notifications (1261.1855ms)
+✔ a renewal negotiation can be accepted and updates the contract and ledger (1250.774ms)
+✔ a lowball renewal is rejected or countered, never silently accepted (1091.8356ms)
+✔ an offer can be withdrawn (1268.7634ms)
+✔ the user can sign a genuine free agent with no fee but ledgered costs (1111.4761ms)
+✔ signing a player already contracted elsewhere is refused (1017.0753ms)
+✔ pre-contract agreements follow the six-month rule and cannot double-sign (929.6492ms)
+✔ a pre-contract completes automatically when the original contract expires (5378.8765ms)
+✔ AI clubs sign suitable free agents; elite players attract elite clubs (5289.7696ms)
+✔ free-agent opening offers respect wage space and squad role (0.4341ms)
+✔ agent fees scale with wages and never fall below the floor (0.1427ms)
+✔ negotiations consider personality, manager trust and club standing (0.4408ms)
+✔ career save and reload preserves contracts, negotiations and free-agent state (1446.5682ms)
+✔ a free agent never remains registered at his former club and wages stop (749.5711ms)
+✔ no player appears at two clubs simultaneously after expiry and re-signing (693.1482ms)
+✔ AI managers renew important affordable players entering the final year (2045.2773ms)
+✔ AI managers refuse to renew declining, overpaid squad players and record the reason (0.6775ms)
+✖ clubs recruit from the free-agent market after a wave of expiries and keep squads playable (1954.1939ms)
+✔ expired players appear on the free-agent market exactly once (1571.7172ms)
+✔ AI clubs complete free-agent signings that register, pay and record history (1682.1088ms)
+✔ the squad-management controller prioritises critical clubs and goalkeeper cover (0.9134ms)
+✖ the user's expiring contract pauses the simulation until a decision (1514.8879ms)
+✖ accepting the club's renewal updates the contract and resumes the sim (1505.2251ms)
+✖ declining the renewal converts the user to a free agent with history preserved (1372.8169ms)
+✔ the agent searches immediately across every playable league with no cooldown (1003.0339ms)
+✔ the agent presents several comparable opportunities (1293.0632ms)
+✔ accepting a free-agent offer joins, registers and records the transfer (1092.1391ms)
+✔ no player is ever registered at two clubs after free-agency moves (4321.1636ms)
+✔ contract-expiry decisions, free-agent state and opportunities survive save/load (1956.0932ms)
+✔ a multi-season sim keeps every club playable with goalkeepers (24796.7723ms)
+✔ aiContractDecision and aiRenewalOffer are deterministic and budget-aware (0.7608ms)
+✔ contract renewal phases follow 12/6/3 month windows (1.8033ms)
+✔ normalizeContract produces consistent expiry/start and legacy fields (1.1627ms)
+✔ signing and expiring contracts update player state (1.8702ms)
+✔ evaluateContractOffer can reject unreasonable offers (0.6853ms)
+✔ high-overall scorers receive stronger production multipliers (2.1584ms)
+✔ only a fully developed, form-boosted 99 OVR receives peak production (0.5044ms)
+✔ elite goalkeepers do not receive outfield scoring rates (0.262ms)
+✔ Messi and Ronaldo use the same normal profile as any other high-rated player (1.4683ms)
+✖ configured club access uses final standings, titleholders and one unique entry per club (5.0992ms)
+✔ promotion and relegation preserve division sizes and return club moves (1.377ms)
+✔ coefficient history is points-per-club and performance places use the highest coefficients (0.7735ms)
+✔ FC 25 roster import groups supported leagues and normalizes player stats (33.1101ms)
+✔ FC 25 roster import rejects CSV without required data columns (1.0796ms)
+✔ FC 26 ratings import accepts supplied headers and fills blank league from club mapping (1.8843ms)
+✔ FC 26 real-player rows with blank country fields use their real nationalities (1.757ms)
+✔ FC 26 single-name football nicknames receive full imported names (1.779ms)
+✔ imported player profiles carry identity and financial fields into the game (1.0072ms)
+✖ every imported real player has a country code matching the game data (53.5572ms)
+✔ FC 26 ratings import skips fictional sample rows that masquerade as imported players (1.975ms)
+✔ combined rosters keep the FC26 player when the same league contains a duplicate (0.437ms)
+✖ every club across all supported leagues has its own original crest (4.505ms)
+✔ formation shirt color uses the primary color from that club's crest (0.9057ms)
+✖ supplemental player CSV imports role, estimate, performance, and club aliases (1.2159ms)
+✔ supplemental player profiles receive complete gameplay and finance fields (0.3976ms)
+✖ competition metadata builds joinable leagues from roster clubs and listed title contenders (3.688ms)
+✖ career league config contains configured top flights and second divisions (34.6202ms)
+✖ every supplied player is assigned to a playable career club (48.2553ms)
+✔ clubs receive distinct migrated finance profiles and ledger entries are idempotent (4.8449ms)
+✔ weekly finances and home match revenue are recorded once (43.2565ms)
+✔ market values respond to player profile and transfers move money and registration atomically (3.2245ms)
+✔ the board only releases transfer money that is genuinely spare (1.4006ms)
+✔ a season is only reviewed once, and spending is never re-released (3.2221ms)
+✔ spending transfer money reduces available funds without touching the reserve (12.7139ms)
+✔ Lamine Yamal keeps his full Spanish name and a separate display name (747.2182ms)
+✔ Lamine Yamal's display name survives an accented/imported variant (0.5745ms)
+✔ João Cancelo keeps his compound Portuguese given name and surname (919.9725ms)
+✔ a single-token nickname is not mistaken for a full name (0.7952ms)
+✔ Iberian particles and accents split correctly (0.5278ms)
+✔ accented and unaccented names resolve to the same comparison key (0.3467ms)
+✔ the same player with different spacing/accents is a duplicate (578.0536ms)
+✔ two different players with similar names are never merged (0.7228ms)
+✔ a conflicting date of birth vetoes a name-only match (1.215ms)
+✔ goalkeepers import with a complete, non-zero attribute line (683.4721ms)
+✔ goalkeeper estimation never produces zeroes (0.8967ms)
+✔ outfield CSV values do not become goalkeeper values (761.6608ms)
+✔ goalkeeper OVR is driven only by goalkeeping attributes (1.1896ms)
+✔ an outfield player's rating ignores goalkeeper attributes (0.6096ms)
+✔ imported and generated goalkeepers use the same rating standard (3.1953ms)
+✔ missing goalkeeper attributes receive sensible fallbacks (0.2612ms)
+✔ training updates goalkeeper OVR and position changes keep attributes (2.2822ms)
+✔ generated goalkeepers receive a full, coherent attribute line (6.3057ms)
+✔ generated goalkeepers never share an outfield attribute line (0.7916ms)
+✔ goalkeepers develop on their own age curve (9.6955ms)
+✔ goalkeeper quality has a meaningful but bounded effect on results (0.6768ms)
+✔ goalkeeper attributes affect every shot-stopping facet (0.5027ms)
+✔ a goalkeeper is selected in goal instead of an outfielder (1868.5447ms)
+✔ goalkeeper statistics are recorded for keepers only (1.1226ms)
+✔ a world-league keeper records saves, shots faced and clean sheets (6808.2339ms)
+✔ every career player carries a display name and full name (1213.1308ms)
+✔ save percentage is derived from saves and shots faced (0.333ms)
+✔ an injured or suspended keeper is replaced by the backup (1099.1089ms)
+✔ the world XI builder never places an outfielder in goal (0.5861ms)
+✔ legacy saves without identity fields still load (947.5744ms)
+✔ a legacy save round-trips through save/restore (2188.5041ms)
+✔ determinism: the same seed produces identical goalkeeper attributes (0.4275ms)
+✔ the goalkeeper quality helper is bounded for absurd inputs (0.1922ms)
+✔ clubs receive a persistent hierarchy with real managers for known clubs (5.2843ms)
+✔ owner requests create traceable decisions and change relationships (1.3105ms)
+✔ staff wages are idempotent and manager employment has a career record (1.8124ms)
+✔ World Cup schedule starts exactly four years after career creation (4.2934ms)
+✔ World Cup fixture dates use separate group and knockout matchdays (1.255ms)
+✔ national team selection creates a balanced 26-player squad (1.5821ms)
+✔ national team selection rejects squads without sufficient positional cover (0.5347ms)
+✔ national team selection rewards current form over a reputation-free OVR gap (0.6363ms)
+✔ World Cup field sizes fit the available qualified nations (0.3504ms)
+✔ international group draws and standings retain all teams and score correctly (2.2069ms)
+✔ international group standings use head-to-head before overall goal difference (0.8953ms)
+✔ club investments reserve cash, complete on schedule, and expand stadium capacity (5.1578ms)
+✔ unaffordable investments are rejected (1.3757ms)
+✔ missing strength data safely falls back instead of reading defence on undefined (48.4312ms)
+✔ event-driven match results replay deterministically from the same seed (84.7079ms)
+✔ Messi and Ronaldo use ordinary scoring and stay within the league goal cap (838.3256ms)
+✔ players already at 50 league goals cannot score again in that league (530.3473ms)
+✔ match score, xG, and player and team statistics match simulated events (4236.8201ms)
+✔ extra-time aggregation preserves player minutes, events, and team stats (23.2347ms)
+✔ the selected player role changes their event-driven match actions (6918.8676ms)
+✔ home advantage produces a modest long-run scoring benefit (7817.7322ms)
+✔ higher-quality squads and goalkeepers improve match outcomes (18097.6142ms)
+✔ gravity is the real thing and a free fall follows h = ½gt² (3.7528ms)
+✔ each bounce loses energy, so hops get lower and shorter (1.5093ms)
+✔ restitution and the resting threshold behave like a real ball (0.4524ms)
+✔ a hard impact squashes more than a soft one (0.2745ms)
+✔ the ball always stays on or above the floor and keeps moving (1.9375ms)
+✔ screen transform anchors the squash at the floor and shrinks with height (0.4945ms)
+✔ physique: a heavy player is slower and stronger, a short one jumps less (1.2234ms)
+✔ physique: a neutral build changes nothing, and the pass is idempotent (2.545ms)
+✔ physique: build labels read like a scouting report (0.7233ms)
+✖ central database follows the supplied schema and indexes imported players (893.8803ms)
+✔ central loader uses the canonical player database for new career data (3770.6334ms)
+✔ new careers in all five leagues contain only players from the master database (4087.8759ms)
+✔ full master rosters can transfer within their database-sized registration limit (2259.8363ms)
+✔ CSV parsing preserves quoted commas, quotes, and UTF-8 names (79.3044ms)
+✔ database validation rejects duplicate shirt numbers within a club (71.6416ms)
+✔ legacy migration preserves old career IDs and deduplicates repeated source rows (58.3889ms)
+✔ player levels and contextual decisions distinguish elite strikers and playmakers (37.3934ms)
+✔ relevant attributes dominate mismatched overall for specialized actions (1.6281ms)
+✔ NPC match performances and position-specific ratings respond to ability and fatigue (4.6278ms)
+✔ background quick-match probabilities remain seeded and are affected by player XI quality (28.214ms)
+✔ registry includes data definitions for every gameplay style and tiers (1.714ms)
+✔ long-shot ability is contextual and plus remains probabilistic-strength, not certainty (3.557ms)
+✔ finesse and other categories only influence matching match hooks (2.0117ms)
+✔ match performance and passing styles enter normal simulation stats and evidence (6.165ms)
+✔ valid repeated training/performance evidence unlocks and upgrades without duplicates (2.3287ms)
+✔ legacy playstyle arrays migrate safely and legends receive no progression (2.23ms)
+✔ players always receive a category-safe secondary position (6.8216ms)
+✔ players receive a valid personality by default (1.8047ms)
+✔ identical attributes produce a deterministic OVR (0.8612ms)
+✔ generated strikers keep shooting within an overall-based ceiling (2.2357ms)
+✔ position profiles produce different ratings and reward relevant attributes (0.8762ms)
+✔ goalkeeper OVR uses goalkeeper-specific attributes (0.6682ms)
+✔ potential is separate from current OVR and history records only real changes (0.7017ms)
+✔ imported starting OVR is calibrated while attributes continue to drive development (0.5181ms)
+✔ secondary positions receive a small suitability adjustment (0.5224ms)
+✔ career-player form remains a temporary boost within the same ceiling (0.6796ms)
+✔ non-career players remain capped by potential when in excellent form (0.345ms)
+✔ Messi and Ronaldo no longer receive fixed legend production profiles (0.2923ms)
+✔ NPC overall changes are recorded in rating history (0.354ms)
+✔ clubs recruit scouts and record the recruitment expense exactly once (3.6724ms)
+✔ scouting assignments progress and produce estimates from real player data (3.0728ms)
+✔ shortlists are persistent data and youth assignments generate bounded prospects (3.8504ms)
+✔ stamina migrates legacy fatigue and stays 0-100 (2.3964ms)
+✔ stamina loss, fatigue and recovery remain bounded (5.8078ms)
+✔ stamina loss scales with actual match minutes (0.5874ms)
+✔ low stamina raises injury risk but Endurance Engine reduces it (3.3799ms)
+✔ signing and selling players changes squad and team ratings (12.7981ms)
+✔ improving a player raises the relevant team rating (2.8373ms)
+✔ injury changes matchday rating, not squad or starting-XI rating (2.4966ms)
+✔ player-career permissions expose observation/focus only and deny club staff spending (2360.2446ms)
+✔ manager career can hire specialists and staff costs are ledger-backed and idempotent (1670.5091ms)
+✔ coach grade thresholds and specialised ability are meaningful (2.2ms)
+✔ season development changes detailed attributes, updates calculated OVR, and cannot be repeated (3.8275ms)
+✔ older players can decline without independent OVR edits and potential is preserved (5.5172ms)
+✔ goalkeeper and world player types retain positional attribute calculations (1.5776ms)
+✔ club needs prioritize an undermanned role over a deep, high-quality role (4.0414ms)
+✔ high-potential young players can rate as a fit and agent search tiers are bounded (0.839ms)
+✔ agent searches are window-limited and CPU transfers preserve unique squad membership through save/load (4329.5241ms)
+▶ coaching ranks cover F through S and profiles migrate with attributes
+  ✔ coach salaries scale realistically from beginner to world-class (3.0518ms)
+✔ coaching ranks cover F through S and profiles migrate with attributes (7.6744ms)
+✔ registered squads are capped and expose a reserve pool (23.4805ms)
+✔ league fixture dates never share a day and give clubs 1 to 4 days rest (1.5291ms)
+▶ season winners persist trophies on the club record
+  ✔ simulate one day advances the calendar one day instead of one week (2622.1373ms)
+✔ season winners persist trophies on the club record (2623.438ms)
+✔ formatDecimal renders fractional numbers with exactly two places (1.6003ms)
+✔ formatDecimal keeps integers readable and rejects invalid values (0.7652ms)
+ℹ tests 320
+ℹ suites 0
+ℹ pass 304
+ℹ fail 16
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 163147.81
+
+✖ failing tests:
+
+test at test\career.test.mjs:3351:1
+✖ save and restore preserve standings and future seeded results (4842.9604ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+  +     away: 'Fulham',
+  +     awayGoals: 1,
+  -     away: 'Ipswich Town',
+  -     awayGoals: 0,
+        home: 'Arsenal',
+  +     homeGoals: 3
+  +   },
+  +   {
+  +     away: 'Everton',
+  +     awayGoals: 2,
+  +     home: 'Hull City',
+        homeGoals: 2
+      },
+      {
+  +     away: 'Crystal Palace',
+  +     awayGoals: 2,
+  +     home: 'Ipswich Town',
+  +     homeGoals: 3
+  +   },
+  +   {
+  +     away: 'Coventry City',
+  +     awayGoals: 0,
+  -     away: 'Hull City',
+  -     awayGoals: 1,
+        home: 'Leeds United',
+  +     homeGoals: 0
+  -     homeGoals: 1
+      },
+      {
+  +     away: 'Chelsea',
+  -     away: 'Fulham',
+        awayGoals: 1,
+        home: 'Liverpool',
+        homeGoals: 3
+      },
+      {
+  +     away: 'Brighton & Hove Albion',
+  +     awayGoals: 2,
+  -     away: 'Everton',
+  -     awayGoals: 0,
+        home: 'Manchester City',
+  +     homeGoals: 3
+  -     homeGoals: 0
+      },
+      {
+  +     away: 'Brentford',
+  -     away: 'Crystal Palace',
+        awayGoals: 1,
+        home: 'Manchester United',
+  +     homeGoals: 2
+  -     homeGoals: 1
+      },
+      {
+  +     away: 'Bournemouth',
+  -     away: 'Coventry City',
+        awayGoals: 1,
+        home: 'Newcastle United',
+        homeGoals: 1
+      },
+      {
+  +     away: 'Aston Villa',
+  +     awayGoals: 0,
+  -     away: 'Chelsea',
+  -     awayGoals: 6,
+        home: 'Nottingham Forest',
+  +     homeGoals: 2
+  -     homeGoals: 0
+      },
+      {
+  +     away: 'Tottenham Hotspur',
+  -     away: 'Brighton & Hove Albion',
+        awayGoals: 1,
+        home: 'Sunderland',
+  -     homeGoals: 0
+  -   },
+  -   {
+  -     away: 'Brentford',
+  -     awayGoals: 2,
+  -     home: 'Tottenham Hotspur',
+        homeGoals: 2
+      },
+  -   {
+  -     away: 'Bournemouth',
+  -     awayGoals: 0,
+  -     home: 'Aston Villa',
+  -     homeGoals: 3
+  -   }
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3366:12)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { home: 'Arsenal', away: 'Fulham', homeGoals: 3, awayGoals: 1 }, { home: 'Hull City', away: 'Everton', homeGoals: 2, awayGoals: 2 }, { home: 'Ipswich Town', away: 'Crystal Palace', homeGoals: 3, awayGoals: 2 }, { home: 'Leeds United', away: 'Coventry City', homeGoals: 0, awayGoals: 0 }, { home: 'Liverpool', away: 'Chelsea', homeGoals: 3, awayGoals: 1 }, { home: 'Manchester City', away: 'Brighton & Hove Albion', homeGoals: 3, awayGoals: 2 }, { home: 'Manchester United', away: 'Brentford', homeGoals: 2, awayGoals: 1 }, { home: 'Newcastle United', away: 'Bournemouth', homeGoals: 1, awayGoals: 1 }, { home: 'Nottingham Forest', away: 'Aston Villa', homeGoals: 2, awayGoals: 0 }, { home: 'Sunderland', away: 'Tottenham Hotspur', homeGoals: 2, awayGoals: 1 } ],
+    expected: [ { home: 'Arsenal', away: 'Ipswich Town', homeGoals: 2, awayGoals: 0 }, { home: 'Leeds United', away: 'Hull City', homeGoals: 1, awayGoals: 1 }, { home: 'Liverpool', away: 'Fulham', homeGoals: 3, awayGoals: 1 }, { home: 'Manchester City', away: 'Everton', homeGoals: 0, awayGoals: 0 }, { home: 'Manchester United', away: 'Crystal Palace', homeGoals: 1, awayGoals: 1 }, { home: 'Newcastle United', away: 'Coventry City', homeGoals: 1, awayGoals: 1 }, { home: 'Nottingham Forest', away: 'Chelsea', homeGoals: 0, awayGoals: 6 }, { home: 'Sunderland', away: 'Brighton & Hove Albion', homeGoals: 0, awayGoals: 1 }, { home: 'Tottenham Hotspur', away: 'Brentford', homeGoals: 2, awayGoals: 2 }, { home: 'Aston Villa', away: 'Bournemouth', homeGoals: 3, awayGoals: 0 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:3587:1
+✖ a full Premier League season completes with 38 matches per club (15776.1702ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'liverpool:Louie Webb',
+  -   'manchestercity:Erling Haaland'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3682:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'liverpool:Louie Webb' ],
+    expected: [ 'liverpool:Louie Webb', 'manchestercity:Erling Haaland' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:3769:1
+✖ season awards are recorded on every winner, including legends and other leagues (14854.22ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3777:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\career.test.mjs:3826:1
+✖ league winners receive a league champion trophy (14942.5609ms)
+  Error: Every playable league must finish, and the Champions League must finish before advancing.
+      at Career.advanceSeason (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/src/career.mjs:6820:13)
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/career.test.mjs:3835:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\contract-management.test.mjs:159:1
+✖ clubs recruit from the free-agent market after a wave of expiries and keep squads playable (1954.1939ms)
+  AssertionError [ERR_ASSERTION]: the wave must shrink the squad first (29 -> 23)
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:173:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\contract-management.test.mjs:295:1
+✖ the user's expiring contract pauses the simulation until a decision (1514.8879ms)
+  AssertionError [ERR_ASSERTION]: the expiry must open a pending decision
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:299:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\contract-management.test.mjs:324:1
+✖ accepting the club's renewal updates the contract and resumes the sim (1505.2251ms)
+  TypeError: Cannot read properties of null (reading 'clubOffer')
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:332:45)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\contract-management.test.mjs:357:1
+✖ declining the renewal converts the user to a free agent with history preserved (1372.8169ms)
+  Error: There is no contract decision to decline.
+      at Career.declineUserContract (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/src/career.mjs:10174:13)
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:365:25)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\europe.test.mjs:20:1
+✖ configured club access uses final standings, titleholders and one unique entry per club (5.0992ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + Set(7) {
+  - Set(6) {
+      'e1',
+      'e2',
+      'e4',
+  +   'e5',
+      'f1',
+      'f4',
+      'f5'
+    }
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/europe.test.mjs:43:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1103:25)
+      at Test.start (node:internal/test_runner/test:1000:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Set(7) { 'e2', 'f5', 'e5', 'e4', 'e1', 'f4', 'f1' },
+    expected: Set(6) { 'e1', 'e2', 'e4', 'f1', 'f4', 'f5' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:114:1
+✖ every imported real player has a country code matching the game data (53.5572ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(realPlayers.length >= 90)
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:131:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:170:1
+✖ every club across all supported leagues has its own original crest (4.505ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  96 !== 296
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:178:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 96,
+    expected: 296,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:190:1
+✖ supplemental player CSV imports role, estimate, performance, and club aliases (1.2159ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 3
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:199:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1103:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:785:18)
+      at Test.postRun (node:internal/test_runner/test:1232:19)
+      at Test.run (node:internal/test_runner/test:1160:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:237:1
+✖ competition metadata builds joinable leagues from roster clubs and listed title contenders (3.688ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(PLAYABLE_LEAGUES.includes("Eredivisie"))
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:257:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1103:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:785:18)
+      at Test.postRun (node:internal/test_runner/test:1232:19)
+      at Test.run (node:internal/test_runner/test:1160:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:261:1
+✖ career league config contains configured top flights and second divisions (34.6202ms)
+  AssertionError [ERR_ASSERTION]: Betway Premiership
+  
+  undefined !== 16
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:278:12)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 16,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\fc25-roster.test.mjs:293:1
+✖ every supplied player is assigned to a playable career club (48.2553ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  28 !== 67
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/fc25-roster.test.mjs:314:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 28,
+    expected: 67,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\player-database.test.mjs:16:1
+✖ central database follows the supplied schema and indexes imported players (893.8803ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(
+  
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/player-database.test.mjs:40:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

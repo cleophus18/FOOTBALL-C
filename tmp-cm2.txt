@@ -1,0 +1,93 @@
+﻿✔ every professional player gets a normalized contract with start, expiry, wage, status and history (691.5196ms)
+✔ contract durations are clamped between 1 and 5 years (636.603ms)
+✔ contract stage labels follow the 12/6/1 month lifecycle (0.4158ms)
+✔ remaining duration returns years and months without going negative (0.1895ms)
+✔ the weekly advance processes stage notifications and expiry idempotently (1334.1371ms)
+✔ processing the same day twice never duplicates expiry or notifications (513.9661ms)
+✔ a renewal negotiation can be accepted and updates the contract and ledger (543.2225ms)
+✔ a lowball renewal is rejected or countered, never silently accepted (612.4757ms)
+✔ an offer can be withdrawn (521.7827ms)
+✔ the user can sign a genuine free agent with no fee but ledgered costs (502.5033ms)
+✔ signing a player already contracted elsewhere is refused (574.0605ms)
+✔ pre-contract agreements follow the six-month rule and cannot double-sign (467.271ms)
+✔ a pre-contract completes automatically when the original contract expires (3196.0344ms)
+✔ AI clubs sign suitable free agents; elite players attract elite clubs (3532.6958ms)
+✔ free-agent opening offers respect wage space and squad role (0.2415ms)
+✔ agent fees scale with wages and never fall below the floor (0.0603ms)
+✔ negotiations consider personality, manager trust and club standing (0.3087ms)
+✔ career save and reload preserves contracts, negotiations and free-agent state (1058.5863ms)
+✔ a free agent never remains registered at his former club and wages stop (500.0032ms)
+✔ no player appears at two clubs simultaneously after expiry and re-signing (488.6509ms)
+✔ AI managers renew important affordable players entering the final year (723.3805ms)
+✔ AI managers refuse to renew declining, overpaid squad players and record the reason (0.3939ms)
+✖ clubs recruit from the free-agent market after a wave of expiries and keep squads playable (609.4048ms)
+✔ expired players appear on the free-agent market exactly once (530.9932ms)
+✔ AI clubs complete free-agent signings that register, pay and record history (870.616ms)
+✔ the squad-management controller prioritises critical clubs and goalkeeper cover (0.4955ms)
+✖ the user's expiring contract pauses the simulation until a decision (586.8018ms)
+✖ accepting the club's renewal updates the contract and resumes the sim (714.7868ms)
+✖ declining the renewal converts the user to a free agent with history preserved (737.772ms)
+✔ the agent searches immediately across every playable league with no cooldown (488.1371ms)
+✔ the agent presents several comparable opportunities (559.3546ms)
+✔ accepting a free-agent offer joins, registers and records the transfer (490.1838ms)
+✔ no player is ever registered at two clubs after free-agency moves (2480.721ms)
+✔ contract-expiry decisions, free-agent state and opportunities survive save/load (1220.0931ms)
+✔ a multi-season sim keeps every club playable with goalkeepers (17762.1893ms)
+✔ aiContractDecision and aiRenewalOffer are deterministic and budget-aware (0.4912ms)
+✔ contract renewal phases follow 12/6/3 month windows (1.5142ms)
+✔ normalizeContract produces consistent expiry/start and legacy fields (0.6433ms)
+✔ signing and expiring contracts update player state (0.9842ms)
+✔ evaluateContractOffer can reject unreasonable offers (0.3374ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 36
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27969.5864
+
+✖ failing tests:
+
+test at test\contract-management.test.mjs:159:1
+✖ clubs recruit from the free-agent market after a wave of expiries and keep squads playable (609.4048ms)
+  AssertionError [ERR_ASSERTION]: the wave must shrink the squad first (29 -> 23)
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:173:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\contract-management.test.mjs:295:1
+✖ the user's expiring contract pauses the simulation until a decision (586.8018ms)
+  AssertionError [ERR_ASSERTION]: the expiry must open a pending decision
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:299:10)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\contract-management.test.mjs:324:1
+✖ accepting the club's renewal updates the contract and resumes the sim (714.7868ms)
+  TypeError: Cannot read properties of null (reading 'clubOffer')
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:332:45)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
+
+test at test\contract-management.test.mjs:357:1
+✖ declining the renewal converts the user to a free agent with history preserved (737.772ms)
+  Error: There is no contract decision to decline.
+      at Career.declineUserContract (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/src/career.mjs:10174:13)
+      at TestContext.<anonymous> (file:///C:/Users/cleot/Documents/games/FOOTBALL%20C/test/contract-management.test.mjs:365:25)
+      at async Test.run (node:internal/test_runner/test:1110:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:785:7)
