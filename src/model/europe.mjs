@@ -193,9 +193,9 @@ export function qualifyEuropeanClubs({
     const order = standings[league?.league.id] ?? league?.league.teamIds ?? [];
     const position = spot.position ?? 5;
     const clubId = order[position - 1];
-    if (add(clubId, spot.route ?? "european-performance-spot"))
+    if (clubId && !seen.has(clubId)) {
       performancePositions.set(spot.nation, position);
-    else if (seen.has(clubId)) performancePositions.set(spot.nation, position);
+    }
   }
   for (const [nation, allocation] of Object.entries(accessList)) {
     const league = leagues.find(
@@ -204,17 +204,19 @@ export function qualifyEuropeanClubs({
     );
     if (!league) continue;
     const order = standings[league.league.id] ?? league.league.teamIds;
+    const normalAllocationSize = (allocation.direct ?? 0) + (allocation.qualifying ?? 0);
+    const performancePosition = performancePositions.get(nation);
+    const hasExtraSpot = extraSpots.some((spot) => spot.nation === nation);
     const ranks = [
       ...(allocation.qualifyingPositions ?? []),
-      ...(extraSpots.some((spot) => spot.nation === nation) &&
-      performancePositions.has(nation)
-        ? [performancePositions.get(nation)]
+      ...(hasExtraSpot && performancePosition && performancePosition <= normalAllocationSize
+        ? [performancePosition]
         : []),
       ...(!extraSpots.length && allocation.extraPosition
         ? [allocation.extraPosition]
         : []),
       ...Array.from(
-        { length: (allocation.direct ?? 0) + (allocation.qualifying ?? 0) },
+        { length: normalAllocationSize },
         (_, i) => i + 1,
       ),
     ]

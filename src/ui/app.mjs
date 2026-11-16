@@ -3751,8 +3751,6 @@ function contractOfferForm(playerId, kind, defaults = {}) {
     </form>
   </section></div>`;
 }
-3754:
-
 function renderContractsTab() {
   const player = career.player;
   const contract = player.contract ?? {};

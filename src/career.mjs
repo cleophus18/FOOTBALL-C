@@ -6976,6 +6976,9 @@ export class Career {
   }
 
   scheduleDomesticLeague(league) {
+    if (league.fixtureWeeks?.length === league.fixtures?.length) {
+      return league;
+    }
     if (!this.calendar?.length) {
       this.calendar = seasonWeeks(this.season, this.seasonWeekCount ?? 56);
     }
