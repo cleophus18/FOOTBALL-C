@@ -45,6 +45,9 @@ import {
   CONTRACT_STATUSES,
   contractRemainingDuration,
   freeAgentExpectedWage,
+  contractExpiryDay,
+  daysUntilExpiry,
+  contractStageLabel,
 } from "../core/contracts.mjs";
 import { agentSearchTerms } from "../model/transfer-market.mjs";
 import {
@@ -3975,7 +3978,7 @@ function renderContractsTab() {
             <td><b>${playerProfileLink(t.player, `${t.player.first} ${t.player.last}`)}</b></td>
             <td>${esc(t.player.position)}</td>
             <td class="world-rating">${t.player.overall}</td>
-            <td>${t.player.dob != null ? ageOn(t.player.dob, currentDay()) : "—"}</td>
+            <td>${t.player.dob != null ? ageOn(t.player.dob, currentDay) : "—"}</td>
             <td>${t.remaining != null ? `${t.remaining} days` : "—"}</td>
             <td><span class="contract-stage is-${esc(t.stage)}">${{ "twelve-months": "12 Months", "six-months": "6 Months", "final-month": "Final Month", expired: "Expired", normal: "—" }[t.stage] ?? t.stage}</span></td>
             <td>${esc(t.player.contract?.squadRole ?? "—")}</td>
