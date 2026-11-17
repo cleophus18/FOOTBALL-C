@@ -15211,47 +15211,50 @@ this.applyCoachFormations();
       throw new Error("A career simulation is already running.");
     this._simulationLock = true;
     try {
-      if (this.seasonComplete) {
-        throw new Error("The season is already complete.");
-      }
-      this.finishLiveMatchForSimulation();
-
-      if (
-        this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
-          (moment) => !moment.resolved,
-        )
-      ) {
-        throw new Error(
-          "Resolve your outstanding key moments before simulating.",
-        );
-      }
-      if (this.matchSimulation && this.matchSimulation.status !== "finished") {
-        throw new Error("Finish the live match before simulating the week.");
-      }
-
-      const leagueResultsBefore = this.results.length;
-      const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
-      const completeCurrentMatchAutomatically = () => {
-        this.finishLiveMatchForSimulation();
-      };
-
-      const report = this.advanceWeek();
-      if (report.userMatch) completeCurrentMatchAutomatically();
-
-      const leagueMatchesSimulated = this.results.length - leagueResultsBefore;
-      const competitionMatchesSimulated =
-        this.getChampionsLeagueFixtureCount() - competitionResultsBefore;
-      return {
-        week: this.week,
-        weeksSimulated: 1,
-        leagueMatchesSimulated,
-        matchesSimulated: leagueMatchesSimulated + competitionMatchesSimulated,
-        competitionMatchesSimulated,
-        report: this.lastReport ?? report,
-      };
+      return this._advanceWeekInternal();
     } finally {
       this._simulationLock = false;
     }
+  }
+
+  _advanceWeekInternal() {
+    if (this.seasonComplete) {
+      throw new Error("The season is already complete.");
+    }
+    this.finishLiveMatchForSimulation();
+    if (
+      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+        (moment) => !moment.resolved,
+      )
+    ) {
+      throw new Error(
+        "Resolve your outstanding key moments before simulating.",
+      );
+    }
+    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+      throw new Error("Finish the live match before simulating the week.");
+    }
+
+    const leagueResultsBefore = this.results.length;
+    const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
+    const completeCurrentMatchAutomatically = () => {
+      this.finishLiveMatchForSimulation();
+    };
+
+    const report = this.advanceWeek();
+    if (report.userMatch) completeCurrentMatchAutomatically();
+
+    const leagueMatchesSimulated = this.results.length - leagueResultsBefore;
+    const competitionMatchesSimulated =
+      this.getChampionsLeagueFixtureCount() - competitionResultsBefore;
+    return {
+      week: this.week,
+      weeksSimulated: 1,
+      leagueMatchesSimulated,
+      matchesSimulated: leagueMatchesSimulated + competitionMatchesSimulated,
+      competitionMatchesSimulated,
+      report: this.lastReport ?? report,
+    };
   }
 
   simulateOneDay() {
@@ -15283,9 +15286,7 @@ this.applyCoachFormations();
       const nextWeek = this.week + 1;
       const matchday = this.calendar[nextWeek]?.matchday;
       if (Number.isFinite(matchday) && this.dayCursor >= matchday) {
-        this._simulationLock = false;
-        const result = this.simulateOneWeek();
-        this._simulationLock = true;
+        const result = this._advanceWeekInternal();
         this.dayCursor = this.calendar[this.week]?.matchday ?? this.dayCursor;
         return {
           ...result,
@@ -15311,6 +15312,46 @@ this.applyCoachFormations();
     } finally {
       this._simulationLock = false;
     }
+  }
+
+  _advanceWeekInternal() {
+    if (this.seasonComplete) {
+      throw new Error("The season is already complete.");
+    }
+    this.finishLiveMatchForSimulation();
+    if (
+      this.lastReport?.userMatch?.playerResult?.keyMoments?.some(
+        (moment) => !moment.resolved,
+      )
+    ) {
+      throw new Error(
+        "Resolve your outstanding key moments before simulating.",
+      );
+    }
+    if (this.matchSimulation && this.matchSimulation.status !== "finished") {
+      throw new Error("Finish the live match before simulating the week.");
+    }
+
+    const leagueResultsBefore = this.results.length;
+    const competitionResultsBefore = this.getChampionsLeagueFixtureCount();
+    const completeCurrentMatchAutomatically = () => {
+      this.finishLiveMatchForSimulation();
+    };
+
+    const report = this.advanceWeek();
+    if (report.userMatch) completeCurrentMatchAutomatically();
+
+    const leagueMatchesSimulated = this.results.length - leagueResultsBefore;
+    const competitionMatchesSimulated =
+      this.getChampionsLeagueFixtureCount() - competitionResultsBefore;
+    return {
+      week: this.week,
+      weeksSimulated: 1,
+      leagueMatchesSimulated,
+      matchesSimulated: leagueMatchesSimulated + competitionMatchesSimulated,
+      competitionMatchesSimulated,
+      report: this.lastReport ?? report,
+    };
   }
 
   simulateToSeasonEnd() {
