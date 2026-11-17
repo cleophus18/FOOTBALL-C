@@ -647,7 +647,8 @@ function teamUnitQuality(xi, unit) {
 }
 
 function teamTacticalModifier(club, xi) {
-  const style = club.manager?.playstyle ?? club.manager?.style ?? "Balanced";
+  const manager = club.manager;
+  const style = manager?.playstyle ?? manager?.style ?? "Balanced";
   const tactical = {
     Possession: { attack:1.025, defence:1.005, preferred:["tikiTaka","firstTouch","technical","incisivePass"] },
     "Tiki-Taka": { attack:1.03, defence:1, preferred:["tikiTaka","firstTouch","technical","incisivePass"] },
@@ -660,14 +661,84 @@ function teamTacticalModifier(club, xi) {
     "Long Ball": { attack:1.015, defence:1.01, preferred:["longBallPass","aerial","powerHeader"] },
     Balanced: { attack:1, defence:1, preferred:[] },
   }[style] ?? { attack:1, defence:1, preferred:[] };
+  
+  // Personality-based tactical modifiers
+  let personalityAttackMod = 1;
+  let personalityDefenceMod = 1;
+  
+  if (manager?.personality) {
+    const traits = manager.personality;
+    // Possession Specialist - better attack through possession
+    if (traits.includes("Possession Specialist")) {
+      personalityAttackMod *= 1.015;
+      personalityDefenceMod *= 1.005;
+    }
+    // High-Press Specialist - better attack, slightly worse defence
+    if (traits.includes("High-Press Specialist")) {
+      personalityAttackMod *= 1.02;
+      personalityDefenceMod *= 0.995;
+    }
+    // Defensive Strategist - better defence, worse attack
+    if (traits.includes("Defensive Strategist")) {
+      personalityAttackMod *= 0.97;
+      personalityDefenceMod *= 1.03;
+    }
+    // Counterattacking Specialist - better attack on counter, good defence
+    if (traits.includes("Counterattacking Specialist")) {
+      personalityAttackMod *= 1.025;
+      personalityDefenceMod *= 1.01;
+    }
+    // Attacking - better attack
+    if (traits.includes("Attacking")) {
+      personalityAttackMod *= 1.015;
+    }
+    // Pragmatic - balanced, adapts to opponent
+    if (traits.includes("Pragmatic")) {
+      personalityAttackMod *= 1.005;
+      personalityDefenceMod *= 1.005;
+    }
+    // Disciplined - better defence
+    if (traits.includes("Disciplined")) {
+      personalityDefenceMod *= 1.01;
+    }
+    // Risk-Taker - more attack, less defence
+    if (traits.includes("Risk-Taker")) {
+      personalityAttackMod *= 1.02;
+      personalityDefenceMod *= 0.99;
+    }
+    // Patient - slight defensive bonus
+    if (traits.includes("Patient")) {
+      personalityDefenceMod *= 1.005;
+    }
+    // Tactical Genius - small bonus to both
+    if (traits.includes("Tactical Genius")) {
+      personalityAttackMod *= 1.005;
+      personalityDefenceMod *= 1.005;
+    }
+    // Experienced-Player Specialist - defensive bonus
+    if (traits.includes("Experienced-Player Specialist")) {
+      personalityDefenceMod *= 1.01;
+    }
+  }
+  
   const fit = xi.length ? xi.reduce((sum, player) => sum + (player.playStyles?.unlocked ?? []).filter((badge) => tactical.preferred.includes(badge.id)).length, 0) / xi.length : 0;
   const fitModifier = 1 + clamp(fit * 0.007, 0, 0.035);
-  const coach = club.manager?.coachingAttributes ?? {};
+  const coach = manager?.coachingAttributes ?? {};
   const preparation = 1 + clamp(((coach.matchPreparation ?? 50) - 50) * 0.0007, -0.035, 0.035);
   const tacticalAwareness = 1 + clamp(((coach.tacticalIntelligence ?? 50) - 50) * 0.0006, -0.03, 0.03);
   const decisionMaking = 1 + clamp(((coach.inGameDecisionMaking ?? 50) - 50) * 0.0004, -0.02, 0.02);
+  
+  // Risk tolerance affects tactical approach
+  const riskTolerance = manager?.riskTolerance ?? 0.5;
+  const riskAttackMod = 1 + (riskTolerance - 0.5) * 0.04; // -2% to +2%
+  const riskDefenceMod = 1 - (riskTolerance - 0.5) * 0.04; // +2% to -2%
+  
+  // Tactical flexibility - higher flexibility means better adaptation
+  const tacticalFlexibility = manager?.tacticalFlexibility ?? 0.5;
+  const flexibilityMod = 1 + (tacticalFlexibility - 0.5) * 0.02; // -1% to +1%
+  
   return {
-    attack: tactical.attack * fitModifier * preparation * tacticalAwareness,
-    defence: tactical.defence * fitModifier * preparation * decisionMaking,
+    attack: tactical.attack * fitModifier * preparation * tacticalAwareness * personalityAttackMod * riskAttackMod * flexibilityMod,
+    defence: tactical.defence * fitModifier * preparation * decisionMaking * personalityDefenceMod * riskDefenceMod * flexibilityMod,
   };
 }

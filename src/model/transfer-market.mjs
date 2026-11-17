@@ -234,20 +234,64 @@ export function scoreTransferSuitability({
     15,
     100,
   );
+  
+  // Enhanced factors
+  // Recent performance (goals/assists in current season)
+  const leagueGoals = Number(player.leagueGoals ?? 0);
+  const leagueAssists = Number(player.leagueAssists ?? 0);
+  const leagueApps = Number(player.stats?.apps ?? 0);
+  const performanceScore = leagueApps > 0
+    ? clamp(
+        (leagueGoals * 3 + leagueAssists * 2) / Math.max(1, leagueApps) * 100,
+        0,
+        50,
+      )
+    : 0;
+  
+  // Tactical compatibility - check if club formation suits player position
+  const formation = club.formation ?? "4-3-3";
+  const formationFit = FORMATIONS[formation]?.shape
+    ? calculateTacticalFit(position, formation)
+    : 50;
+  
+  // European competition participation - proxy based on prestige and league reputation
+  const europeanBonus = (reputation >= 75 && leagueReputation >= 70) ? 8 : 0;
+  
+  // Player reputation/market value factor
+  const marketValue = Number(player.marketValue ?? player.value ?? 0);
+  const reputationValue = Math.min(marketValue / 5_000_000, 100);
+  
+  // Age/development trajectory - younger players with high potential get bonus
+  const ageDevelopmentBonus = age <= 21 && potential >= overall + 10 ? 12 : 0;
+  
+  // Elite club chasing elite player - strong prestige match
+  const eliteMatch = overall >= 88 && reputation >= 85 ? 15 : 0;
+  
+  // Squad depth penalty - if club already has 3+ players in position
+  const depthPenalty = positionalRanks.length >= 3 ? 10 : 0;
+
   const score = Math.round(
-    need.demand * 0.34 +
-      improvement * 0.22 +
-      potentialValue * 0.18 +
-      playingTime * 0.1 +
-      affordability * 0.1 +
+    need.demand * 0.30 +
+      improvement * 0.20 +
+      potentialValue * 0.15 +
+      playingTime * 0.10 +
+      affordability * 0.10 +
       wageFit * 0.08 +
-      reputationFit * 0.06 +
-      clamp(leagueReputation, 0, 100) * 0.04 +
-      clamp(agentQuality, 0, 100) * 0.03 +
+      reputationFit * 0.05 +
+      performanceScore * 0.08 +
+      formationFit * 0.05 +
+      reputationValue * 0.04 +
+      clamp(leagueReputation, 0, 100) * 0.03 +
+      clamp(agentQuality, 0, 100) * 0.02 +
       needUrgency +
-      clamp(performanceBonus, 0, 18) +
+      europeanBonus +
+      ageDevelopmentBonus +
+      eliteMatch +
+      clamp(performanceBonus, 0, 18) -
+      depthPenalty +
       (player.injury ? -18 : 0),
   );
+  
   return {
     score: clamp(score, 0, 100),
     demand: need.demand,
@@ -265,6 +309,31 @@ export function scoreTransferSuitability({
             ? `a high-potential ${position} prospect`
             : `squad depth at ${position}`,
   };
+}
+
+/** Calculate tactical fit between player position and club formation. */
+function calculateTacticalFit(position, formation) {
+  const shape = FORMATIONS[formation]?.shape ?? { attack: 1, defence: 1, midfield: 1 };
+  const posGroup = groupOf(position);
+  
+  // Positions that benefit from attacking formations
+  const attackingPositions = ["ST", "RW", "LW", "CAM", "CF"];
+  // Positions that benefit from defensive formations
+  const defensivePositions = ["CB", "CDM", "LB", "RB", "GK"];
+  // Positions that benefit from midfield-heavy formations
+  const midfieldPositions = ["CM", "CDM", "CAM", "RM", "LM"];
+  
+  let fit = 50;
+  
+  if (attackingPositions.includes(position)) {
+    fit += (shape.attack - 1) * 30;
+  } else if (defensivePositions.includes(position)) {
+    fit += (shape.defence - 1) * 30;
+  } else if (midfieldPositions.includes(position)) {
+    fit += (shape.midfield ?? 1 - 1) * 20;
+  }
+  
+  return clamp(fit, 0, 100);
 }
 
 export function agentSearchTerms(agent) {

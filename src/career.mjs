@@ -557,6 +557,7 @@ export class Career {
     this.transferOffers = [];
     this.transferList = [];
     this.transferListOffers = [];
+    this.transferListOfferHistory = [];
     this.transferListNextEvaluationWeek = 0;
     this.transferRefreshCount = 0;
     this.transferMarketState = {
@@ -8102,7 +8103,7 @@ this.applyCoachFormations();
     });
   }
 
-  addPlayerToTransferList(playerId = this.player?.id) {
+addPlayerToTransferList(playerId = this.player?.id) {
     if (this.isManagerCareer)
       throw new Error("Manager careers control transfers directly.");
     if (playerId !== this.player?.id)
@@ -8112,16 +8113,19 @@ this.applyCoachFormations();
     if (this.player.isLegend)
       throw new Error("Protected legends cannot request transfers.");
     this.transferList ??= [];
+    this.transferListOfferHistory ??= [];
     if (!this.transferList.some((entry) => entry.playerId === playerId)) {
+      const campaignId = `campaign-${playerId}-${this.season}-${this.week}-${Date.now()}`;
       this.transferList.push({
         playerId,
         playerName: `${this.player.first} ${this.player.last}`,
         clubId: this.club.id,
         listedAt: this.currentDay(),
         offers: 0,
+        campaignId,
       });
     }
-    return this.transferList.find((entry) => entry.playerId === playerId);
+return this.transferList.find((entry) => entry.playerId === playerId);
   }
 
   removePlayerFromTransferList(playerId = this.player?.id) {
@@ -8129,6 +8133,10 @@ this.applyCoachFormations();
       (entry) => entry.playerId !== playerId,
     );
     this.transferListOffers = (this.transferListOffers ?? []).filter(
+      (offer) => offer.playerId !== playerId,
+    );
+    // Clear offer history for this player when they're removed from the list
+    this.transferListOfferHistory = (this.transferListOfferHistory ?? []).filter(
       (offer) => offer.playerId !== playerId,
     );
     return true;
@@ -8150,9 +8158,34 @@ this.applyCoachFormations();
     const candidates = this.evaluateTransferInterest(this.player, {
       threshold: this.transferPerformanceBonus(this.player) >= 8 ? 57 : 64,
     });
+    this.transferListOfferHistory ??= [];
+    const campaignId = listing.campaignId;
+    const now = this.currentDay();
+    const COOLDOWN_WEEKS = 4;
     const offers = candidates
       .slice(0, 3)
       .filter(({ club }) => {
+        // Check if this club has already made an offer in this campaign
+        const hasExistingOffer = this.transferListOfferHistory.some(
+          (o) =>
+            o.playerId === this.player.id &&
+            o.campaignId === campaignId &&
+            o.clubId === club.id,
+        );
+        if (hasExistingOffer) return false;
+        // Check cooldown for rejected offers
+        const rejectedOffer = this.transferListOfferHistory.find(
+          (o) =>
+            o.playerId === this.player.id &&
+            o.campaignId === campaignId &&
+            o.clubId === club.id &&
+            o.status === "rejected",
+        );
+        if (rejectedOffer) {
+          const rejectedDay = rejectedOffer.resolvedDay ?? rejectedOffer.date;
+          const weeksSinceRejection = Math.floor((now - rejectedDay) / 7);
+          if (weeksSinceRejection < COOLDOWN_WEEKS) return false;
+        }
         const finance = ensureClubFinance(club);
         const wage = desiredWeeklyWage(this.player, club, {
           offeredRole: "Important Player",
@@ -8181,8 +8214,9 @@ this.applyCoachFormations();
           Math.max(0, finance.balance - fee) * 0.05,
         );
         return {
-          id: `listed-offer-${club.id}-${this.season}-${this.week}-${this.player.id}`,
+          id: `listed-offer-${campaignId}-${club.id}`,
           playerId: this.player.id,
+          campaignId,
           clubId: club.id,
           clubName: club.name,
           leagueId: league?.id ?? club.leagueId,
@@ -8191,16 +8225,15 @@ this.applyCoachFormations();
           years: fit.playingTime >= 68 ? 4 : 3,
           signingBonus,
           squadRole: fit.playingTime >= 78 ? "Key Player" : "Important Player",
+          expectedPlayingTime: Math.round(fit.playingTime),
           interest: fit.score,
           reason: fit.reason,
           date: day,
+          status: "pending",
         };
-      })
-      .filter(
-        (offer) =>
-          !this.transferListOffers.some((existing) => existing.id === offer.id),
-      );
+      });
     this.transferListOffers.push(...offers);
+    this.transferListOfferHistory.push(...offers);
     listing.offers = (listing.offers ?? 0) + offers.length;
     return offers;
   }
@@ -8248,6 +8281,14 @@ this.applyCoachFormations();
       this.transferListOffers = this.transferListOffers.filter(
         (entry) => entry.id !== offerId,
       );
+      // Update offer history
+      const historyOffer = (this.transferListOfferHistory ?? []).find(
+        (o) => o.id === offerId,
+      );
+      if (historyOffer) {
+        historyOffer.status = "rejected";
+        historyOffer.resolvedDay = this.currentDay();
+      }
       return { status: "rejected", offer };
     }
     if (decision !== "accept") throw new Error("Unknown transfer decision.");
@@ -8290,6 +8331,14 @@ this.applyCoachFormations();
       date: this.currentDay(),
       type: "permanent",
     });
+    // Update offer history
+    const historyOffer = (this.transferListOfferHistory ?? []).find(
+      (o) => o.id === offerId,
+    );
+    if (historyOffer) {
+      historyOffer.status = "accepted";
+      historyOffer.resolvedDay = this.currentDay();
+    }
     this.transferList = [];
     this.transferListOffers = [];
     this.positionNeedCache = null;
@@ -16119,6 +16168,7 @@ this.applyCoachFormations();
       transferOffers: this.transferOffers,
       transferList: this.transferList ?? [],
       transferListOffers: this.transferListOffers ?? [],
+      transferListOfferHistory: this.transferListOfferHistory ?? [],
       transferListNextEvaluationWeek: this.transferListNextEvaluationWeek ?? 0,
       transferRefreshCount: this.transferRefreshCount,
       transferMarketState: this.transferMarketState,
@@ -16335,6 +16385,9 @@ this.applyCoachFormations();
       : [];
     this.transferListOffers = Array.isArray(saved.transferListOffers)
       ? saved.transferListOffers
+      : [];
+    this.transferListOfferHistory = Array.isArray(saved.transferListOfferHistory)
+      ? saved.transferListOfferHistory
       : [];
     this.transferListNextEvaluationWeek =
       saved.transferListNextEvaluationWeek ?? 0;

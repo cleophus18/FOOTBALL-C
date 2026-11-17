@@ -2337,6 +2337,7 @@ function renderGame() {
       button.classList.toggle("active", button.dataset.screen === screen);
     });
     bindPlayerLinks(content ?? $app);
+    bindActionButtons(content ?? $app);
     scheduleMatchSimulationTick();
     return;
   }
@@ -2462,6 +2463,8 @@ function renderGame() {
     restoreGameScroll(scrollToRestore);
     scrollRestoreFrame = 0;
   });
+
+  bindActionButtons($app);
 
   $app.querySelectorAll("[data-nav-group]").forEach((button) =>
     button.addEventListener("click", (event) => {
@@ -2600,16 +2603,6 @@ openNegotiationForm = null;
       screen = "players";
       renderGame();
     });
-  $app.querySelectorAll("[data-action]").forEach((button) =>
-    button.addEventListener("click", (event) => {
-      // Buttons nested inside a <form> (search filters, developer password, etc.)
-      // must not submit the form and reload the page. This is the single fix that
-      // stops every data-action button from refreshing the screen.
-      if (event.defaultPrevented) return;
-      event.preventDefault();
-      handleAction(button.dataset.action, button.dataset);
-    }),
-  );
   $app.querySelectorAll("[data-lineup-bench]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!career.isManagerCareer) {
@@ -4090,7 +4083,7 @@ function renderTransferListTab() {
 
 function renderTransferListOffersTab() {
   const offers = career.transferListOffers ?? [];
-  return `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB INTEREST</div><h2>Transfer offers</h2></div><span class="live-tag">${offers.length} OFFERS</span></div><div class="transfer-list">${offers.map((offer) => `<article class="transfer-agent"><div><b>${esc(offer.clubName)}</b><small>Fee €${formatDecimal(offer.fee)} · €${formatDecimal(offer.weeklyWage)}/wk · ${offer.years} years · €${formatDecimal(offer.signingBonus)} bonus · ${esc(offer.squadRole)}</small><small>${esc(offer.reason ?? "Position and squad need identified")}</small></div><div class="agent-actions"><button class="button-primary" data-action="accept-listed-offer" data-offer-id="${esc(offer.id)}">Accept</button><button class="button-quiet" data-action="negotiate-listed-offer" data-offer-id="${esc(offer.id)}">Negotiate</button><button class="button-quiet" data-action="reject-listed-offer" data-offer-id="${esc(offer.id)}">Reject</button></div></article>`).join("") || '<p class="muted">No clubs have made an offer yet. Leave yourself listed and continue the season to allow clubs to scout.</p>'}</div></section>`;
+  return `<section class="panel"><div class="panel-heading"><div><div class="eyebrow">CLUB INTEREST</div><h2>Transfer offers</h2></div><span class="live-tag">${offers.length} OFFERS</span></div><div class="transfer-list">${offers.map((offer) => `<article class="transfer-agent"><div><b>${esc(offer.clubName)}</b><small>Fee €${formatDecimal(offer.fee)} · €${formatDecimal(offer.weeklyWage)}/wk · ${offer.years} years · €${formatDecimal(offer.signingBonus)} bonus · ${esc(offer.squadRole)} · ${offer.expectedPlayingTime ?? "—"}% playing time</small><small>${esc(offer.reason ?? "Position and squad need identified")}</small></div><div class="agent-actions"><button class="button-primary" data-action="accept-listed-offer" data-offer-id="${esc(offer.id)}">Accept</button><button class="button-quiet" data-action="negotiate-listed-offer" data-offer-id="${esc(offer.id)}">Negotiate</button><button class="button-quiet" data-action="reject-listed-offer" data-offer-id="${esc(offer.id)}">Reject</button></div></article>`).join("") || '<p class="muted">No clubs have made an offer yet. Leave yourself listed and continue the season to allow clubs to scout.</p>'}</div></section>`;
 }
 
 function renderFreeAgentsTab() {
@@ -6587,6 +6580,11 @@ function bindPlayerLinks(root) {
     }),
   );
 }
+
+function bindActionButtons(root) {
+  root.querySelectorAll("[data-action]").forEach((button) =>
+    button.addEventListener("click", (event) => {
+      if (event.defaultPrevented) return;      event.preventDefault();      handleAction(button.dataset.action, button.dataset);    }),  );}
 
 function playerProfileLink(playerOrId, displayName, className = "") {
   const player =
