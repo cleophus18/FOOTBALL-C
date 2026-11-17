@@ -1,6 +1,7 @@
 import { groupOf, normalizePosition, POSITIONS } from "../core/constants.mjs";
 import { FORMATIONS } from "./club.mjs";
 import { clamp } from "../core/util.mjs";
+import { daysUntilExpiry } from "../core/contracts.mjs";
 
 const UNIQUE_POSITIONS = [...new Set(POSITIONS.map(normalizePosition))];
 
@@ -122,8 +123,10 @@ export function assessClubSquadNeeds(club, players, { dayIndex = 0 } = {}) {
           playerRating(player) + 1 && Number(player.age ?? 25) <= 23,
     ).length;
     const expiring = starters.filter(
-      ({ player }) =>
-        Number(player.contract?.expires ?? dayIndex + 3) <= dayIndex + 1,
+      ({ player }) => {
+        const remaining = daysUntilExpiry(player.contract, dayIndex);
+        return remaining != null && remaining <= 7;
+      },
     ).length;
     const demand = clamp(
       Math.round(
