@@ -2551,33 +2551,37 @@ function renderGame() {
           ? Number(values.releaseClause)
           : null,
       };
-      const kind = contractOfferFormEl.dataset.kind;
+const kind = contractOfferFormEl.dataset.kind;
+      const playerId = contractOfferFormEl.dataset.playerId;
+      // User's own contract renewal during expiry pause uses negotiateUserContract
+      const isUserContractRenewal =
+        kind === "renewal" &&
+        career.userContractDecision &&
+        !career.userContractDecision.resolved &&
+        playerId === career.player.id;
       try {
         const decision =
           kind === "pre-contract"
-            ? career.offerPreContract(
-                contractOfferFormEl.dataset.playerId,
-                offer,
-              )
+            ? career.offerPreContract(playerId, offer)
+            : isUserContractRenewal
+            ? career.negotiateUserContract(offer)
             : kind === "renewal"
-              ? career.offerContractRenewal(
-                  contractOfferFormEl.dataset.playerId,
-                  offer,
-                )
-              : (career.signFreeAgent(
-                  contractOfferFormEl.dataset.playerId,
-                  offer,
-                ),
-                { kind: "signed" });
-        openNegotiationForm = null;
+            ? career.offerContractRenewal(playerId, offer)
+            : (career.signFreeAgent(playerId, offer), { kind: "signed" });
+openNegotiationForm = null;
         transfersTab =
-          kind === "renewal"
+          isUserContractRenewal
+            ? "contracts"
+            : kind === "renewal"
             ? "negotiations"
             : kind === "pre-contract"
-              ? "confirmed"
-              : "free-agents";
+            ? "confirmed"
+            : "free-agents";
         notice =
           decision.message ?? decision.kind ?? "The offer was submitted.";
+        if (isUserContractRenewal && decision.status === "accepted") {
+          screen = "overview";
+        }
       } catch (error) {
         notice = error.message;
       }
@@ -7712,6 +7716,59 @@ function handleAction(action, details = {}) {
     try {
       career.withdrawContractNegotiation(details.negotiationId);
       notice = "The offer has been withdrawn.";
+    } catch (error) {
+      notice = error.message;
+    }
+    renderGame();
+  }
+  if (action === "accept-contract-renewal") {
+    try {
+      const offer = career.userContractDecision?.clubOffer;
+      if (!offer) throw new Error("No club offer to accept.");
+      const result = career.negotiateUserContract(offer);
+      notice = result.message ?? "Contract renewed successfully.";
+      if (result.status === "accepted") {
+        screen = "overview";
+      }
+    } catch (error) {
+      notice = error.message;
+    }
+    renderGame();
+  }
+  if (action === "open-contract-negotiation") {
+    try {
+      const offer = career.userContractDecision?.clubOffer;
+      if (!offer) throw new Error("No club offer to negotiate.");
+      openNegotiationForm = {
+        playerId: career.player.id,
+        kind: "renewal",
+        defaults: {
+          weeklyWage: offer.weeklyWage,
+          years: offer.years,
+          squadRole: offer.squadRole,
+          signingBonus: offer.signingBonus,
+          releaseClause: offer.releaseClause,
+        },
+      };
+    } catch (error) {
+      notice = error.message;
+    }
+    renderGame();
+  }
+  if (action === "decline-contract-renewal") {
+    try {
+      const result = career.declineUserContract();
+      notice = result.message ?? "You are now a free agent.";
+    } catch (error) {
+      notice = error.message;
+    }
+    renderGame();
+  }
+  if (action === "accept-free-agent-offer") {
+    try {
+      const result = career.acceptFreeAgentOffer(details.clubId);
+      notice = result.message ?? `Signed with ${result.club?.name ?? "new club"}!`;
+      screen = "overview";
     } catch (error) {
       notice = error.message;
     }
