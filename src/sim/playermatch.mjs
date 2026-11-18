@@ -784,6 +784,52 @@ export function simulatePlayerMatch(opts) {
     if (ev.type === "red") stats.redCards++;
   }
 
+  // --- Event-sourced statistics --------------------------------------------
+  // When this player was part of the detailed event simulation, the match carries a
+  // per-player record derived from the actual events (shots, passes, tackles, ...).
+  // That record is the single source of truth: the player's stat line is projected
+  // from it so it can never contradict the match report (e.g. a goal without a shot,
+  // or an assist that was never recorded). The generation above still runs so the
+  // player-moments RNG stream and key moments stay stable; only the presented stats
+  // are replaced. Players who were not in the event XI (e.g. a substitute coming off
+  // the bench, or synthetic contexts without an event log) keep the generated line,
+  // because there are no recorded events to contradict.
+  const recorded = match.playerStats?.[player.id];
+  if (recorded && recorded.minutes > 0) {
+    stats.passes = recorded.passAttempts ?? 0;
+    stats.passesCompleted = recorded.completedPasses ?? 0;
+    stats.keyPasses = recorded.keyPasses ?? 0;
+    stats.shots = recorded.shots ?? 0;
+    stats.shotsOnTarget = recorded.shotsOnTarget ?? 0;
+    stats.goals = recorded.goals ?? 0;
+    stats.assists = recorded.assists ?? 0;
+    stats.dribbles = recorded.dribbles ?? 0;
+    stats.dribblesWon = recorded.dribblesWon ?? 0;
+    stats.duels = recorded.duels ?? stats.duels;
+    stats.duelsWon = recorded.duelsWon ?? stats.duelsWon;
+    stats.tackles = recorded.tackleAttempts ?? 0;
+    stats.tacklesWon = recorded.tacklesWon ?? 0;
+    stats.interceptions = recorded.interceptions ?? 0;
+    stats.aerials = recorded.aerials ?? 0;
+    stats.aerialsWon = recorded.aerialsWon ?? 0;
+    stats.foulsCommitted = recorded.foulsCommitted ?? stats.foulsCommitted;
+    stats.foulsWon = recorded.foulsWon ?? stats.foulsWon;
+    if (position === "GK") {
+      stats.saves = recorded.saves ?? 0;
+      const conceded = side === "home" ? match.awayGoals : match.homeGoals;
+      stats.goalsConceded = conceded;
+      stats.cleanSheets = conceded === 0 ? 1 : 0;
+      stats.shotsFaced = conceded + stats.saves;
+      stats.savePercentage =
+        stats.shotsFaced > 0
+          ? round((stats.saves / stats.shotsFaced) * 100, 1)
+          : 0;
+    }
+    // Keep the documented invariants explicit: a goal is always on target, and a
+    // player can never have more shots on target than shots.
+    stats.shotsOnTarget = Math.min(stats.shots, Math.max(stats.shotsOnTarget, stats.goals));
+  }
+
   // --- Rating --------------------------------------------------------------
   const rating = computeRating(player, position, stats, match, side, rng);
   const evidence = {
@@ -845,6 +891,11 @@ export function simulatePlayerMatch(opts) {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (rng.chance(chance)) opportunities++;
       }
+      // A player who completed a full match always has at least one notable
+      // involvement: even a quiet shift produces a chance, a duel or a save. This
+      // guarantees the live match has a decision for a starting player while leaving
+      // the count driven by actual involvement above the floor.
+      if (minutes >= 60 && opportunities === 0) opportunities = 1;
       return opportunities;
     })();
   const opposingKeeper = opponents.find(
@@ -1605,11 +1656,44 @@ export function computeRating(player, position, stats, match, side, rng) {
 
   // Small amount of match noise so identical performances score slightly differently,
   // the way two identical stat lines in real life do. Wider spread than a single
-  // decimal place so a good game and a great one are visibly different.
-  score += rng.normal(0, 0.24);
+  // decimal place so a good game and a great one are visibly different. Callers that
+  // want a fully deterministic rating (e.g. AI-vs-AI matches) simply omit the rng.
+  if (rng) score += rng.normal(0, 0.24);
 
   const rating = clamp(RATING_BASE + score, RATING_MIN, RATING_MAX);
   return round(rating, 1);
+}
+
+/**
+ * Rate a player from an event-sourced stat line (as produced by the possession
+ * engine), so AI and background players get the same rich, performance-based match
+ * rating the user player does — reflecting saves, tackles, duels, key passes and
+ * discipline, not just goals and assists. Returns null when the player did not play.
+ * Deterministic (no rng noise) so it is stable for AI-vs-AI simulation.
+ */
+export function matchRatingFromStats(player, position, eventStats, match, side) {
+  if (!player || !eventStats || (eventStats.minutes ?? 0) <= 0) return null;
+  const teamConceded = side === "home" ? match.awayGoals : match.homeGoals;
+  const stats = {
+    goals: eventStats.goals ?? 0,
+    assists: eventStats.assists ?? 0,
+    passes: eventStats.passAttempts ?? 0,
+    passesCompleted: eventStats.completedPasses ?? 0,
+    keyPasses: eventStats.keyPasses ?? 0,
+    tacklesWon: eventStats.tacklesWon ?? 0,
+    interceptions: eventStats.interceptions ?? 0,
+    aerialsWon: eventStats.aerialsWon ?? 0,
+    duels: eventStats.duels ?? 0,
+    duelsWon: eventStats.duelsWon ?? 0,
+    dribbles: eventStats.dribbles ?? 0,
+    dribblesWon: eventStats.dribblesWon ?? 0,
+    saves: eventStats.saves ?? 0,
+    cleanSheets: teamConceded === 0 ? 1 : 0,
+    yellowCards: eventStats.yellowCards ?? 0,
+    redCards: eventStats.redCards ?? 0,
+    foulsCommitted: eventStats.foulsCommitted ?? 0,
+  };
+  return computeRating(player, position || player.position, stats, match, side, null);
 }
 
 /** A short, FC-style coach comment on the performance. */

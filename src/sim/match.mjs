@@ -38,6 +38,19 @@ export function leagueGoalLimit(competition) {
 }
 
 /**
+ * How many substitutions a team may make in a match under the competition's rules.
+ * Modern competitions allow five; older or unspecified ones are treated as the classic
+ * three. A substituted player may never return (there is no re-entry in this engine).
+ */
+export function substitutionLimit(competition) {
+  if (competition && typeof competition === "object") {
+    const explicit = Number(competition.substitutionLimit);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  }
+  return 5;
+}
+
+/**
  * Simulate a background match using the shared event engine.
  *
  * @returns {{homeGoals:number, awayGoals:number, xg:object, events:Array, stats:object, playerStats:object}}
@@ -56,13 +69,23 @@ export function simulateQuickMatch(home, away, ctx = {}) {
     away: clamp((xg.away * awayQuality) / homeDefending, 0.1, 5),
   };
   const maxLeagueGoals = leagueGoalLimit(ctx.competition);
+  // Genuine substitutions are opt-in for quick matches: they require a bench on each
+  // team. Background abstractions that pass only an XI are simulated without subs, so
+  // their results are unchanged, while callers that supply a bench get in-match
+  // substitutions that affect the remaining events.
+  const enableSubs =
+    ctx.enableSubs !== false &&
+    ((home.bench?.length ?? 0) > 0 || (away.bench?.length ?? 0) > 0);
+  const quickMaxSubs = Number.isFinite(ctx.maxSubs) ? ctx.maxSubs : 3;
   let simulation = simulatePossessionEngine({
-    home: { ...home, xi: home.xi ?? [] },
-    away: { ...away, xi: away.xi ?? [] },
+    home: { ...home, xi: home.xi ?? [], bench: home.bench ?? [] },
+    away: { ...away, xi: away.xi ?? [], bench: away.bench ?? [] },
     baselineXg: tunedXg,
     rng,
     neutralVenue: ctx.neutralVenue,
     maxLeagueGoals,
+    enableSubs,
+    maxSubs: quickMaxSubs,
   });
   let homeGoals = simulation.homeGoals;
   let awayGoals = simulation.awayGoals;
@@ -73,8 +96,8 @@ export function simulateQuickMatch(home, away, ctx = {}) {
   let penalties = null;
   if (ctx.mustHaveWinner && homeGoals === awayGoals) {
     const extraTime = simulatePossessionEngine({
-      home: { ...home, xi: home.xi ?? [] },
-      away: { ...away, xi: away.xi ?? [] },
+      home: { ...home, xi: home.xi ?? [], bench: home.bench ?? [] },
+      away: { ...away, xi: away.xi ?? [], bench: away.bench ?? [] },
       baselineXg: {
         home: tunedXg.home * (30 / 90) * 0.85,
         away: tunedXg.away * (30 / 90) * 0.85,
@@ -83,6 +106,9 @@ export function simulateQuickMatch(home, away, ctx = {}) {
       neutralVenue: ctx.neutralVenue,
       minutes: 30,
       maxLeagueGoals,
+      // Substitutions are a regulation-time concept; extra time continues with the
+      // players who finished the 90, and the merged stats already carry their minutes.
+      enableSubs: false,
     });
     simulation = mergeExtraTime(simulation, extraTime, 90);
     homeGoals += extraTime.homeGoals;
@@ -106,6 +132,7 @@ export function simulateQuickMatch(home, away, ctx = {}) {
     misc: simulation.misc,
     actions: simulation.actions,
     playerStats: simulation.playerStats,
+    substitutions: simulation.substitutions,
     // Stoppage time is what the narrative layer uses as the "clock length".
     addedTime: rng.int(2, 6),
   };
@@ -363,10 +390,16 @@ export function simulateMatch(opts) {
   );
   const homeShape = FORMATIONS[home.club.formation]?.shape;
   const awayShape = FORMATIONS[away.club.formation]?.shape;
+  // Genuine in-match substitutions are run by the event engine for AI-vs-AI matches.
+  // For a detailed (user) match the live simulation layer owns substitutions, so the
+  // engine leaves both XIs untouched there to avoid double-substituting the same player.
+  const enableEventSubs = detailedPlayerIds.length === 0;
+  const maxSubs = substitutionLimit(competition);
   let simulation = simulatePossessionEngine({
     home: {
       club: home.club,
       xi: homeXI,
+      bench: enableEventSubs ? homeSel.subs : [],
       roles: playerRoles,
       strength: home.strength,
       shape: homeShape,
@@ -375,6 +408,7 @@ export function simulateMatch(opts) {
     away: {
       club: away.club,
       xi: awayXI,
+      bench: enableEventSubs ? awaySel.subs : [],
       roles: playerRoles,
       strength: away.strength,
       shape: awayShape,
@@ -384,6 +418,8 @@ export function simulateMatch(opts) {
     rng,
     neutralVenue,
     maxLeagueGoals: leagueGoalLimit(competition),
+    enableSubs: enableEventSubs,
+    maxSubs,
   });
   const result = {
     homeGoals: simulation.homeGoals,
@@ -451,32 +487,47 @@ export function simulateMatch(opts) {
   }
   const matchStats = simulation.stats;
 
+  // Substitutions. For AI-vs-AI matches the event engine already made genuine,
+  // stamina- and score-aware substitutions during the match (they are recorded in
+  // `misc` and returned in `simulation.substitutions`); we reuse them here. For a
+  // detailed (user) match the live layer owns substitutions, so this block keeps the
+  // legacy conservative fatigue-based substitutions for the pre-match simulation.
   const substitutions = { home: [], away: [] };
   for (const [side, sel] of [["home", homeSel], ["away", awaySel]]) {
-    let subsUsed = 0;
-    for (const entry of sel.xi) {
-      if (subsUsed >= 3) break;
-      const starter = entry.player;
-      if (Number(starter.stamina ?? 100) >= 48) continue;
-      const replacement = sel.subs.find((candidate) => {
-        const sameGroup = groupOf(candidate.position) === groupOf(starter.position);
-        const replacementStamina = Number(candidate.stamina ?? 100);
-        return sameGroup && replacementStamina >= Number(starter.stamina ?? 100) + 8;
-      });
-      if (!replacement) continue;
-      const minute = 58 + subsUsed * 12;
-      substitutions[side].push({ playerId: starter.id, replacementId: replacement.id, minute });
-      misc.push({
-        type: "sub",
-        side,
-        minute,
-        playerId: replacement.id,
-        playerName: `${replacement.first} ${replacement.last}`,
-        replacedId: starter.id,
-        replacedName: `${starter.first} ${starter.last}`,
-        on: true,
-      });
-      subsUsed++;
+    if (enableEventSubs) {
+      for (const entry of simulation.substitutions?.[side] ?? []) {
+        substitutions[side].push({
+          playerId: entry.replacedId,
+          replacementId: entry.playerId,
+          minute: entry.minute,
+        });
+      }
+    } else {
+      let subsUsed = 0;
+      for (const entry of sel.xi) {
+        if (subsUsed >= 3) break;
+        const starter = entry.player;
+        if (Number(starter.stamina ?? 100) >= 48) continue;
+        const replacement = sel.subs.find((candidate) => {
+          const sameGroup = groupOf(candidate.position) === groupOf(starter.position);
+          const replacementStamina = Number(candidate.stamina ?? 100);
+          return sameGroup && replacementStamina >= Number(starter.stamina ?? 100) + 8;
+        });
+        if (!replacement) continue;
+        const minute = 58 + subsUsed * 12;
+        substitutions[side].push({ playerId: starter.id, replacementId: replacement.id, minute });
+        misc.push({
+          type: "sub",
+          side,
+          minute,
+          playerId: replacement.id,
+          playerName: `${replacement.first} ${replacement.last}`,
+          replacedId: starter.id,
+          replacedName: `${starter.first} ${starter.last}`,
+          on: true,
+        });
+        subsUsed++;
+      }
     }
     const fullMatchMinutes =
       result.decidedBy === "extraTime" || result.decidedBy === "penalties" ? 120 : 90;

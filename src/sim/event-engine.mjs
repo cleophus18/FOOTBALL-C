@@ -3,6 +3,7 @@ import { eliteProfileFor } from "../model/elite.mjs";
 import { actionAbility, decidePlayerAction } from "./playerintelligence.mjs";
 import { ROLE_MODIFIERS } from "./playermatch.mjs";
 import { goalkeeperQuality } from "../model/goalkeeper.mjs";
+import { groupOf } from "../core/constants.mjs";
 
 const POSSESSION_COUNT = 70;
 
@@ -72,17 +73,29 @@ function playerStat(player, stats, key, amount = 1) {
     assists: 0,
     dribbles: 0,
     dribblesWon: 0,
+    duels: 0,
+    duelsWon: 0,
     tackleAttempts: 0,
     tacklesWon: 0,
     interceptions: 0,
     aerials: 0,
     aerialsWon: 0,
     saves: 0,
+    goalsConceded: 0,
+    foulsCommitted: 0,
+    foulsWon: 0,
+    yellowCards: 0,
+    redCards: 0,
     possessionLosses: 0,
   };
   record[key] = (record[key] ?? 0) + amount;
   stats[player.id] = record;
   return record;
+}
+
+/** The goalkeeper currently on the pitch for a team, or null. */
+function keeperOf(team) {
+  return team.xi.find((player) => player.position === "GK") ?? null;
 }
 
 function pickOutfield(team, rng, weightOf) {
@@ -378,6 +391,277 @@ function addAction(actions, action) {
   actions.push(action);
 }
 
+/**
+ * Resolve a penalty kick for `side`, taken by `taker` against `opponent`. The taker
+ * must be under any league goal cap. A penalty is a shot: it is counted in team and
+ * player shot totals, carries xG, and is on target when scored or saved, so it flows
+ * through the same statistics and event timeline as an open-play shot. Emits a
+ * "penalty" misc event, a "shot" action, and a full goal event when scored. Returns
+ * whether it scored.
+ */
+export function scorePenalty({
+  side,
+  taker,
+  opponent,
+  playerStats,
+  score,
+  stats,
+  events,
+  misc,
+  actions,
+  rng,
+  maxLeagueGoals,
+  minute,
+}) {
+  const defendingSide = side === "home" ? "away" : "home";
+  const teamStats = stats[side];
+  const opponentStats = stats[defendingSide];
+  const keeper = opponent.xi.find((player) => player.position === "GK");
+  const composure = skill(taker, ["composure", "finishing", "shooting"]);
+  const keeperQuality = keeper
+    ? goalkeeperQuality(keeper.gkAttrs, {
+        kind: "shotStopping",
+        overall: Number(keeper.overall) || 60,
+      })
+    : 55;
+  const canScore =
+    maxLeagueGoals == null ||
+    (Number(taker.leagueGoals ?? taker.goals ?? taker.stats?.goals ?? 0) +
+      (playerStats[taker.id]?.goals ?? 0)) <
+      maxLeagueGoals;
+  const conversion = clamp(
+    0.76 + (composure - 60) * 0.004 - (keeperQuality - 60) * 0.002,
+    0.55,
+    0.9,
+  );
+  const goal = canScore && rng.chance(conversion);
+  // Penalties are almost always on target; a saved one still counts as on target.
+  const onTarget = goal || rng.chance(0.85);
+  const saved = onTarget && !goal;
+  const outcome = goal ? "goal" : saved ? "saved" : "missed";
+
+  // A penalty is a shot for statistical and xG purposes.
+  teamStats.shots++;
+  teamStats.xg = round(teamStats.xg + 0.76, 3);
+  playerStat(taker, playerStats, "shots");
+  addAction(actions, {
+    type: "shot",
+    side,
+    minute,
+    playerId: taker.id,
+    playerName: `${taker.first} ${taker.last}`,
+    xg: 0.76,
+    distance: 11,
+    angle: 6,
+    shotType: "penalty",
+    outcome,
+  });
+  misc.push({
+    type: "penalty",
+    side,
+    minute,
+    playerId: taker.id,
+    playerName: `${taker.first} ${taker.last}`,
+    goal,
+    saved,
+  });
+
+  if (onTarget) {
+    teamStats.shotsOnTarget++;
+    playerStat(taker, playerStats, "shotsOnTarget");
+  }
+  if (goal) {
+    score[side]++;
+    teamStats.goals++;
+    playerStat(taker, playerStats, "goals");
+    if (keeper) playerStat(keeper, playerStats, "goalsConceded");
+    const goalEvent = {
+      type: "goal",
+      minute,
+      side,
+      scorerId: taker.id,
+      scorerName: `${taker.first} ${taker.last}`,
+      assistId: null,
+      assistName: null,
+      penalty: true,
+      ownGoal: false,
+      xg: 0.76,
+    };
+    events.push(goalEvent);
+    addAction(actions, goalEvent);
+  } else if (saved && keeper) {
+    opponentStats.saves++;
+    playerStat(keeper, playerStats, "saves");
+  }
+  return goal;
+}
+
+/**
+ * In-match energy (0-100) for a player who has been on the pitch for `played` minutes.
+ * This is the fatigue model that drives substitution decisions: a high-stamina,
+ * physically strong player drains slowly, a low-stamina one fades, and the cost rises
+ * with the team's pressing intensity. It is deterministic and does not consume RNG, so
+ * a match in which no substitution is made is bit-for-bit identical to the pre-sub engine.
+ */
+function playerEnergy(player, played, press = 1) {
+  const staminaAttr = skill(player, ["stamina", "physical"]);
+  const position =
+    player.position === "GK"
+      ? 0.7
+      : ["CM", "CDM", "CAM", "DM", "RM", "LM", "WB", "LWB", "RWB"].includes(
+            player.position,
+          )
+        ? 1.12
+        : 1;
+  // A high stamina attribute lowers the per-minute drain (resilience < 1).
+  const resilience = clamp(1 - (staminaAttr - 60) * 0.006, 0.6, 1.3);
+  const drainPerMinute = 0.5 * position * resilience * clamp(press, 0.8, 1.3);
+  return clamp(100 - played * drainPerMinute, 0, 100);
+}
+
+/** A single number for how good a player is for a given slot, used to rank replacements. */
+function slotRating(player, slot) {
+  const base = Number(player.overall) || 60;
+  const groupMatch = groupOf(player.position) === groupOf(slot) ? 1 : 0.9;
+  return base * groupMatch;
+}
+
+/**
+ * The live energy of a player at a given minute, accounting for when they came on.
+ * A fresh player is near 100; energy falls as minutes are played, faster for low
+ * stamina attributes and high-pressing sides. This is the same curve that drives
+ * substitution decisions, reused so in-match degradation and substitutions agree.
+ */
+function liveEnergyOf(player, minute, squad, press = 1) {
+  if (!player) return 100;
+  const entry = squad?.onPitchSince?.get(player.id) ?? 0;
+  return playerEnergy(player, Math.max(0, minute - entry), press);
+}
+
+/**
+ * A ~0.78..1 multiplier on a player's effectiveness from live fatigue. Players with
+ * energy >= 65 are unaffected so the fresh-match model is preserved; as legs tire the
+ * multiplier falls, reaching ~0.78 for an empty tank. This makes late-match fatigue a
+ * real but gradual factor without rewriting every event probability.
+ */
+function fatigueFactorOf(player, minute, squad, press = 1) {
+  const energy = liveEnergyOf(player, minute, squad, press);
+  if (energy >= 65) return 1;
+  return clamp(0.78 + ((energy - 15) * 0.22) / 50, 0.78, 1);
+}
+
+/**
+ * A live tactical mentality for a side, in roughly [-1, 1]: positive means chasing
+ * the game (attacking, higher press, more direct), negative means protecting a lead
+ * (dropping the press, keeping the ball). It ramps in after ~55 minutes, grows with
+ * the size of the deficit/lead, and is scaled by the manager's adaptability so a
+ * cannier coach reacts more strongly. A balanced side stays at 0.
+ */
+export function mentalityFor(scoreFor, scoreAgainst, minute, adaptability = 60) {
+  const diff = scoreFor - scoreAgainst;
+  const late = clamp((minute - 55) / 30, 0, 1);
+  let mentality = 0;
+  if (diff < 0) mentality = late * clamp(-diff * 0.45, 0.35, 1);
+  else if (diff > 0) mentality = -late * clamp(diff * 0.35, 0.3, 0.8);
+  return mentality * clamp(adaptability / 70, 0.65, 1.2);
+}
+
+/**
+ * Decide and, when warranted, execute one substitution for `side`. Returns the
+ * substitution record when one was made, otherwise null. Tactical intent is derived
+ * from the live score and minute: a side that is losing chases the game with fresh
+ * legs, a side that is winning protects its lead, and a balanced side simply replaces
+ * the most exhausted player. Replacements always occupy a position-compatible slot so
+ * the team keeps its shape, and a substituted player never returns.
+ */
+function trySubstitution(squad, side, minute, scoreFor, scoreAgainst, maxSubs, totalMinutes) {
+  if (!squad || squad.subsUsed >= maxSubs) return null;
+  if (minute - (squad.lastSubMinute ?? 0) < 8) return null;
+  // Don't waste a substitution when there is almost no time left to play: a player
+  // who comes on in the final minutes would accrue ~0 minutes and add nothing.
+  if (totalMinutes - minute < 5) return null;
+  const onPitch = squad.xi.filter((p) => p.position !== "GK");
+  if (!onPitch.length || !squad.bench.length) return null;
+
+  const losing = scoreFor < scoreAgainst;
+  const winning = scoreFor > scoreAgainst;
+  // Tactical willingness: a losing side turns to its bench earlier, a winning side
+  // waits a little longer but still refreshes tired legs to see the game out.
+  const minMinute = losing ? 60 : winning ? 68 : 65;
+  if (minute < minMinute) return null;
+  const energyThreshold = losing ? 62 : winning ? 58 : 55;
+
+  // Rank the on-pitch players by how tired they are.
+  const ranked = onPitch
+    .map((player) => ({
+      player,
+      energy: playerEnergy(
+        player,
+        minute - (squad.onPitchSince.get(player.id) ?? 0),
+        squad.press ?? 1,
+      ),
+    }))
+    .sort((a, b) => a.energy - b.energy);
+  const candidate = ranked.find((entry) => entry.energy < energyThreshold);
+  if (!candidate) return null;
+
+  const outgoing = candidate.player;
+  const outGroup = groupOf(outgoing.position);
+  // The keeper is never substituted for an outfield body, and outfield players are
+  // never replaced by a goalkeeper, so keepers are excluded from the available pool.
+  const available = squad.bench.filter(
+    (p) => !squad.usedBench.has(p.id) && p.position !== "GK",
+  );
+  // Prefer a like-for-like replacement; fall back to the same group, then to the best
+  // available body, so the shape is preserved whenever football allows it.
+  const sameSlot = available.filter(
+    (p) => groupOf(p.position) === outGroup,
+  );
+  const pool = sameSlot.length ? sameSlot : available;
+  if (!pool.length) return null;
+  // A winning side leans on defensively-minded fresh legs; a losing side leans on
+  // attacking ones. This only breaks ties among position-compatible options.
+  const attackingNeed = losing && minute >= 70;
+  const defendingNeed = winning && minute >= 70;
+  const replacement = pool
+    .slice()
+    .sort((a, b) => {
+      let delta = slotRating(b, outgoing.position) - slotRating(a, outgoing.position);
+      if (attackingNeed)
+        delta +=
+          (groupOf(b.position) === "ATT" ? 4 : 0) -
+          (groupOf(a.position) === "ATT" ? 4 : 0);
+      if (defendingNeed)
+        delta +=
+          (groupOf(b.position) === "DEF" ? 4 : 0) -
+          (groupOf(a.position) === "DEF" ? 4 : 0);
+      return delta;
+    })[0];
+
+  const index = squad.xi.indexOf(outgoing);
+  if (index < 0) return null;
+  squad.xi[index] = replacement; // takes the vacated slot exactly
+  squad.bench = squad.bench.filter((p) => p.id !== replacement.id);
+  squad.usedBench.add(replacement.id);
+  squad.subbedOff.add(outgoing.id);
+  squad.onPitchSince.set(replacement.id, minute);
+  squad.subsUsed++;
+  squad.lastSubMinute = minute;
+  squad.exitMinute.set(outgoing.id, minute);
+  squad.appeared.push(replacement);
+
+  return {
+    type: "sub",
+    side,
+    minute,
+    playerId: replacement.id,
+    playerName: `${replacement.first} ${replacement.last}`,
+    replacedId: outgoing.id,
+    replacedName: `${outgoing.first} ${outgoing.last}`,
+    on: true,
+  };
+}
+
 export function simulatePossessionEngine({
   home,
   away,
@@ -387,16 +671,39 @@ export function simulatePossessionEngine({
   minutes = 90,
   maxLeagueGoals = null,
   quickBackground = false,
+  enableSubs = false,
+  maxSubs = 3,
 }) {
-  const teams = { home, away };
+  // Work on shallow clones so in-match substitutions never mutate the caller's arrays
+  // (callers reuse their XI objects across matches and replays).
+  const teams = {
+    home: {
+      ...home,
+      xi: [...home.xi],
+      bench: enableSubs ? [...(home.bench ?? [])] : [],
+    },
+    away: {
+      ...away,
+      xi: [...away.xi],
+      bench: enableSubs ? [...(away.bench ?? [])] : [],
+    },
+  };
   const score = { home: 0, away: 0 };
   const actions = [];
   const events = [];
   const misc = [];
   const playerStats = {};
-  for (const team of [home, away]) {
-    for (const player of team.xi)
-      playerStat(player, playerStats, "minutes", minutes);
+  const substitutions = { home: [], away: [] };
+  for (const side of ["home", "away"]) {
+    const squad = teams[side];
+    squad.subsUsed = 0;
+    squad.usedBench = new Set();
+    squad.subbedOff = new Set();
+    squad.onPitchSince = new Map(squad.xi.map((p) => [p.id, 0]));
+    squad.exitMinute = new Map();
+    squad.appeared = [...squad.xi];
+    squad.lastSubMinute = 0;
+    squad.press = teamContext(squad, teams[side === "home" ? "away" : "home"], 1, side, neutralVenue).press ?? 1;
   }
   const stats = {
     home: {
@@ -461,6 +768,26 @@ export function simulatePossessionEngine({
       minutes,
       Math.floor((possession * minutes) / (totalPossessions * 2)) + 1,
     );
+    // Genuine in-match substitutions: tired or tactically-selected players are replaced
+    // by fresh legs from the bench, and the new player takes part in every subsequent
+    // possession. Both sides are considered so the AI reacts to the flow of the game.
+    if (enableSubs) {
+      for (const subSide of [side, defendingSide]) {
+        const sub = trySubstitution(
+          teams[subSide],
+          subSide,
+          currentMinute,
+          score[subSide],
+          score[subSide === "home" ? "away" : "home"],
+          maxSubs,
+          minutes,
+        );
+        if (sub) {
+          substitutions[subSide].push(sub);
+          misc.push(sub);
+        }
+      }
+    }
     teamStats.possessions++;
     teamStats.possessionSeconds +=
       rng.range(20, 45) *
@@ -485,27 +812,49 @@ export function simulatePossessionEngine({
         : context.style === "Possession" || context.style === "Tiki-Taka"
           ? rng.int(4, 7)
           : rng.int(3, 5);
+    // In-game tactical mentality: a side chasing the game presses higher and plays
+    // more direct (fewer passes, quicker to the shot); a side protecting a lead drops
+    // the press and keeps the ball (more passes, slower tempo). Scaled by adaptability.
+    const sideMentality = mentalityFor(
+      score[side],
+      score[defendingSide],
+      currentMinute,
+      context.adaptability,
+    );
+    const oppMentality = mentalityFor(
+      score[defendingSide],
+      score[side],
+      currentMinute,
+      opponentContext.adaptability,
+    );
+    const liveOwnPress = context.press * (1 + sideMentality * 0.18);
+    const liveOppPress = opponentContext.press * (1 + oppMentality * 0.18);
+    const mentalityPassAdj =
+      sideMentality > 0.2 ? -1 : sideMentality < -0.2 ? 1 : 0;
+    const effectivePassLimit = clamp(passLimit + mentalityPassAdj, 2, 7);
     const matchFitness = clamp(
       context.fitness +
         (context.stamina - 70) * Math.max(0, currentMinute - 20) * 0.001 -
-        Math.max(0, context.press - 1) *
+        Math.max(0, liveOwnPress - 1) *
           Math.max(0, currentMinute - 20) *
           0.08,
       45,
       100,
     );
+    const carrierFatigue = fatigueFactorOf(carrier, currentMinute, team, liveOwnPress);
     const pressure = clamp(
-      (opponentContext.press * 0.28 +
+      (liveOppPress * 0.28 +
         opponentContext.defence / 350 +
         (100 - matchFitness) / 450) *
-        (1 - skill(carrier, ["composure", "ballControl"]) / 1000),
+        (1 - skill(carrier, ["composure", "ballControl"]) / 1000) *
+        (1 + (1 - carrierFatigue) * 0.6),
       0.08,
-      0.82,
+      0.86,
     );
     let lost = false;
     let shotTaken = false;
 
-    for (let passIndex = 0; passIndex < passLimit; passIndex++) {
+    for (let passIndex = 0; passIndex < effectivePassLimit; passIndex++) {
       const lateChase =
         currentMinute >= 68 && score[side] < score[defendingSide];
       const protectLead =
@@ -598,8 +947,18 @@ export function simulatePossessionEngine({
           score[side]++;
           teamStats.goals++;
           playerStat(carrier, playerStats, "goals");
+          // A header is a won aerial duel for the scorer; the defending centre-back
+          // who contested it is credited with the aerial attempt too.
+          if (shot.shotType === "header") {
+            playerStat(carrier, playerStats, "aerials");
+            playerStat(carrier, playerStats, "aerialsWon");
+            if (shot.defender) playerStat(shot.defender, playerStats, "aerials");
+          }
+          // The defending keeper is credited with the goal conceded.
+          const concedingKeeper = keeperOf(opponent);
+          if (concedingKeeper) playerStat(concedingKeeper, playerStats, "goalsConceded");
           const assistCandidate = actions
-            .slice(-passLimit * 2)
+            .slice(-effectivePassLimit * 2)
             .filter(
               (action) =>
                 action.side === side &&
@@ -631,6 +990,12 @@ export function simulatePossessionEngine({
         } else if (shot.saved) {
           opponentStats.saves++;
           playerStat(shot.keeper, playerStats, "saves");
+          if (shot.shotType === "header") {
+            // The striker won the aerial but the keeper kept it out.
+            playerStat(carrier, playerStats, "aerials");
+            playerStat(carrier, playerStats, "aerialsWon");
+            if (shot.defender) playerStat(shot.defender, playerStats, "aerials");
+          }
           misc.push({
             type: "save",
             side: defendingSide,
@@ -650,6 +1015,13 @@ export function simulatePossessionEngine({
           }
           playerStat(shot.defender, playerStats, "tackleAttempts");
           playerStat(shot.defender, playerStats, "tacklesWon");
+          // A blocked header is a defensive aerial win for the blocker.
+          if (shot.shotType === "header") {
+            playerStat(shot.defender, playerStats, "aerials");
+            playerStat(shot.defender, playerStats, "aerialsWon");
+            playerStat(carrier, playerStats, "aerials");
+          }
+          playerStat(carrier, playerStats, "possessionLosses");
           misc.push({
             type: "block",
             side: defendingSide,
@@ -673,11 +1045,12 @@ export function simulatePossessionEngine({
         zone > 0.24;
       if (shouldDribble) {
         const defender = pickDefender(opponent, rng);
-        const attackSkill = actionAbility(carrier, "dribble", {
-          position: carrier.position,
-          pressure,
-          suitability: 0.85,
-        });
+        const attackSkill =
+          actionAbility(carrier, "dribble", {
+            position: carrier.position,
+            pressure,
+            suitability: 0.85,
+          }) * fatigueFactorOf(carrier, currentMinute, team, context.press ?? 1);
         const defendSkill = defender
           ? actionAbility(defender, "tackle", {
               position: defender.position,
@@ -697,8 +1070,12 @@ export function simulatePossessionEngine({
           ),
         );
         playerStat(carrier, playerStats, "dribbles");
+        // Every dribble is a one-on-one duel; the defender is credited with the attempt.
+        playerStat(carrier, playerStats, "duels");
+        if (defender) playerStat(defender, playerStats, "duels");
         if (won) {
           playerStat(carrier, playerStats, "dribblesWon");
+          playerStat(carrier, playerStats, "duelsWon");
           zone = clamp(
             zone + 0.1 + skill(carrier, ["pace", "dribbling"]) / 1000,
             0,
@@ -717,6 +1094,7 @@ export function simulatePossessionEngine({
           opponentStats.tacklesWon++;
           playerStat(defender, playerStats, "tackleAttempts");
           playerStat(defender, playerStats, "tacklesWon");
+          playerStat(defender, playerStats, "duelsWon");
           addAction(actions, {
             type: "tackle",
             side: defendingSide,
@@ -747,12 +1125,13 @@ export function simulatePossessionEngine({
         if (!receiver) break;
         teamStats.passes++;
         playerStat(carrier, playerStats, "passAttempts");
-        const passing = actionAbility(carrier, "pass", {
-          position: carrier.position,
-          pressure,
-          laneQuality: clamp(0.8 - pressure + zone * 0.1, 0.12, 0.98),
-          suitability: 0.9,
-        });
+        const passing =
+          actionAbility(carrier, "pass", {
+            position: carrier.position,
+            pressure,
+            laneQuality: clamp(0.8 - pressure + zone * 0.1, 0.12, 0.98),
+            suitability: 0.9,
+          }) * fatigueFactorOf(carrier, currentMinute, team, context.press ?? 1);
         const receiverMovement = skill(
           receiver,
           ["attackingPositioning", "vision", "pace"],
@@ -855,6 +1234,9 @@ export function simulatePossessionEngine({
     if (lost && rng.chance(foulChance)) {
       const defender = pickDefender(opponent, rng);
       opponentStats.fouls++;
+      // The defender who committed the foul, and the attacker who was fouled.
+      if (defender) playerStat(defender, playerStats, "foulsCommitted");
+      playerStat(carrier, playerStats, "foulsWon");
       misc.push({
         type: "foul",
         side: defendingSide,
@@ -864,6 +1246,32 @@ export function simulatePossessionEngine({
           ? `${defender.first} ${defender.last}`
           : null,
       });
+      // A foul always restarts play with a free kick to the attacking side.
+      misc.push({
+        type: "freeKick",
+        side,
+        minute: currentMinute,
+        playerId: carrier.id,
+        playerName: `${carrier.first} ${carrier.last}`,
+      });
+      // A foul committed deep in the defending team's own penalty area is a penalty.
+      // It is converted through the normal goal/stat pipeline and respects any goal cap.
+      if (zone > 0.82 && carrier) {
+        scorePenalty({
+          side,
+          taker: carrier,
+          opponent,
+          playerStats,
+          score,
+          stats,
+          events,
+          misc,
+          actions,
+          rng,
+          maxLeagueGoals,
+          minute: currentMinute,
+        });
+      }
     }
   }
 
@@ -874,7 +1282,9 @@ export function simulatePossessionEngine({
     const opponentSide = side === "home" ? "away" : "home";
     const opponent = teams[opponentSide];
     const importance = clamp(team.importance ?? 1, 0.75, 1.5);
-    for (const player of team.xi) {
+    // Cards can be shown to anyone who was on the pitch at any point, so iterate the
+    // players who actually appeared (starters plus substitutes who came on).
+    for (const player of team.appeared) {
       const aggression = skill(player, ["aggression", "physical"]);
       const foulRisk = clamp(
         0.018 +
@@ -890,6 +1300,9 @@ export function simulatePossessionEngine({
         const secondYellow = rng.chance(0.035);
         const type = secondYellow ? "red" : "yellow";
         teamStats[secondYellow ? "redCards" : "yellowCards"]++;
+        // Cards belong to the specific player who committed the foul.
+        if (secondYellow) playerStat(player, playerStats, "redCards");
+        else playerStat(player, playerStats, "yellowCards");
         misc.push({
           type,
           side,
@@ -914,6 +1327,24 @@ export function simulatePossessionEngine({
     teamStats.xg = round(teamStats.xg, 2);
   }
 
+  // Finalise minutes per player from the actual substitutions: a starter who was
+  // replaced is credited only up to the substitution minute, and the player who came
+  // on is credited with the remainder. Players who never left the pitch keep the full
+  // match length. This is what makes player statistics (including minutes) agree with
+  // the substitution timeline.
+  for (const side of ["home", "away"]) {
+    const squad = teams[side];
+    for (const player of squad.appeared) {
+      const entry = squad.onPitchSince.get(player.id) ?? 0;
+      const exit = squad.exitMinute.get(player.id) ?? minutes;
+      const played = Math.max(0, exit - entry);
+      // Always create a record so the substitution timeline never points at a player
+      // with no statistics; a substitute who somehow played ~0 minutes simply gets 0.
+      const record = playerStat(player, playerStats, "minutes", 0);
+      record.minutes = Math.round(played);
+    }
+  }
+
   return {
     homeGoals: score.home,
     awayGoals: score.away,
@@ -924,5 +1355,7 @@ export function simulatePossessionEngine({
     actions,
     playerStats,
     contexts,
+    substitutions,
+    lineups: { home: teams.home.xi.map((p) => p.id), away: teams.away.xi.map((p) => p.id) },
   };
 }

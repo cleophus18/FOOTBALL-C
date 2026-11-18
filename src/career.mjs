@@ -270,6 +270,7 @@ import { simulatePossessionEngine } from "./sim/event-engine.mjs";
 import {
   resolveMomentDecision,
   simulatePlayerMatch,
+  matchRatingFromStats,
 } from "./sim/playermatch.mjs";
 import { expectedGoals, matchStrength } from "./sim/strength.mjs";
 import {
@@ -13154,8 +13155,17 @@ export class Career {
       }
     }
     const medicalFactor = investmentModifiers(this.club)?.recovery ?? 1;
+    // Congestion-aware recovery: rest is measured from each player's actual last
+    // appearance up to the next match, so a midweek tie leaves legs heavy while a
+    // rested player recovers fully. One-match-a-week players are unaffected.
+    const nextMatchDay = this.calendar[this.week]?.matchday ?? this.currentDay();
     for (const squadPlayer of this.players) {
-      applyStaminaRecovery(squadPlayer, 7, 1, medicalFactor);
+      applyStaminaRecovery(
+        squadPlayer,
+        this.restDaysBeforeNextMatch(squadPlayer, nextMatchDay),
+        1,
+        medicalFactor,
+      );
     }
     this.player.fitness = clamp(
       this.player.fitness + progression.weeklyFitnessRecovery,
@@ -13651,6 +13661,30 @@ export class Career {
       },
       match.side,
     );
+  }
+
+  /**
+   * Rest days a player gets before his next match, measured from his actual last
+   * appearance this season. This drives congestion-aware recovery: a player who
+   * played a midweek cup/continental tie a few days ago recovers far less than one
+   * who has been rested, so fixture congestion accumulates and rotation matters.
+   * Players who never played (or whose last match is over a week ago) recover fully.
+   */
+  restDaysBeforeNextMatch(player, nextMatchDay) {
+    let lastDay = null;
+    const history = player.matchHistory;
+    if (Array.isArray(history)) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        const entry = history[i];
+        if (entry.season !== this.season) continue;
+        if (Number.isFinite(entry.dateIndex)) {
+          lastDay = entry.dateIndex;
+          break;
+        }
+      }
+    }
+    if (lastDay == null || !Number.isFinite(nextMatchDay)) return 7;
+    return clamp(nextMatchDay - lastDay, 2, 7);
   }
 
   appendPlayerMatchHistory(player, match, performance, playingSide = null) {
@@ -15007,28 +15041,43 @@ export class Career {
       );
       for (const player of players) {
         player.careerStats ??= { ...player.stats };
+        // Non-user players are rated from their full event-sourced stat line (saves,
+        // tackles, duels, key passes, discipline...), the same rich model the user
+        // player gets, so a defender's clean sheet or a keeper's saves actually count.
+        const eventRating =
+          player.id !== this.player.id
+            ? matchRatingFromStats(
+                player,
+                player.position,
+                match.playerStats?.[player.id],
+                match,
+                side,
+              )
+            : null;
         const rating =
           player.id === this.player.id && match.playerResult?.rating != null
             ? match.playerResult.rating
             : player.lastMatchPerformance?.rating != null &&
                 player.lastMatchWeek === this.week
               ? player.lastMatchPerformance.rating
-              : round(
-                  clamp(
-                    (primeProfileFor(player)?.averageRating ?? 6.4) +
-                      (calculateOverall(player) - averageOverall) * 0.02 +
-                      (teamGoals > opponentGoals
-                        ? 0.25
-                        : teamGoals === opponentGoals
-                          ? 0.05
-                          : -0.15) +
-                      (playerGoals.get(player.id) ?? 0) * 0.75 +
-                      (playerAssists.get(player.id) ?? 0) * 0.4,
-                    RATING_MIN,
-                    RATING_MAX,
-                  ),
-                  1,
-                );
+              : eventRating != null
+                ? eventRating
+                : round(
+                    clamp(
+                      (primeProfileFor(player)?.averageRating ?? 6.4) +
+                        (calculateOverall(player) - averageOverall) * 0.02 +
+                        (teamGoals > opponentGoals
+                          ? 0.25
+                          : teamGoals === opponentGoals
+                            ? 0.05
+                            : -0.15) +
+                        (playerGoals.get(player.id) ?? 0) * 0.75 +
+                        (playerAssists.get(player.id) ?? 0) * 0.4,
+                      RATING_MIN,
+                      RATING_MAX,
+                    ),
+                    1,
+                  );
         player.lastMatchRating = rating;
         player.lastMatchWeek = this.week;
         const exitIncident = (match.misc ?? []).find(
