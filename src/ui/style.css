@@ -4320,6 +4320,13 @@ td:first-child {
   color: #f07a6b;
 }
 
+/* One-season signing protection: a calm, informational badge, not a warning. */
+.protection-tag {
+  border-color: #7dd3fc;
+  color: #7dd3fc;
+  white-space: nowrap;
+}
+
 .stat-card .big-number.injury {
   color: #f07a6b;
   font-size: 22px;

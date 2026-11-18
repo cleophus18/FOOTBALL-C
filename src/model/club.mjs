@@ -15,6 +15,13 @@ import { ensureClubHierarchy } from "./hierarchy.mjs";
 import { ensureClubInvestment } from "../core/investment.mjs";
 import { calculateTeamRatings } from "./team-rating.mjs";
 import { stadiumIdentityForClub } from "./stadiums.mjs";
+import {
+  generateManagerName,
+  isPlaceholderManagerName,
+  personalityForStyle,
+  managerProfile,
+  managerName,
+} from "./manager-personality.mjs";
 
 export const TEAM_BOOSTERS = {
   "manchester city": 10, arsenal: 9, liverpool: 9, chelsea: 8,
@@ -89,9 +96,17 @@ export const MANAGER_STYLES = {
 export class Manager {
   constructor(spec = {}) {
     this.id = spec.id ?? `mgr_${Math.random().toString(36).slice(2, 9)}`;
-    this.name = spec.name ?? "Unknown Manager";
     this.nationality = spec.nationality ?? "ENG";
     this.style = MANAGER_STYLES[spec.style] ? spec.style : "Balanced";
+    // Generated coaches always get a real, nationality-appropriate name. A legacy save
+    // that stored a placeholder ("Borussia Dortmund Head Coach") is migrated here, and
+    // `ensureManagerIdentity` in career.mjs makes the result unique across the world.
+    this.name = isPlaceholderManagerName(spec.name)
+      ? generateManagerName(this.nationality, new Set(), `${spec.id ?? this.id}`)
+      : String(spec.name).trim();
+    const [firstName, ...lastParts] = this.name.split(/\s+/);
+    this.first = spec.first ?? firstName;
+    this.last = spec.last ?? lastParts.join(" ");
     this.formation = spec.formation ?? "4-3-3";
     this.rating = clamp(spec.rating ?? 60, 1, 99);
     this.age = spec.age ?? 48;
@@ -108,8 +123,14 @@ export class Manager {
     /** Coaching bias 0..1: how much this coach favours youth over experience. */
     this.youthBias = clamp(spec.youthBias ?? (this.style === "Youth" ? 0.8 : 0.5), 0, 1);
     
-    // Personality system
-    this.personality = spec.personality ?? this.generatePersonality(this.style);
+    // Personality system. Deterministic from the coach's id/style so the same club
+    // always fields the same person — a save load never re-rolls a personality.
+    const personalitySeed = spec.id ?? this.id ?? `${this.style}-${this.name}`;
+    this.personality = Array.isArray(spec.personality)
+      ? spec.personality
+      : spec.personality
+        ? [spec.personality]
+        : personalityForStyle(this.style, personalitySeed);
     this.tacticalPhilosophy = spec.tacticalPhilosophy ?? this.getTacticalPhilosophy(this.style);
     this.transferPhilosophy = spec.transferPhilosophy ?? this.getTransferPhilosophy(this.style);
     this.riskTolerance = spec.riskTolerance ?? this.getRiskTolerance(this.style);
@@ -138,36 +159,11 @@ export class Manager {
     this.previousClubs = spec.previousClubs ?? [];
   }
   
-  /** Generate a personality profile based on the manager's style. */
+  /** Generate a personality profile based on the manager's style.
+   *  Retained for callers that rebuild a profile explicitly; the constructor uses the
+   *  seeded `personalityForStyle` so personalities stay stable across saves. */
   generatePersonality(style) {
-    const baseTraits = {
-      "Possession": ["Possession Specialist", "Patient", "Technical"],
-      "Counterattacking": ["Counterattacking Specialist", "Pragmatic", "Risk-Taker"],
-      "High Press": ["High-Press Specialist", "Demanding", "Attacking"],
-      "Defensive": ["Defensive Strategist", "Disciplined", "Pragmatic"],
-      "Youth": ["Youth Developer", "Patient", "Ambitious"],
-      "Attacking": ["Attacking", "Risk-Taker", "Possession Specialist"],
-      "Pragmatic": ["Pragmatic", "Defensive Strategist", "Experienced-Player Specialist"],
-      "Balanced": ["Tactical Genius", "Patient", "Ambitious"],
-    };
-    const traits = baseTraits[style] ?? baseTraits.Balanced;
-    // Add some variation - each manager gets 2-4 traits
-    const allTraits = [
-      "Ambitious", "Pragmatic", "Tactical Genius", "Defensive", "Attacking",
-      "Youth Developer", "Disciplined", "Demanding", "Patient", "Risk-Taker",
-      "Possession Specialist", "Counterattacking Specialist", "High-Press Specialist",
-      "Experienced-Player Specialist"
-    ];
-    const selected = [...traits];
-    // Add 0-2 additional random traits
-    const extraCount = Math.floor(Math.random() * 3);
-    for (let i = 0; i < extraCount; i++) {
-      const randomTrait = allTraits[Math.floor(Math.random() * allTraits.length)];
-      if (!selected.includes(randomTrait)) {
-        selected.push(randomTrait);
-      }
-    }
-    return selected;
+    return personalityForStyle(style, this.id ?? this.name ?? style);
   }
   
   getTacticalPhilosophy(style) {
@@ -298,6 +294,16 @@ export class Manager {
     return best;
   }
   
+  /** The shape this coach will actually use. */
+  get displayName() {
+    return managerName(this);
+  }
+
+  /** The derived decision profile: tastes, recruitment weights and rotation habit. */
+  get profile() {
+    return managerProfile(this);
+  }
+
   trustOf(playerId, fallback = 50) {
     return this.trust?.[playerId] ?? fallback;
   }

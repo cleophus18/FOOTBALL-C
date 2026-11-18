@@ -135,6 +135,25 @@ import {
 } from "./core/coaching.mjs";
 import { League, LeagueTable, planLeagueWeeks } from "./model/league.mjs";
 import {
+  buildManagerNameGenerator,
+  ensureClubManagerIdentity,
+  managerProfile,
+  managerName,
+  evaluateRecruitmentRequest,
+  coachRecruitmentPriorities,
+  isPlaceholderManagerName,
+  personalityForStyle,
+} from "./model/manager-personality.mjs";
+import {
+  ensureTransferProtectionFields,
+  isTransferProtected,
+  transferProtectionLabel,
+  protectionUntilSeason,
+  filterSignablePlayers,
+  canSignFromClub,
+  assertTransferAllowed,
+} from "./core/transfers.mjs";
+import {
   TRAINING_DEPARTMENTS,
   TRAINING_PROGRAMMES,
   TRAINING_INTENSITIES,
@@ -418,6 +437,30 @@ export const MATCH_SITUATIONS = [
   })),
 ];
 
+/**
+ * How many times the career player may ask his manager to sign somebody in one season.
+ * The allowance is consumed by every submitted request, approved or rejected, and is
+ * reset only when a new season genuinely begins (`advanceSeason`).
+ */
+export const RECRUITMENT_REQUEST_LIMIT = 3;
+
+/** The message shown once the allowance is gone. */
+export const RECRUITMENT_LIMIT_MESSAGE =
+  "You have reached your maximum of three recruitment requests for this season. " +
+  "You can request additional players when the next season begins.";
+
+/**
+ * A per-process submission serial. Request ids use it so two submissions in the same week
+ * are distinct (and both count), while an id already stored in the save is recognised as
+ * a duplicate by `consumeRecruitmentRequest`. Not part of the save: ids exist only to
+ * de-duplicate a single submission.
+ */
+let requestSerial = 0;
+function dailyRequestCounter() {
+  requestSerial += 1;
+  return `${Date.now().toString(36)}-${requestSerial}`;
+}
+
 function assignShirtNumbers(players, club, preserveExisting = false) {
   const assigned = new Set();
   const squad = club.squad
@@ -490,6 +533,13 @@ function releaseSquadPlayer(club, player, date, reason = "Released by club") {
 export class Career {
   constructor(data, options, saved = null) {
     this.baseData = data;
+    // The world-wide manager name registry is read by `buildClubs` (coaches are created
+    // with real, unique names during construction), so seed it from the save before any
+    // club exists. `identifyFootballers` later reconciles it with the loaded coaches.
+    this.managerNameRegistry = Array.isArray(saved?.managerNameRegistry)
+      ? [...saved.managerNameRegistry]
+      : [];
+    this._managerNameGenerator = null;
     this._simulationLock = false;
     this._clubById = new Map();
     this._playerById = new Map();
@@ -570,6 +620,16 @@ export class Career {
     this.transferHistory = [];
     this.transferRumours = [];
     this.positionNeedCache = null;
+    /**
+     * Player recruitment allowance: how many times this season the career player has
+     * asked his manager to bring in a new player. Every submitted request counts,
+     * approved or rejected, up to RECRUITMENT_REQUEST_LIMIT per season.
+     */
+    this.recruitmentRequests = {
+      season: this.season,
+      count: 0,
+      history: [],
+    };
     this.nextCpuTransferEvaluationWeek = 0;
     this._forceCpuTransferEvaluation = false;
     this.matchSimulation = null;
@@ -667,6 +727,10 @@ export class Career {
         club.manager.rating = head.rating;
       }
     }
+    // Every coach must be a real person with a unique name. This fixes the legacy
+    // "<Club> Head Coach" placeholders in one pass and records the names it issues, so
+    // two clubs can never end up with the same generated manager.
+    this.assignManagerIdentities();
     this.player = this.createCareerPlayer(options);
     const startingWage = data.careerSettings.finance.startingWeeklyWage;
     this.player.contract = {
@@ -805,6 +869,22 @@ export class Career {
 
     if (saved) this.restore(saved);
     this.rebuildIndexes();
+    // A legacy save may carry manager records without a personality or with a placeholder
+    // name; restore defaults rather than re-rolling so nothing changes on every render.
+    for (const club of this.clubs ?? []) {
+      ensureCoachProfile(club);
+      if (club.hierarchy?.manager) {
+        const head = club.hierarchy.manager;
+        if (!Array.isArray(head.personality)) {
+          head.personality = [...(club.manager.personality ?? [])];
+        }
+        head.style = head.style ?? club.manager.style;
+        head.name = club.manager.name;
+      }
+    }
+    // Footballing identification is rebuilt here, not inside `restore`, because
+    // `restore` still has to read the saved clubs/players before they can be checked.
+    this.identifyFootballers();
     if (typeof this.normalizeAllContracts === "function")
       this.normalizeAllContracts({
         announce: false,
@@ -825,6 +905,28 @@ export class Career {
     // One authority for the base overall: derived from attributes, never above potential.
     this.enforcePotentialCeiling();
     this.enforceGeneratedOverallLimit();
+  }
+
+  /**
+   * Post-load identification pass. Safe to call repeatedly: every step is idempotent.
+   *
+   *   - every head coach has a real, unique name and a personality,
+   *   - every player carries the signing-protection fields with a lifecycle-consistent
+   *     status (a window that the season has already passed is closed, a live one kept).
+   */
+  identifyFootballers() {
+    this.assignManagerIdentities();
+    for (const player of this.players ?? []) {
+      ensureTransferProtectionFields(player, this.season);
+    }
+    for (const state of this.worldLeagues ?? []) {
+      for (const performer of state.performers ?? []) {
+        ensureTransferProtectionFields(performer, this.season);
+      }
+    }
+    for (const player of this.expansionPlayers ?? []) {
+      ensureTransferProtectionFields(player, this.season);
+    }
   }
 
   rebuildIndexes() {
@@ -5096,18 +5198,23 @@ export class Career {
                 ?.flatMap((entry) => Object.values(entry.clubIdentities ?? {}))
                 .find((entry) => entry.id === teamId);
               if (!identity) return null;
+              const knownClub = this._clubById?.get(teamId);
+              if (knownClub?.manager) return knownClub;
               return new Club({
                 ...identity,
                 id: teamId,
                 leagueId: league.id,
                 manager: {
                   id: `manager-${teamId}`,
-                  name: `${identity.name} Head Coach`,
                   rating: identity.prestige ?? 60,
+                  nationality: league.nation ?? "ENG",
                 },
               });
             })();
           if (!club) return null;
+          ensureClubManagerIdentity(club, {
+            generator: this.managerNameGenerator(),
+          });
           const manager = ensureCoachProfile(club);
           const row = league.table.row(teamId);
           if (!row) return null;
@@ -7196,6 +7303,10 @@ export class Career {
 this.applyCoachFormations();
     this.calendar = seasonWeeks(this.season, this.seasonWeekCount);
     this.dayCursor = this.calendar[0]?.day - 1;
+    // A genuinely new season resets the player's recruitment allowance. Doing it here —
+    // inside the one and only season-rollover path — means refreshing, reloading a save
+    // or advancing a week can never reset the counter, and the new season always does.
+    this.recruitmentRequests = { season: this.season, count: 0, history: [] };
     this.transferMarketState = {
       season: this.season,
       window: null,
@@ -7499,12 +7610,26 @@ this.applyCoachFormations();
       this.news.unshift(`Coach dismissal request declined. ${reason}`);
       return { accepted: false, importance, rating, message: reason };
     }
-    const dismissedName = this.club.manager?.name ?? "the head coach";
+    const dismissedName = managerName(this.club.manager);
     const candidates = generateCoachMarket(
       `${this.seed}-${this.club.id}-player-request-${this.currentDay()}`,
       this.season,
       12,
     );
+    // Generated candidates are named from a small pool, so two of them can share a name
+    // (and occasionally match a manager already in the world). Give every candidate a
+    // unique, believable identity before one of them is appointed.
+    const generator = this.managerNameGenerator();
+    for (const candidate of candidates) {
+      candidate.name = generator.next(
+        candidate.nationality ?? this.club.nation ?? "ENG",
+        `${candidate.id}`,
+      );
+      const [first, ...rest] = candidate.name.split(/\s+/);
+      candidate.first = first;
+      candidate.last = rest.join(" ");
+    }
+    this.managerNameRegistry = generator.toJSON();
     const finance = this.club.financials();
     const budget = Math.max(0, Number(finance.balance ?? 0));
     const affordable = candidates.filter(
@@ -8094,7 +8219,6 @@ this.applyCoachFormations();
         leagueId: this.data.league.id,
         manager: {
           id: `manager-${id}`,
-          name: `${identity.name} Head Coach`,
           nationality: this.data.league.nation,
           style,
           rating: clamp(Math.round(identity.prestige * 0.72), 42, 90),
@@ -8308,6 +8432,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       fee: offer.fee,
       wage: offer.weeklyWage,
       date: this.currentDay(),
+      season: this.season,
       transferId: `listed-transfer-${offer.id}`,
     });
     const contract = signPlayerContract(this.player, destination, offer, {
@@ -8619,16 +8744,66 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       throw new Error("Manager careers control the club directly.");
     if (!["playing-time", "better-teammates", "transfer"].includes(type))
       throw new Error(`Unsupported manager request: ${type}`);
+    // The three-per-season allowance covers ONLY requests for a new player to be
+    // signed. Playing-time requests and transfer requests are a different conversation
+    // and are deliberately not counted or blocked here.
+    const isRecruitment = type === "better-teammates";
+    const allowance = this.recruitmentAllowance();
+    // A request id that is unique per submission, so two requests in the same week are
+    // counted as two, while the SAME request (double click, replayed save) counts once.
+    const requestId = `manager-request-${this.season}-${this.week}-${type}-${dailyRequestCounter()}`;
+    if (isRecruitment && allowance.remaining <= 0) {
+      const blocked = {
+        id: `${requestId}-blocked`,
+        type,
+        details: { ...details },
+        status: "limit-reached",
+        approved: false,
+        blocked: true,
+        counted: false,
+        trust: Number(this.player.trusting?.manager ?? 50),
+        createdAt: this.currentDay(),
+        season: this.season,
+        response: RECRUITMENT_LIMIT_MESSAGE,
+      };
+      this.conversationHistory ??= [];
+      this.conversationHistory.push({
+        id: blocked.id,
+        topic: "betterTeammate",
+        manager: managerName(this.club.manager),
+        date: this.currentDay(),
+        response: RECRUITMENT_LIMIT_MESSAGE,
+        trust: blocked.trust,
+        approved: false,
+        details: { ...details },
+      });
+      if (this.conversationHistory.length > 50) this.conversationHistory.shift();
+      return blocked;
+    }
     const manager = this.club.manager;
     const trust = Number(this.player.trusting?.manager ?? 50);
     const request = {
-      id: `manager-request-${this.season}-${this.week}-${type}`,
+      id: requestId,
       type,
       details: { ...details },
       status: "reviewed",
       trust,
+      season: this.season,
       createdAt: this.currentDay(),
     };
+    // Every submitted recruitment request is counted here — before any evaluation and
+    // before any transfer — so an approved and a rejected request cost the same.
+    if (isRecruitment) {
+      const consumed = this.consumeRecruitmentRequest({
+        requestId: request.id,
+        position: details.position ?? null,
+        playerId: details.playerId ?? null,
+        day: request.createdAt,
+      });
+      request.recruitmentNumber = consumed.count;
+      request.remainingAfter = consumed.remaining;
+      request.counted = true;
+    }
     const performance = Number(this.player.lastMatchRating ?? 6.5);
     const chance = trust * 0.7 + performance * 3;
     const threshold = type === "better-teammates" ? 55 : 50;
@@ -8640,17 +8815,40 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       type === "better-teammates" && details.playerId
         ? this.players.find((player) => player.id === details.playerId)
         : null;
+    // The position the request is really about, resolved once for the candidate search,
+    // the coach's fit score and the manager's verdict.
+    const wantedPosition = normalizePosition(
+      details.position || this.player.position,
+    );
     let newTeammate = null;
     let salePlayer = null;
     let saleBuyer = null;
     let saleFee = 0;
     if (type === "better-teammates") {
       const finances = this.financialSummary(this.club);
-      const candidates = requestedPlayer
+      const candidates = (requestedPlayer
         ? [requestedPlayer]
-        : this.transferMarket({
-            position: details.position || this.player.position,
-          }).map(({ player }) => player);
+        : this.transferMarket({ position: wantedPosition }).map(
+            ({ player }) => player,
+          )
+      )
+        // A player who has just joined another club is in his signing-protection
+        // season and is not an available signing for us.
+        .filter((player) =>
+          canSignFromClub(player, {
+            season: this.season,
+            buyingClubId: this.club.id,
+          }),
+        )
+        // The manager's personality decides which of the eligible players he actually
+        // prefers: a Youth Developer gravitates to prospects, a Pragmatic coach to the
+        // best ready-made player available.
+        .map((player) => ({
+          player,
+          preference: this.managerRecruitmentScore(player, wantedPosition),
+        }))
+        .sort((left, right) => right.preference - left.preference)
+        .map((entry) => entry.player);
       const registrationLimit = this.club.registrationLimit ?? 25;
       const candidateSeller = (player) =>
         this.clubs.find(
@@ -8749,6 +8947,13 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       ? this.financialSummary(destination)
       : null;
     const requestedWage = this.player.contract?.wage ?? 0;
+    // A recruited player may not be a player who has just signed for another club.
+    const requestedProtected =
+      requestedPlayer &&
+      !canSignFromClub(requestedPlayer, {
+        season: this.season,
+        buyingClubId: this.club.id,
+      });
     const unavailableReason =
       type === "transfer"
         ? !destination || destination.id === this.club.id
@@ -8772,22 +8977,63 @@ return this.transferList.find((entry) => entry.playerId === playerId);
                           !this.club.has(this.player.id)
                         ? "Your player registration is unavailable."
                         : null
-        : type === "better-teammates" && !newTeammate
-          ? requestedPlayer
-            ? "That player cannot be signed within the squad and budget rules."
-            : "The club cannot currently afford or register a suitable signing."
-          : null;
-    request.approved = !unavailableReason && chance >= threshold;
+        : type === "better-teammates" && requestedProtected
+          ? "That player has just joined his club and cannot move again this season."
+          : type === "better-teammates" && !newTeammate
+            ? requestedPlayer
+              ? "That player cannot be signed within the squad and budget rules."
+              : "The club cannot currently afford or register a suitable signing."
+            : null;
+    // The manager's own judgement, not just the player's standing: does he want this
+    // signing for his squad at this price? This is what makes different coaches behave
+    // differently in the same situation.
+    let managerVerdict = null;
+    if (type === "better-teammates") {
+      const needs = this.getSquadNeeds(this.club.id, this.currentDay());
+      const seller = newTeammate
+        ? this.clubs.find((club) => club.id === newTeammate.clubId)
+        : null;
+      const fee = newTeammate
+        ? marketValueForPlayer(newTeammate, seller, this.currentDay())
+        : 0;
+      const wage = newTeammate
+        ? (newTeammate.contract?.wage ?? Math.round(newTeammate.overall * 900))
+        : 0;
+      managerVerdict = evaluateRecruitmentRequest({
+        manager,
+        club: this.club,
+        player: newTeammate ?? requestedPlayer ?? null,
+        needs,
+        finance: this.club.financials(),
+        wageBill: this.getWageBill(this.club.id),
+        squadSize: this.club.squad.length,
+        registrationLimit: this.club.registrationLimit ?? 25,
+        transferBudget: this.financialSummary(this.club).transferBudget,
+        balance: this.financialSummary(this.club).balance,
+        requestedFee: fee,
+        requestedWage: wage,
+        currentDay: this.currentDay(),
+        position: wantedPosition,
+        season: this.season,
+      });
+    }
+    request.approved =
+      !unavailableReason &&
+      chance >= threshold &&
+      (type !== "better-teammates" || managerVerdict?.approved !== false);
     request.status = request.approved ? "approved" : "declined";
+    if (managerVerdict) request.managerVerdict = managerVerdict;
     if (unavailableReason) {
-      request.response = `${manager.name} cannot approve this request: ${unavailableReason}`;
+      request.response = `${managerName(manager)} cannot approve this request: ${unavailableReason}`;
+    } else if (type === "better-teammates" && managerVerdict && !managerVerdict.approved) {
+      request.response = managerVerdict.message;
     } else if (!request.approved) {
-      request.response = `${manager.name} has declined for now. Build trust through performances and team commitment.`;
+      request.response = `${managerName(manager)} has declined for now. Build trust through performances and team commitment.`;
     } else if (type === "playing-time") {
       const amount = details.amount === "less" ? "less" : "more";
       this.player.requestedPlayingTime = amount;
       this.player.trusting.manager = clamp(trust + 8, 0, 100);
-      request.response = `${manager.name} agrees to give you ${amount} playing time.`;
+      request.response = `${managerName(manager)} agrees to give you ${amount} playing time.`;
     } else if (type === "better-teammates") {
       if (salePlayer && saleBuyer) {
         const weakWage =
@@ -8800,6 +9046,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           fee: saleFee,
           wage: weakWage,
           date: this.currentDay(),
+          season: this.season,
           transferId: `${request.id}-weak-player-sale`,
         });
         this.transferHistory ??= [];
@@ -8846,6 +9093,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         fee,
         wage,
         date: this.currentDay(),
+        season: this.season,
         transferId: `${request.id}-signing`,
       });
       assignShirtNumbers(this.players, this.club, true);
@@ -8866,8 +9114,11 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         wage,
       });
       request.response = salePlayer
-        ? `${manager.name} agrees. ${salePlayer.first} ${salePlayer.last} was ${saleBuyer ? "sold" : "released as a free agent"}, and ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`
-        : `${manager.name} agrees. ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`;
+        ? `${managerName(manager)} agrees. ${salePlayer.first} ${salePlayer.last} was ${saleBuyer ? "sold" : "released as a free agent"}, and ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`
+        : `${managerName(manager)} agrees. ${newTeammate.first} ${newTeammate.last} joins ${this.club.name} as your new teammate.`;
+      if (isRecruitment) {
+        request.response += ` (${this.recruitmentAllowance().used}/${RECRUITMENT_REQUEST_LIMIT} recruitment requests used this season)`;
+      }
     } else {
       const fromClub = this.club;
       const wage = this.player.contract?.wage ?? 0;
@@ -8901,6 +9152,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         fee: 0,
         wage,
         date: this.currentDay(),
+        season: this.season,
         transferId: `${request.id}-transfer`,
       });
       assignShirtNumbers(this.players, fromClub, true);
@@ -8928,16 +9180,19 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       this.pendingPlayerTransfer = null;
       request.destinationClubId = destination.id;
       request.response = destinationReleasePlayer
-        ? `${manager.name} agrees. ${destinationReleasePlayer.first} ${destinationReleasePlayer.last} was released to make room, and your transfer to ${destination.name} is complete.`
-        : `${manager.name} agrees. Your transfer to ${destination.name} is complete.`;
+        ? `${managerName(manager)} agrees. ${destinationReleasePlayer.first} ${destinationReleasePlayer.last} was released to make room, and your transfer to ${destination.name} is complete.`
+        : `${managerName(manager)} agrees. Your transfer to ${destination.name} is complete.`;
     }
 
-    this.news.push(`${manager.name}: ${request.response}`);
+    this.news.push(`${managerName(manager)}: ${request.response}`);
     return request;
   }
 
   canSignPlayerForPlayerCareer(player) {
     if (!player || player.clubId === this.club.id || player.isLegend)
+      return false;
+    // Protection applies to the player's own recruitment too.
+    if (!canSignFromClub(player, { season: this.season, buyingClubId: this.club.id }))
       return false;
     const seller = this.clubs.find((club) => club.id === player.clubId);
     if (!seller || seller.squad.length <= 20 || this.club.squad.length >= 25)
@@ -9022,6 +9277,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       );
       approved = request.approved;
       response = request.response;
+      if (request.remainingAfter != null && !request.blocked) {
+        response += ` (${this.recruitmentAllowance().used}/${RECRUITMENT_REQUEST_LIMIT} recruitment requests used this season)`;
+      }
     } else if (topic === "formation") {
       approved = trust >= 60 && FORMATION_NAMES.includes(details.formation);
       if (approved) {
@@ -9089,6 +9347,142 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     return this.playerManagerRequest("playing-time", { amount });
   }
 
+  /* ------------------------------------------------------------------ *
+   * Recruitment allowance: three requests for new players per season.
+   * Stored in the save as `recruitmentRequests = { season, count, history }`.
+   * ------------------------------------------------------------------ */
+
+  /** The allowance, self-healing a stale/legacy season value without touching a live one. */
+  recruitmentState() {
+    const state = this.recruitmentRequests;
+    if (!state || typeof state !== "object") {
+      this.recruitmentRequests = { season: this.season, count: 0, history: [] };
+      return this.recruitmentRequests;
+    }
+    if (!Array.isArray(state.history)) state.history = [];
+    if (state.season !== this.season) {
+      // Only `advanceSeason` is supposed to change the season, but a save written before
+      // this system existed (or a hand-edited one) must not carry an old count forward.
+      state.season = this.season;
+      state.count = 0;
+      state.history = [];
+    }
+    if (!Number.isFinite(Number(state.count))) state.count = 0;
+    state.count = clamp(Math.round(Number(state.count)), 0, RECRUITMENT_REQUEST_LIMIT);
+    return state;
+  }
+
+  /** What the hub shows: used / limit / remaining for the CURRENT season. */
+  recruitmentAllowance() {
+    const state = this.recruitmentState();
+    const used = Math.min(RECRUITMENT_REQUEST_LIMIT, Number(state.count ?? 0));
+    const remaining = Math.max(0, RECRUITMENT_REQUEST_LIMIT - used);
+    return {
+      season: state.season,
+      used,
+      limit: RECRUITMENT_REQUEST_LIMIT,
+      count: used,
+      remaining,
+      exhausted: remaining <= 0,
+      available: remaining > 0,
+      message: remaining <= 0 ? RECRUITMENT_LIMIT_MESSAGE : null,
+      history: state.history,
+    };
+  }
+
+  /** True when the player may still ask for a new signing this season. */
+  canRequestRecruitment() {
+    return !this.isManagerCareer && this.recruitmentAllowance().available;
+  }
+
+  /**
+   * Spend one recruitment request. Called by the core request function only, before any
+   * evaluation, so approved and rejected requests both count. `requestId` makes it
+   * idempotent: the same request (double click, replayed save) can never cost twice.
+   */
+  consumeRecruitmentRequest({ requestId = null, position = null, playerId = null, day = null } = {}) {
+    const state = this.recruitmentState();
+    state.history ??= [];
+    if (requestId && state.history.some((entry) => entry.requestId === requestId)) {
+      return {
+        count: state.count,
+        remaining: Math.max(0, RECRUITMENT_REQUEST_LIMIT - state.count),
+        duplicate: true,
+      };
+    }
+    state.count = Math.min(RECRUITMENT_REQUEST_LIMIT, Number(state.count ?? 0) + 1);
+    state.history.push({
+      requestId,
+      season: this.season,
+      position,
+      playerId,
+      day,
+    });
+    if (state.history.length > 20) state.history.splice(0, state.history.length - 20);
+    return {
+      count: state.count,
+      remaining: Math.max(0, RECRUITMENT_REQUEST_LIMIT - state.count),
+      duplicate: false,
+    };
+  }
+
+  /** The UI/hub representation of the allowance. */
+  recruitmentSummary() {
+    const allowance = this.recruitmentAllowance();
+    const manager = this.club?.manager ?? null;
+    return {
+      ...allowance,
+      managerName: managerName(manager),
+      managerNationality: manager?.nationality ?? null,
+      tacticalStyle: manager?.playstyle ?? manager?.style ?? "Balanced",
+      tacticalPhilosophy: manager?.tacticalPhilosophy ?? "",
+      transferPhilosophy: manager?.transferPhilosophy ?? "",
+      personality: Array.isArray(manager?.personality) ? [...manager.personality] : [],
+      preferredFormation:
+        manager?.preferredFormation ?? this.club?.formation ?? "4-3-3",
+    };
+  }
+
+  /**
+   * How much this club's manager likes a candidate for his own reasons. Used to order
+   * the shortlist in `requestBetterTeammates`, so a Youth Developer asks for the
+   * 19-year-old with the big ceiling while a Pragmatic coach asks for the proven one.
+   */
+  managerRecruitmentScore(player, position = null) {
+    const manager = this.club?.manager;
+    if (!manager || !player) return 0;
+    const needs = this.getSquadNeeds(this.club.id, this.currentDay());
+    const slot = normalizePosition(position ?? player.position ?? "CM");
+    const fit = managerProfile(manager, this.club);
+    // Re-use the shared scoring helper indirectly via the profile's weights.
+    const overall = Number(player.overall ?? 55);
+    const potential = Number(player.potential ?? overall);
+    const playerAge = Number(player.age ?? 25);
+    const target = Number(needs?.[slot]?.starterQuality ?? 55);
+    const demand = Number(needs?.[slot]?.demand ?? 45);
+    const suit = fit.structuredPositions.length
+      ? fit.structuredPositions.includes(slot)
+        ? 1
+        : 0.4
+      : 0.7;
+    const band = fit.ageBand ?? (fit.developsYouth ? [16, 24] : [21, 31]);
+    const ageFit =
+      playerAge >= band[0] && playerAge <= band[1]
+        ? 1
+        : playerAge < band[0]
+          ? Math.max(0.2, 1 - (band[0] - playerAge) * 0.12)
+          : Math.max(0.1, 1 - (playerAge - band[1]) * 0.15);
+    return (
+      (overall - target) * fit.ratingWeight * 8 +
+      (potential - overall) * fit.potentialWeight * 3.2 +
+      demand * 0.3 +
+      suit * 14 +
+      (ageFit - 0.55) * 18 +
+      (fit.favoursExperience && playerAge >= 27 ? 5 : 0) -
+      (fit.favoursExperience && playerAge <= 21 ? 4 : 0)
+    );
+  }
+
   requestBetterTeammates(position = "", playerId = null) {
     return this.playerManagerRequest("better-teammates", {
       position,
@@ -9146,6 +9540,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       fee: agreedFee,
       wage: agreedWage,
       date: this.currentDay(),
+      season: this.season,
       transferId: `transfer-${this.season}-${this.week}-${player.id}`,
     });
     player.contract.expires = this.season + contractYears;
@@ -9231,6 +9626,104 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         dayIndex,
       ).formation;
     }
+  }
+
+  /**
+   * Ensure every club in the world has a properly named, uniquely identified coach.
+   *
+   * Real managers are reserved first and never renamed. Legacy placeholder names
+   * ("Borussia Dortmund Head Coach") are replaced with a generated, nationality-appropriate
+   * name. The names issued are remembered in `managerNameRegistry` and saved, so a
+   * reload never renames a coach and a replacement is always a new person.
+   */
+  assignManagerIdentities() {
+    const registry = Array.isArray(this.managerNameRegistry)
+      ? this.managerNameRegistry
+      : [];
+    // First pass: reserve every real name and deduplicate any legacy clash on a
+    // placeholder-named coach, so the registry grows as names are issued.
+    const registrySet = new Set(registry);
+    const claim = (club) => {
+      const name = String(club?.manager?.name ?? "").trim();
+      if (name && !isPlaceholderManagerName(name)) registrySet.add(name);
+    };
+    for (const club of this.clubs ?? []) claim(club);
+    // Two clubs must never share a coach. If an existing save already has a duplicate
+    // generated name, the later club is treated as a placeholder and gets a new person.
+    const seen = new Set();
+    for (const club of this.clubs ?? []) {
+      const manager = club?.manager;
+      if (!manager || isPlaceholderManagerName(manager.name)) continue;
+      if (seen.has(manager.name)) {
+        manager.name = null;
+      } else {
+        seen.add(manager.name);
+      }
+    }
+    const realNames = [];
+    for (const club of this.clubs ?? []) {
+      const manager = club?.manager;
+      if (!manager) continue;
+      if (!isPlaceholderManagerName(manager.name)) realNames.push(manager.name);
+    }
+    const generator = buildManagerNameGenerator({
+      seed: this.seed,
+      reserved: registrySet,
+    });
+    for (const name of realNames) generator.reserve(name);
+    for (const club of this.clubs ?? []) {
+      if (!club?.manager) continue;
+      const before = club.manager.name;
+      ensureClubManagerIdentity(club, { generator });
+      // Keep the hierarchy's copy of the manager in step with the club's coach.
+      if (club.hierarchy?.manager) {
+        club.hierarchy.manager.name = club.manager.name;
+        club.hierarchy.manager.first = club.manager.first;
+        club.hierarchy.manager.last = club.manager.last;
+        club.hierarchy.manager.nationality ??= club.manager.nationality;
+        club.hierarchy.manager.style = club.hierarchy.manager.style ?? club.manager.style;
+        if (!Array.isArray(club.hierarchy.manager.personality)) {
+          club.hierarchy.manager.personality = [...club.manager.personality];
+        }
+      }
+      if (before !== club.manager.name) {
+        club.manager.nameChangedFrom = before;
+      }
+    }
+    this.managerNameRegistry = generator.toJSON();
+    this._managerNameGenerator = generator;
+    return this.managerNameRegistry;
+  }
+
+  /** The world-wide name generator (restored lazily from the saved registry). */
+  managerNameGenerator() {
+    if (this._managerNameGenerator) return this._managerNameGenerator;
+    const generator = buildManagerNameGenerator({
+      seed: this.seed,
+      reserved: this.managerNameRegistry ?? [],
+    });
+    for (const club of this.clubs ?? []) {
+      if (club?.manager?.name) generator.reserve(club.manager.name);
+    }
+    this._managerNameGenerator = generator;
+    return generator;
+  }
+
+  /** Replace a coach with a brand-new, properly named person (never a placeholder). */
+  nextManagerIdentity(club, { style = null, seedKey = "" } = {}) {
+    const generator = this.managerNameGenerator();
+    const nation = club?.nation ?? "ENG";
+    const coachStyle = style ?? club?.manager?.style ?? "Balanced";
+    const name = generator.next(nation, `${club.id}|${seedKey}|${this.season}|${this.week}`);
+    this.managerNameRegistry = generator.toJSON();
+    return {
+      id: `manager-${club.id}-${this.season}-${seedKey || this.week}`,
+      name,
+      nationality: nation,
+      style: coachStyle,
+      rating: club?.manager?.rating ?? 60,
+      personality: personalityForStyle(coachStyle, `${club.id}|${name}`),
+    };
   }
 
   /**
@@ -10010,6 +10503,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     { agent = null, excludeClubId = player.clubId, threshold = 58 } = {},
   ) {
     if (player?.isLegend) return [];
+    // A player inside his signing-protection season cannot be courted by another club,
+    // so the career player sees no offers until the window closes.
+    if (isTransferProtected(player, this.season)) return [];
     const day = this.currentDay();
     const candidates = [];
     const marketPlayers = this.collectAllMarketPlayers();
@@ -10039,10 +10535,14 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           formation: state?.clubFormations?.[clubId] ?? "4-3-3",
           manager: {
             id: `manager-${clubId}`,
-            name: `${identity.name} Head Coach`,
             nationality: entry.league.nation,
             rating: identity.prestige ?? 60,
           },
+        });
+        // A real name for this coach, issued by the world-wide generator so it never
+        // collides with a coach in another league.
+        ensureClubManagerIdentity(club, {
+          generator: this.managerNameGenerator(),
         });
         const roster = playersByClub.get(clubId) ?? [];
         club.squad = roster.map((candidate) => candidate.id);
@@ -10602,13 +11102,21 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       const finance = ensureClubFinance(club);
       const squadPlayers = this.playersForClub(club.id);
       const needs = this.getSquadNeeds(club.id, day);
-      const wantedPosition = priorityRecruitmentPosition(
-        needs,
-        squadPlayers,
-        club,
-      );
+      // The coach's philosophy drives which hole he fills when nothing is urgent. A
+      // defensive coach with a stocked squad does not buy a fourth winger; a Home-grown
+      // bias coach prefers the 19-year-old prospect in the same position.
+      const coach = ensureCoachProfile(club);
+      const priorities = coachRecruitmentPriorities(coach, needs, { limit: 3 });
+      const bestTaste = priorities[0];
+      const wantedPosition =
+        priorityRecruitmentPosition(needs, squadPlayers, club) ??
+        (bestTaste && bestTaste.demand >= 40 ? bestTaste.position : null);
+      // A squad that is already strong is left alone: the coach does not sign for the
+      // sake of it. Urgency is the only thing that overrides that.
+      const stocked = !priorities.some((entry) => entry.demand >= 55);
+      if (priority < 3 && stocked && this.isTransferWindowWeek(day)) continue;
+      // Even coaches with a taste for depth stop at the registration limit.
       const limit = Number(club.registrationLimit ?? 25);
-      const urgency = priority >= 3;
       // Even urgent clubs respect registration limits and wage budgets.
       const wageBill = this.getWageBill(club.id);
       for (const agent_ of this.freeAgents({
@@ -10616,6 +11124,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       })) {
         if (club.squad.length >= limit) break;
         const player = agent_.player;
+        // A free agent is not a loophole around signing protection: a player who left
+        // his club in his protected season still cannot be registered elsewhere.
+        if (!canSignFromClub(player, { season: this.season, buyingClubId: club.id })) continue;
         if (player.contract?.preContract?.status === "agreed") continue;
         // A grace period after expiry: clubs take days to scout and negotiate,
         // so a player who just became a free agent is not swooped the same week.
@@ -10631,14 +11142,35 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           currentWageBill: wageBill,
           leagueReputation:
             this.clubLeagueEntry(club.id)?.league?.tier === 1 ? 80 : 55,
-          positionalNeed: urgency
+          positionalNeed: priority >= 3
             ? Math.max(positionalNeed, 70)
             : positionalNeed,
           squadSize: club.squad.length,
         });
         // Urgent recruitment lowers the quality bar; depth recruitment keeps it high.
-        const threshold = urgency ? 35 : 55;
+        const threshold = priority >= 3 ? 35 : 55;
         if (score < threshold) continue;
+        // …and the coach's own taste decides the last word: a Youth Developer brings in
+        // a young talent, a Pragmatic coach a proven one. The shared fit score means a
+        // request for a signing later gets the same treatment from the same coach.
+        const coachFit = evaluateRecruitmentRequest({
+          manager: coach,
+          club,
+          player,
+          needs,
+          finance,
+          wageBill,
+          squadSize: club.squad.length,
+          registrationLimit: limit,
+          transferBudget: finance.transferBudget,
+          balance: finance.balance,
+          requestedFee: 0,
+          requestedWage: wage,
+          currentDay: day,
+          position: normalizePosition(player.position),
+          season: this.season,
+        });
+        if (!coachFit.approved && priority < 3) continue;
         const offer = freeAgentOpeningOffer(player, club, {
           currentWageBill: wageBill,
         });
@@ -10662,13 +11194,13 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           contractYears: contract_.years,
           wage: contract_.weeklyWage,
           date: day,
-          source: urgency ? "squad-protection" : "squad-depth",
+          source: priority >= 3 ? "squad-protection" : "squad-depth",
         });
         this.news.push(
           `${club.name} have signed ${player.first} ${player.last} on a free transfer to address ${normalizePosition(player.position)} depth.`,
         );
         signings.push({ playerId: player.id, clubId: club.id, priority });
-        if (!urgency) break; // depth signings are limited to one per cycle
+        if (priority < 3) break; // depth signings are limited to one per cycle
       }
     }
     // A critically short squad with no free-agent option gets a generated
@@ -10975,6 +11507,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         // like any other so a desperate club can re-sign its own free agent.
       }
       if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
+      // Free agency is not a route around signing protection.
+      if (!canSignFromClub(this.player, { season: this.season, buyingClubId: club.id })) continue;
       const needs = this.transferNeedAssessment(club, day, playersByClub);
       const finance = ensureClubFinance(club);
       const wageBill = this.getWageBill(club.id);
@@ -11036,6 +11570,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     if (!opportunity) throw new Error("That club is no longer interested.");
     const club = this.clubs.find((entry) => entry.id === clubId);
     if (!club) throw new Error("That club is no longer available.");
+    assertTransferAllowed(this.player, { season: this.season, buyingClubId: club.id });
     if (club.squad.length >= (club.registrationLimit ?? 25))
       throw new Error(`${club.name} no longer has a squad place.`);
     const offer = createContractOffer({ ...opportunity.offer, ...override });
@@ -11975,7 +12510,10 @@ return this.transferList.find((entry) => entry.playerId === playerId);
             player.clubId !== buyer.id &&
             player.id !== this.player.id &&
             !movedPlayers.has(player.id) &&
-            normalizePosition(player.position) === priority.position,
+            normalizePosition(player.position) === priority.position &&
+            // One-season signing protection: a player who joined another club this
+            // season is not on the market, whatever the board thinks of him.
+            canSignFromClub(player, { season: this.season, buyingClubId: buyer.id }),
         )
         .filter(
           (player) =>
@@ -12046,6 +12584,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           fee,
           wage,
           date: dayIndex,
+          season: this.season,
           transferId: `cpu-transfer-${this.season}-${this.week}-${target.player.id}`,
         });
       } catch {
@@ -12203,6 +12742,11 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         throw new Error(
           "This offer can only be completed during the next transfer window.",
         );
+      // The career player's own move respects the same protection as everybody else's.
+      assertTransferAllowed(this.player, {
+        season: this.season,
+        buyingClubId: offer.clubId,
+      });
       const sameLeague = offer.leagueId
         ? offer.leagueId === this.league.id
         : offer.leagueName === this.league.name;
@@ -12228,6 +12772,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           fee: offer.fee,
           wage: offer.wage,
           date: this.currentDay(),
+          season: this.season,
           transferId: `career-transfer-${offer.id}`,
         });
       }
@@ -16185,6 +16730,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       userContractDecision: this.userContractDecision ?? null,
       freeAgentOpportunities: this.freeAgentOpportunities ?? [],
       pendingPlayerTransfer: this.pendingPlayerTransfer ?? null,
+      recruitmentRequests: this.recruitmentState(),
+      managerNameRegistry: this.managerNameRegistry ?? [],
       usedSituationIds: this.usedSituationIds,
       matchSimulation: this.matchSimulation,
       populationTracking: this.populationTracking ?? {
@@ -16407,6 +16954,22 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     this._forceCpuTransferEvaluation = false;
     this.positionNeedCache = null;
     this.pendingPlayerTransfer = saved.pendingPlayerTransfer ?? null;
+    // Recruitment allowance: an old save that never had the counter starts at zero for
+    // whatever season it is in. A carried-forward season value cannot leak across a
+    // season boundary because `recruitmentState` re-checks it against `this.season`.
+    this.recruitmentRequests =
+      saved.recruitmentRequests && typeof saved.recruitmentRequests === "object"
+        ? {
+            season: saved.recruitmentRequests.season ?? saved.season,
+            count: Number(saved.recruitmentRequests.count ?? 0),
+            history: Array.isArray(saved.recruitmentRequests.history)
+              ? saved.recruitmentRequests.history
+              : [],
+          }
+        : { season: saved.season, count: 0, history: [] };
+    this.managerNameRegistry = Array.isArray(saved.managerNameRegistry)
+      ? saved.managerNameRegistry
+      : [];
     this.userContractDecision = saved.userContractDecision ?? null;
     this.freeAgentOpportunities = saved.freeAgentOpportunities ?? [];
     this.transferRefreshCount =
@@ -16578,6 +17141,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       academyState(club);
       ensureSquadRegistration(club, this.players);
     }
+    // Restore (or create) a real, unique identity for every head coach. A legacy save
+    // with "<Club> Head Coach" gets a proper name; an existing coach keeps his.
+    this.assignManagerIdentities();
     this.reconcileSquadMembership();
     for (const club of this.clubs) ensureSquadRegistration(club, this.players);
     this.ensureSquadSizes();

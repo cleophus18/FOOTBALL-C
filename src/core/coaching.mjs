@@ -1,6 +1,12 @@
 import { clamp, round } from "./util.mjs";
 import { FORMATIONS, selectLineup } from "../model/club.mjs";
 import { effectiveRating, calculateOverall, updatePlayerOverall } from "../model/player.mjs";
+import {
+  generateManagerName,
+  isPlaceholderManagerName,
+  managerProfile,
+  personalityForStyle,
+} from "../model/manager-personality.mjs";
 
 export const COACHING_ATTRIBUTES = [
   "tacticalIntelligence",
@@ -101,6 +107,48 @@ export const PLAYSTYLES = {
   "Long Ball": { formations: ["4-4-2", "4-2-2-2", "5-3-2"], attack: 1.02, defence: 1.02, passing: 0.92, press: 0.92 },
 };
 
+/** One-line tactical identity per playstyle, used by the hub and by request replies. */
+export const TACTICAL_PHILOSOPHIES = {
+  Possession: "Control the game through ball retention and structured build-up play",
+  "High Press": "Disrupt the opponent high up the pitch and force errors",
+  Counter: "Absorb pressure and strike quickly on the break",
+  "Tiki-Taka": "Short passing, patient circulation and positional rotation",
+  "Wing Play": "Stretch the pitch and attack through the wide areas",
+  Gegenpressing: "Win the ball back within seconds of losing it",
+  Direct: "Attack the space quickly with vertical, risk-forward passing",
+  "Low Block": "Defend deep as a compact unit and deny space in behind",
+  Balanced: "Adapt game by game, balancing control with penetration",
+  "Long Ball": "Go long early and fight for second balls in the opponent's half",
+};
+
+/** What each playstyle looks for in the market. Consumed by request replies and AI buys. */
+export const TRANSFER_PHILOSOPHIES = {
+  Possession: "Sign technically gifted midfielders who keep the ball under pressure",
+  "High Press": "Prioritise stamina, work rate and players who press intelligently",
+  Counter: "Seek pace and directness for quick transitions",
+  "Tiki-Taka": "Target composed, two-footed players comfortable in tight areas",
+  "Wing Play": "Sign fast, crossing-capable wide players and aerial targets",
+  Gegenpressing: "Recruit aggressive ball-winners with elite endurance",
+  Direct: "Favour physical, direct players who win duels and cover ground",
+  "Low Block": "Prioritise defensive organisation, centre-backs and reliable keepers",
+  Balanced: "Strengthen the weakest area of the squad first",
+  "Long Ball": "Target physical forwards and dominant centre-backs",
+};
+
+/** Baseline risk appetite per playstyle, used when a coach has no stored value. */
+const STYLE_RISK = {
+  Possession: 0.4,
+  "High Press": 0.6,
+  Counter: 0.7,
+  "Tiki-Taka": 0.35,
+  "Wing Play": 0.55,
+  Gegenpressing: 0.65,
+  Direct: 0.6,
+  "Low Block": 0.2,
+  Balanced: 0.5,
+  "Long Ball": 0.45,
+};
+
 const ROLE_BY_STYLE = {
   Possession: { midfield: "Deep playmaker", winger: "Support", striker: "False nine" },
   "High Press": { midfield: "Box-to-box", winger: "Pressing winger", striker: "Pressing forward" },
@@ -116,6 +164,31 @@ export function ensureCoachProfile(club) {
   const known = PLAYSTYLES[manager.style] ? manager.style : "Balanced";
   manager.playstyle =
     PLAYSTYLES[manager.playstyle] ? manager.playstyle : known;
+  // A coach's tactical philosophy and personality are part of his identity: give them to
+  // legacy saves that predate the personality system, once, instead of every render.
+  if (typeof manager.name === "string" && isPlaceholderManagerName(manager.name)) {
+    manager.name = generateManagerName(manager.nationality ?? "ENG", new Set(), `${club.id}`);
+    const [firstName, ...rest] = manager.name.split(/\s+/);
+    manager.first = manager.first ?? firstName;
+    manager.last = manager.last ?? rest.join(" ");
+  }
+  if (!Array.isArray(manager.personality)) {
+    manager.personality = personalityForStyle(
+      manager.playstyle ?? known,
+      manager.id ?? manager.name ?? club.id,
+    );
+  }
+  manager.tacticalPhilosophy ??= TACTICAL_PHILOSOPHIES[manager.playstyle] ?? TACTICAL_PHILOSOPHIES.Balanced;
+  manager.transferPhilosophy ??= TRANSFER_PHILOSOPHIES[manager.playstyle] ?? TRANSFER_PHILOSOPHIES.Balanced;
+  manager.riskTolerance = clamp(
+    Number(
+      manager.riskTolerance ??
+        STYLE_RISK[manager.playstyle] ??
+        (manager.style === "Defensive" ? 0.25 : 0.5),
+    ),
+    0,
+    1,
+  );
   manager.secondaryPlaystyle = manager.secondaryPlaystyle ?? "Balanced";
   manager.tacticalKnowledge = clamp(Number(manager.tacticalKnowledge ?? manager.rating ?? 60), 1, 99);
   manager.flexibility = clamp(Number(manager.flexibility ?? manager.rating ?? 60), 1, 99);
@@ -247,11 +320,15 @@ function playerSuitability(player, slot, profile) {
 export function chooseTacticalFormation(club, players, dayIndex = 0) {
   const manager = ensureCoachProfile(club);
   const profile = PLAYSTYLES[manager.playstyle];
+  const personality = managerProfile(manager, club);
   const squad = players.filter((player) => club.squad.includes(player.id) && !player.injury && !(player.suspensionWeeks > 0));
   const candidates = [...new Set([...profile.formations, manager.preferredFormation].filter((formation) => FORMATIONS[formation]))];
+  // An inflexible coach only ever considers his first-choice shape; a flexible one
+  // checks every shape his playstyle lists and picks the best fit for the squad.
+  const shortlist = personality.flexible ? candidates : [manager.preferredFormation];
   let best = manager.preferredFormation;
   let bestScore = -Infinity;
-  for (const formation of candidates) {
+  for (const formation of shortlist) {
     const lineup = selectLineup(squad, formation, dayIndex);
     const suitability = lineup.xi.reduce((sum, item) => sum + playerSuitability(item.player, item.slot, manager), 0);
     const fit =
@@ -263,6 +340,20 @@ export function chooseTacticalFormation(club, players, dayIndex = 0) {
     if (fit > bestScore) { bestScore = fit; best = formation; }
   }
   return { formation: best, score: round(bestScore, 2), reason: `${manager.playstyle} preference, squad suitability, fitness, and positional coverage` };
+}
+
+/**
+ * Should the coach change shape? A flexible coach whose side has stopped getting
+ * results (a low form/morale signal) will look at his alternative shapes; an inflexible
+ * one backs his own plan. Returns the formation to use now.
+ */
+export function adaptFormationToForm(club, players, { form = 50, dayIndex = 0 } = {}) {
+  const manager = ensureCoachProfile(club);
+  const personality = managerProfile(manager, club);
+  const current = club.formation ?? manager.preferredFormation;
+  if (form >= 45 || !personality.flexible) return current;
+  const decision = chooseTacticalFormation(club, players, dayIndex);
+  return decision.formation ?? current;
 }
 
 export function applyCoachTactics(club, players) {

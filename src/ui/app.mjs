@@ -7,7 +7,7 @@ import {
   SUB_ATTRIBUTES,
 } from "../core/constants.mjs";
 import { formatDecimal } from "../core/util.mjs";
-import { Career, createCareer } from "../career.mjs";
+import { Career, createCareer, RECRUITMENT_LIMIT_MESSAGE } from "../career.mjs";
 import {
   averageRating,
   calculateOverall,
@@ -50,6 +50,7 @@ import {
   contractStageLabel,
 } from "../core/contracts.mjs";
 import { agentSearchTerms } from "../model/transfer-market.mjs";
+import { transferProtectionLabel } from "../core/transfers.mjs";
 import {
   PLAYSTYLE_REGISTRY,
   PLAYSTYLE_CATEGORIES,
@@ -3797,12 +3798,20 @@ function renderContractsTab() {
   // User contract decision (if in expiry pause)
   const userDecision = career.userContractDecision;
 
+  // One-season signing protection: shown next to the contract, because it is a contract
+  // condition rather than a separate system.
+  const protectionLabel = transferProtectionLabel(player, career.season);
+  const protectionMarkup = protectionLabel
+    ? `<span class="live-tag protection-tag" title="New signings cannot move again in the season they join a club.">TRANSFER PROTECTED · AVAILABLE ${esc(String(player.transferProtectedUntilSeason))}/${esc(String(Number(player.transferProtectedUntilSeason) + 1))}</span>`
+    : "";
+
   return `
     <div class="page-heading"><div><div class="eyebrow lime">CONTRACTS</div><h1>Contract Management</h1><p>Your contract, negotiations, expiries and free agency status.</p></div><span class="live-tag">${isFreeAgent ? "FREE AGENT" : club ? esc(club.name) : "NO CLUB"}</span></div>
 
     <!-- Current Contract -->
     <section class="panel contract-main-panel">
       <div class="panel-heading"><div><div class="eyebrow">CURRENT CONTRACT</div><h2>${player.first} ${player.last} · ${esc(player.position)} · ${player.overall} OVR</h2></div><span class="contract-status-badge ${statusClass}">${esc(statusLabel)}</span></div>
+      ${protectionMarkup ? `<p>${protectionMarkup}</p>` : ""}
       <div class="contract-grid">
         <article class="contract-card">
           <div class="card-label">STATUS</div>
@@ -6200,9 +6209,20 @@ function renderConversation() {
     career.coachAppointments?.season === career.season
       ? career.coachAppointments.count
       : 0;
-  return `<div class="page-heading"><div><div class="eyebrow lime">PLAYER RELATIONSHIP</div><h1>Talk to the coach</h1><p>Discuss your role, development, tactical responsibilities, and future with ${esc(career.club.manager.name)}.</p></div><span class="live-tag">${esc(career.club.fanSupport ? `${Math.round(career.club.fanSupport)}% FAN SUPPORT` : "CLUB DIALOGUE")}</span></div>
+  // The coach is a person, not a label: show who he is and how he thinks, and show the
+  // recruitment allowance so the player can see how many new-player requests remain.
+  const coachInfo = career.recruitmentSummary?.() ?? null;
+  const coachManager = career.club.manager ?? {};
+  const coachName = coachInfo?.managerName ?? coachManager.name ?? "the manager";
+  const coachNation = COUNTRY_NAMES[coachInfo?.managerNationality] ?? coachInfo?.managerNationality ?? "—";
+  const coachTraits = (coachInfo?.personality ?? coachManager.personality ?? []).slice(0, 5).join(" · ") || "Balanced";
+  const allowance = coachInfo?.limit
+    ? coachInfo
+    : { used: 0, limit: 3, remaining: 3, exhausted: false };
+  const allowanceBlock = `<div class="panel" style="border:1px solid rgba(255,255,255,0.08)"><div class="panel-heading"><div><div class="eyebrow">PLAYER RECRUITMENT REQUESTS</div><h3>Season allowance: ${allowance.used}/${allowance.limit}</h3></div><span class="live-tag">${allowance.exhausted ? "LIMIT REACHED" : `${allowance.remaining} REMAINING`}</span></div><p class="muted">Remaining requests: <strong>${allowance.remaining}</strong>${allowance.exhausted ? `<br>${esc(allowance.message ?? RECRUITMENT_LIMIT_MESSAGE)}` : `<br>Each request to sign a new player counts, whether or not ${esc(coachName)} approves it. Playing-time and transfer conversations are not affected.`}</p></div>`;
+  return `<div class="page-heading"><div><div class="eyebrow lime">PLAYER RELATIONSHIP</div><h1>Talk to the coach</h1><p>Discuss your role, development, tactical responsibilities, and future with ${esc(coachName)}.</p></div><span class="live-tag">${esc(career.club.fanSupport ? `${Math.round(career.club.fanSupport)}% FAN SUPPORT` : "CLUB DIALOGUE")}</span></div>
     <div class="dashboard-grid">
-      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT COACH</div><h2>${esc(career.club.manager.name)}</h2></div><span class="live-tag">${esc(career.club.manager.style)}</span></div><p class="muted">Discuss performances, playing time, development, squad recruitment, and tactical decisions.</p><div class="manager-actions-buttons"><button class="button-primary" data-action="talk-manager" data-topic="playingTime">Ask about playing time</button><button class="button-quiet" data-action="player-request" data-request-type="playing-time" data-amount="less">Request less playing time</button><button class="button-quiet" data-action="talk-manager" data-topic="development">Discuss development</button><button class="button-quiet" data-action="talk-manager" data-topic="role">Discuss tactical role</button><button class="button-quiet" data-action="talk-manager" data-topic="training">Request extra training</button><button class="button-quiet" data-action="talk-manager" data-topic="future">Discuss your future</button></div><div class="manager-actions-buttons"><label class="position-select">Preferred teammate position<select id="coach-teammate-position">${POSITIONS.map((position) => `<option value="${position}" ${position === career.player.position ? "selected" : ""}>${position}</option>`).join("")}</select></label><button class="button-quiet" data-action="talk-manager" data-topic="betterTeammate">Ask coach to find a teammate</button></div><div class="manager-actions-buttons"><label class="position-select">Formation<select id="coach-formation">${FORMATION_NAMES.map((formation) => `<option value="${formation}" ${formation === career.club.formation ? "selected" : ""}>${formation}</option>`).join("")}</select></label><button class="button-primary" data-action="talk-manager" data-topic="formation">Ask coach to change formation</button></div><div class="manager-actions-buttons"><label class="position-select">Transfer destination<select id="player-transfer-target" aria-label="Transfer destination"><option value="">Choose a destination</option>${career.clubs
+      <section class="panel"><div class="panel-heading"><div><div class="eyebrow">CURRENT COACH</div><h2>${esc(coachName)}</h2><small class="muted">${esc(coachNation)} · ${esc(coachInfo?.tacticalStyle ?? coachManager.style ?? "Balanced")}</small></div><span class="live-tag">${esc(coachInfo?.preferredFormation ?? coachManager.preferredFormation ?? career.club.formation)}</span></div><p class="muted"><strong>Personality:</strong> ${esc(coachTraits)}<br><strong>Tactical philosophy:</strong> ${esc(coachInfo?.tacticalPhilosophy ?? coachManager.tacticalPhilosophy ?? "Balanced approach")}<br><strong>Transfer philosophy:</strong> ${esc(coachInfo?.transferPhilosophy ?? coachManager.transferPhilosophy ?? "Strengthen the weakest area first")}</p>${allowanceBlock}<p class="muted">Discuss performances, playing time, development, squad recruitment, and tactical decisions.</p><div class="manager-actions-buttons"><button class="button-primary" data-action="talk-manager" data-topic="playingTime">Ask about playing time</button><button class="button-quiet" data-action="player-request" data-request-type="playing-time" data-amount="less">Request less playing time</button><button class="button-quiet" data-action="talk-manager" data-topic="development">Discuss development</button><button class="button-quiet" data-action="talk-manager" data-topic="role">Discuss tactical role</button><button class="button-quiet" data-action="talk-manager" data-topic="training">Request extra training</button><button class="button-quiet" data-action="talk-manager" data-topic="future">Discuss your future</button></div><div class="manager-actions-buttons"><label class="position-select">Preferred teammate position<select id="coach-teammate-position">${POSITIONS.map((position) => `<option value="${position}" ${position === career.player.position ? "selected" : ""}>${position}</option>`).join("")}</select></label><button class="${allowance.exhausted ? "button-quiet" : "button-quiet"}" data-action="talk-manager" data-topic="betterTeammate" ${allowance.exhausted ? `disabled title="${esc(RECRUITMENT_LIMIT_MESSAGE)}"` : ""}>Ask coach to find a teammate${allowance.exhausted ? " (limit reached)" : ""}</button></div><div class="manager-actions-buttons"><label class="position-select">Formation<select id="coach-formation">${FORMATION_NAMES.map((formation) => `<option value="${formation}" ${formation === career.club.formation ? "selected" : ""}>${formation}</option>`).join("")}</select></label><button class="button-primary" data-action="talk-manager" data-topic="formation">Ask coach to change formation</button></div><div class="manager-actions-buttons"><label class="position-select">Transfer destination<select id="player-transfer-target" aria-label="Transfer destination"><option value="">Choose a destination</option>${career.clubs
         .filter((club) => club.id !== career.club.id)
         .map(
           (club) =>
@@ -6306,6 +6326,11 @@ function renderPlayer() {
     .join("");
   const overallNow = career.displayOverall(player);
   const formDelta = overallNow - calculateOverall(player);
+  // The season's new-player request allowance, shown in the profile summary so the
+  // player always knows how many requests remain before they run out.
+  const recruitment = career.recruitmentAllowance
+    ? career.recruitmentAllowance()
+    : { used: 0, limit: 3, remaining: 3, exhausted: false };
   const formTag =
     formDelta === 0
       ? ""
@@ -6362,8 +6387,8 @@ function renderPlayer() {
       .join("")}</nav>
     <section class="player-hub-section" id="player-overview"><div class="section-heading"><div><div class="eyebrow">PLAYER OVERVIEW</div><h2>Player details</h2></div><span class="live-tag">${esc(countryName(player.nationality))} · #${player.shirtNumber}</span></div>
       <div class="profile-grid"><section class="panel profile-panel">
-        <div class="profile-details"><div><small>SHIRT NUMBER</small><label class="position-select"><input id="player-shirt-number" type="number" min="1" max="99" step="1" value="${player.shirtNumber}" aria-label="Shirt number"><small>Choose an unused squad number from 1 to 99.</small></label></div><div><small>NATIONALITY</small><b>${esc(countryName(player.nationality))}</b></div><div><small>HEIGHT / WEIGHT</small><b>${player.height} cm / ${player.weight} kg</b></div><div><small>PLAYING POSITION</small><label class="position-select"><select id="player-position" aria-label="Playing position">${POSITIONS.map((position) => `<option value="${position}" ${position === player.position ? "selected" : ""}>${position}</option>`).join("")}</select><small>Overall recalculates for the selected position.</small></label></div><div><small>STRONG FOOT</small><b>${esc(player.foot)} · ${player.weakFoot}★ weak foot</b></div><div><small>SKILL MOVES</small><b>${player.skillMoves} ★</b></div><div><small>PERSONALITY</small><b>${esc(player.personality.join(", "))}</b></div><div><small>ARCHETYPE</small><b>${esc(player.archetype ?? "—")}</b></div><div><small>DEVELOPMENT TRAIT</small><b>${esc(player.traits.join(", ") || "None")}</b></div><div><small>BASE OVERALL / POTENTIAL</small><b>${calculateOverall(player)} / ${player.potential ?? "?"}</b></div><div><small>STATUS</small><b>${injuryTag}</b></div><div><small>INJURY RESISTANCE</small><b>${career.injuryResistance(player)}% · physical ${player.attrs?.physical ?? "—"}</b></div><div><small>CONTRACT / WAGE</small><b>€${formatDecimal(player.contract?.wage ?? 0)} per week</b></div><div><small>CAREER BALANCE</small><b>€${formatDecimal(career.money)}</b></div></div>
-      </section><section class="player-condition-grid"><article class="stat-card"><div class="card-label">FORM</div><div class="big-number">${Math.round(player.form)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">MORALE</div><div class="big-number">${Math.round(player.morale)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">STAMINA</div><div class="big-number">${ensureStamina(player)}<span>/100</span></div>${staminaMarkup(player)}</article><article class="stat-card"><div class="card-label">DEVELOPMENT</div><div class="big-number">${esc(player.developmentTrajectory ?? "Stable")}</div></article></section></div>
+        <div class="profile-details"><div><small>SHIRT NUMBER</small><label class="position-select"><input id="player-shirt-number" type="number" min="1" max="99" step="1" value="${player.shirtNumber}" aria-label="Shirt number"><small>Choose an unused squad number from 1 to 99.</small></label></div><div><small>NATIONALITY</small><b>${esc(countryName(player.nationality))}</b></div><div><small>HEIGHT / WEIGHT</small><b>${player.height} cm / ${player.weight} kg</b></div><div><small>PLAYING POSITION</small><label class="position-select"><select id="player-position" aria-label="Playing position">${POSITIONS.map((position) => `<option value="${position}" ${position === player.position ? "selected" : ""}>${position}</option>`).join("")}</select><small>Overall recalculates for the selected position.</small></label></div><div><small>STRONG FOOT</small><b>${esc(player.foot)} · ${player.weakFoot}★ weak foot</b></div><div><small>SKILL MOVES</small><b>${player.skillMoves} ★</b></div><div><small>PERSONALITY</small><b>${esc(player.personality.join(", "))}</b></div><div><small>ARCHETYPE</small><b>${esc(player.archetype ?? "—")}</b></div><div><small>DEVELOPMENT TRAIT</small><b>${esc(player.traits.join(", ") || "None")}</b></div><div><small>BASE OVERALL / POTENTIAL</small><b>${calculateOverall(player)} / ${player.potential ?? "?"}</b></div><div><small>STATUS</small><b>${injuryTag}</b></div><div><small>INJURY RESISTANCE</small><b>${career.injuryResistance(player)}% · physical ${player.attrs?.physical ?? "—"}</b></div><div><small>CONTRACT / WAGE</small><b>€${formatDecimal(player.contract?.wage ?? 0)} per week</b>${transferProtectionLabel(player, career.season) ? `<br><span class="live-tag protection-tag">TRANSFER PROTECTED</span> <small class="muted">cannot move to another club until ${player.transferProtectedUntilSeason}/${Number(player.transferProtectedUntilSeason) + 1}</small>` : ""}</div><div><small>CAREER BALANCE</small><b>€${formatDecimal(career.money)}</b></div></div>
+      </section><section class="player-condition-grid"><article class="stat-card"><div class="card-label">FORM</div><div class="big-number">${Math.round(player.form)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">MORALE</div><div class="big-number">${Math.round(player.morale)}<span>/100</span></div></article><article class="stat-card"><div class="card-label">STAMINA</div><div class="big-number">${ensureStamina(player)}<span>/100</span></div>${staminaMarkup(player)}</article><article class="stat-card"><div class="card-label">DEVELOPMENT</div><div class="big-number">${esc(player.developmentTrajectory ?? "Stable")}</div></article><article class="stat-card"><div class="card-label">RECRUITMENT REQUESTS</div><div class="big-number">${recruitment.used}<span>/${recruitment.limit}</span></div><div class="muted">${recruitment.exhausted ? "Limit reached · available next season" : `${recruitment.remaining} remaining this season`}</div></article></section></div>
     </section>
     <section class="player-hub-section" id="player-development"><div class="section-heading"><div><div class="eyebrow">CAREER DEVELOPMENT</div><h2>${esc(player.developmentTrajectory ?? "Stable")}</h2></div><span class="live-tag">BASE ${calculateOverall(player)} · POT ${player.potential ?? "—"}</span></div><div class="development-sparkline">${
       (player.developmentHistory ?? [])

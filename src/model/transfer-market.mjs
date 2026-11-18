@@ -2,6 +2,25 @@ import { groupOf, normalizePosition, POSITIONS } from "../core/constants.mjs";
 import { FORMATIONS } from "./club.mjs";
 import { clamp } from "../core/util.mjs";
 import { daysUntilExpiry } from "../core/contracts.mjs";
+import { scoreManagerFit } from "./manager-personality.mjs";
+
+/**
+ * The club coach's opinion of a candidate, as a 0..100 number. Board-orientated AI
+ * recruitment reads this so two coaches in the same situation make different signings.
+ */
+function coachFitForPlayer(manager, club, player, { needs = {}, position = null, targetRating = null } = {}) {
+  const slot = position ?? player?.position ?? "CM";
+  const demand = Number(needs?.[slot]?.demand ?? 45);
+  const { score } = scoreManagerFit({
+    manager,
+    club,
+    player,
+    positionDemand: demand,
+    position: slot,
+    targetRating: needs?.[slot]?.starterQuality ?? targetRating,
+  });
+  return { score: clamp(50 + score, 0, 100) };
+}
 
 const UNIQUE_POSITIONS = [...new Set(POSITIONS.map(normalizePosition))];
 
@@ -195,6 +214,17 @@ export function scoreTransferSuitability({
       Number(club.currentWageBill ?? 0),
   );
   const squad = club._marketSquad ?? [];
+  // A club's own coach is part of the market decision: his philosophy decides whether a
+  // player is a fit, and a Youth Developer and a Pragmatic coach weigh the same player
+  // very differently. Computed after the positional ranks so it can compare the squad.
+  const coachFit = () =>
+    club.manager
+      ? coachFitForPlayer(club.manager, club, player, {
+          needs,
+          position,
+          targetRating: positionalRanks[0] ?? null,
+        })
+      : null;
   const positionalRanks = squad
     .filter((candidate) => positionalFit(candidate, position) > 0)
     .map(
@@ -270,6 +300,7 @@ export function scoreTransferSuitability({
   // Squad depth penalty - if club already has 3+ players in position
   const depthPenalty = positionalRanks.length >= 3 ? 10 : 0;
 
+  const coachScore = coachFit()?.score ?? null;
   const score = Math.round(
     need.demand * 0.30 +
       improvement * 0.20 +
@@ -289,6 +320,7 @@ export function scoreTransferSuitability({
       eliteMatch +
       clamp(performanceBonus, 0, 18) -
       depthPenalty +
+      (coachScore != null ? (coachScore - 50) * 0.18 : 0) +
       (player.injury ? -18 : 0),
   );
   

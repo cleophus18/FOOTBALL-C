@@ -1,5 +1,10 @@
 import { clamp, round } from "./util.mjs";
 import { isLegend, legendForClub } from "../model/legends.mjs";
+import {
+  assertTransferAllowed,
+  markSigningProtection,
+  transferProtectionApplied,
+} from "./transfers.mjs";
 
 const DEFAULT_SPONSORS = [
   "Vertex Mobile",
@@ -776,6 +781,7 @@ export function transferPlayer({
   wage,
   date,
   transferId,
+  season = null,
 }) {
   if (isLegend(player)) {
     const homeClub = legendForClub(player.clubId);
@@ -783,6 +789,9 @@ export function transferPlayer({
       `${player.first} ${player.last} is a protected legend and cannot leave ${homeClub?.clubName ?? "their club"}.`,
     );
   }
+  // One-season signing protection: a player who has just joined a club cannot be
+  // sold again inside the same season, whatever pathway reached this function.
+  assertTransferAllowed(player, { season, buyingClubId: buyer?.id });
   const amount = Math.max(0, Math.round(fee));
   const sellerFinance = ensureClubFinance(seller);
   const buyerFinance = ensureClubFinance(buyer);
@@ -843,6 +852,11 @@ export function transferPlayer({
     startSeason: Number(date ?? 0),
   };
   player.lastTransferFee = amount; // actual negotiated transfer fee (distinct from market value)
+  // A completed transfer starts the one-season signing-protection window. Only real
+  // club-to-club moves count; loan returns and renewals never touch this branch.
+  if (!transferProtectionApplied(player, season)) {
+    markSigningProtection(player, season);
+  }
   // Refresh market value estimate after move; fee paid remains the negotiated amount.
   syncPlayerMarketValue(player, { club: buyer, dayIndex: date, force: true });
   syncLegacyBudgetFields(seller);

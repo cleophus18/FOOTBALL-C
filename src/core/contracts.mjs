@@ -6,6 +6,7 @@ import {
   recordClubTransaction,
   syncLegacyBudgetFields,
 } from "./finance.mjs";
+import { markSigningProtection } from "./transfers.mjs";
 
 export const CONTRACT_STATUSES = {
   ACTIVE: "active",
@@ -627,12 +628,16 @@ export function signPlayerContract(
   } else if (player.clubId && player.clubId !== club.id) {
     throw new Error("Renewals require the player to belong to the club.");
   }
+  // A free-agent move (including a pre-contract) to a DIFFERENT club is a transfer and
+  // confers the same one-season signing protection. Renewals at the same club never do.
+  const joiningNewClub = !!player.clubId && player.clubId !== club.id;
 
   player.clubId = club.id;
   player.squadStatus = "Contracted";
   if (typeof club.addPlayer === "function") club.addPlayer(player.id);
   else if (Array.isArray(club.squad) && !club.squad.includes(player.id))
     club.squad.push(player.id);
+  if (joiningNewClub) markSigningProtection(player, season);
 
   player.contract = {
     ...normalized,
@@ -1148,7 +1153,7 @@ export function aiContractDecision(player, club, context = {}) {
   const apps = Number(player?.stats?.apps ?? 0);
   const rating = Number(player?.lastMatchRating ?? 6.5);
   const role = player?.contract?.squadRole ?? defaultSquadRole(player);
-  
+
   // Manager personality influence
   const manager = club?.manager;
   const personality = manager?.personality ?? [];
@@ -1156,21 +1161,21 @@ export function aiContractDecision(player, club, context = {}) {
   const ambition = manager?.ambition ?? 0.6;
   const youthBias = manager?.youthBias ?? 0.5;
   const transferPhilosophy = manager?.transferPhilosophy ?? "";
-  
+
   // Squad protection: never discard a player if the squad is already thin.
   const squadFloor =
     context.transferListed === true
       ? SQUAD_MANAGEMENT_RULES.minimumReplacementSquadSize
       : SQUAD_MANAGEMENT_RULES.criticalSquadSize;
   const shortOfFloor = squadSize <= squadFloor;
-  
+
   // Financial reality: can the club still afford him for another season?
   const expectedRenewalWage = Math.max(
     wage,
     estimateWeeklyWage(player, club) * 1.05,
   );
   const canAfford = wageBill + (expectedRenewalWage - wage) <= wageBudget;
-  
+
   // Important starter with room in the budget: renew, always.
   const starterQualityGap = overall - (46 + prestige * 0.22);
   const isImportantStarter =
@@ -1179,17 +1184,21 @@ export function aiContractDecision(player, club, context = {}) {
       role === "Key Player" ||
       role === "Important Player" ||
       role === "Regular Starter");
-  
+
   // Personality modifiers
   const isRiskTaker = personality.includes("Risk-Taker");
   const isPragmatic = personality.includes("Pragmatic");
   const isAmbitious = personality.includes("Ambitious");
   const isYouthDeveloper = personality.includes("Youth Developer");
-  const isDefensive = personality.includes("Defensive Strategist") || personality.includes("Defensive");
+  const isDefensive =
+    personality.includes("Defensive Strategist") ||
+    personality.includes("Defensive");
   const isDisciplined = personality.includes("Disciplined");
   const isPatient = personality.includes("Patient");
-  const isExperiencedSpecialist = personality.includes("Experienced-Player Specialist");
-  
+  const isExperiencedSpecialist = personality.includes(
+    "Experienced-Player Specialist",
+  );
+
   if (!shortOfFloor) {
     // Declining veterans the club can afford to let go.
     // Pragmatic and risk-taking managers more likely to release declining players
@@ -1199,11 +1208,20 @@ export function aiContractDecision(player, club, context = {}) {
       potential - overall <= 2 &&
       positionalDepth > 2;
     if (declining) {
-      const releaseChance = 0.4 + (isPragmatic ? 0.15 : 0) + (isRiskTaker ? 0.1 : 0) - (isPatient ? 0.1 : 0);
+      const releaseChance =
+        0.4 +
+        (isPragmatic ? 0.15 : 0) +
+        (isRiskTaker ? 0.1 : 0) -
+        (isPatient ? 0.1 : 0);
       if (rng.chance(clamp(releaseChance, 0.1, 0.8))) {
         return {
           action: "release",
-          reason: "Player " + (player.first ?? "Player") + " is " + age + " and the club will not renew a declining squad player.",
+          reason:
+            "Player " +
+            (player.first ?? "Player") +
+            " is " +
+            age +
+            " and the club will not renew a declining squad player.",
           expectedWage: expectedRenewalWage,
         };
       }
@@ -1215,38 +1233,58 @@ export function aiContractDecision(player, club, context = {}) {
       wage > estimateWeeklyWage(player, club) * 1.25 &&
       positionalDepth > 1;
     if (expensiveFringe) {
-      const transferListChance = 0.3 + (isDisciplined ? 0.2 : 0) + (isRiskTaker ? 0.1 : 0);
+      const transferListChance =
+        0.3 + (isDisciplined ? 0.2 : 0) + (isRiskTaker ? 0.1 : 0);
       if (rng.chance(clamp(transferListChance, 0.1, 0.7))) {
         return {
           action: "transfer-list",
-          reason: "Player " + (player.first ?? "Player") + " is transfer-listed: his wages no longer match his squad role.",
+          reason:
+            "Player " +
+            (player.first ?? "Player") +
+            " is transfer-listed: his wages no longer match his squad role.",
           expectedWage: expectedRenewalWage,
         };
       }
     }
   }
-  
+
   if (isImportantStarter && (canAfford || shortOfFloor)) {
     return {
       action: "renew",
-      reason: "Player " + (player.first ?? "Player") + " remains an important player at " + age + ".",
+      reason:
+        "Player " +
+        (player.first ?? "Player") +
+        " remains an important player at " +
+        age +
+        ".",
       expectedWage: expectedRenewalWage,
     };
   }
-  
+
   // High-potential youngsters are cheap to keep and rarely sold.
   // Ambitious and youth-developer managers prioritize young prospects
   if (age <= 23 && potential >= overall + 4) {
-    const renewChance = 0.7 + (isAmbitious ? 0.15 : 0) + (isYouthDeveloper ? 0.2 : 0) - (isExperiencedSpecialist ? 0.1 : 0);
-    if (canAfford || shortOfFloor || rng.chance(clamp(renewChance, 0.5, 0.95))) {
+    const renewChance =
+      0.7 +
+      (isAmbitious ? 0.15 : 0) +
+      (isYouthDeveloper ? 0.2 : 0) -
+      (isExperiencedSpecialist ? 0.1 : 0);
+    if (
+      canAfford ||
+      shortOfFloor ||
+      rng.chance(clamp(renewChance, 0.5, 0.95))
+    ) {
       return {
         action: "renew",
-        reason: "Player " + (player.first ?? "Player") + " is a prospect worth developing.",
+        reason:
+          "Player " +
+          (player.first ?? "Player") +
+          " is a prospect worth developing.",
         expectedWage: expectedRenewalWage,
       };
     }
   }
-  
+
   // Good enough for the squad, affordable: renew quietly.
   // Patient managers more likely to keep depth
   if (canAfford && positionalDepth <= 3 && starterQualityGap >= -8) {
@@ -1254,12 +1292,13 @@ export function aiContractDecision(player, club, context = {}) {
     if (rng.chance(clamp(renewChance, 0.4, 0.9))) {
       return {
         action: "renew",
-        reason: "Player " + (player.first ?? "Player") + " provides usable depth.",
+        reason:
+          "Player " + (player.first ?? "Player") + " provides usable depth.",
         expectedWage: expectedRenewalWage,
       };
     }
   }
-  
+
   // Goalkeepers are always protected - a club without two keepers is broken.
   if (isGoalkeeper && positionalDepth <= 1) {
     return {
@@ -1268,7 +1307,7 @@ export function aiContractDecision(player, club, context = {}) {
       expectedWage: expectedRenewalWage,
     };
   }
-  
+
   if (shortOfFloor) {
     return {
       action: "renew",
@@ -1276,16 +1315,27 @@ export function aiContractDecision(player, club, context = {}) {
       expectedWage: expectedRenewalWage,
     };
   }
-  
+
   // Default: not financially or technically justified - let him go.
   // Pragmatic and disciplined managers more likely to release
-  const releaseChance = 0.25 + (isPragmatic ? 0.15 : 0) + (isDisciplined ? 0.1 : 0) - (isAmbitious ? 0.1 : 0) - (isPatient ? 0.1 : 0);
+  const releaseChance =
+    0.25 +
+    (isPragmatic ? 0.15 : 0) +
+    (isDisciplined ? 0.1 : 0) -
+    (isAmbitious ? 0.1 : 0) -
+    (isPatient ? 0.1 : 0);
   return {
-    action: rng.chance(clamp(releaseChance, 0.1, 0.5)) ? "transfer-list" : "release",
-    reason: "Player " + (player.first ?? "Player") + " does not justify a renewal on footballing or financial grounds.",
+    action: rng.chance(clamp(releaseChance, 0.1, 0.5))
+      ? "transfer-list"
+      : "release",
+    reason:
+      "Player " +
+      (player.first ?? "Player") +
+      " does not justify a renewal on footballing or financial grounds.",
     expectedWage: expectedRenewalWage,
   };
-}export function aiRenewalOffer(player, club, context = {}) {
+}
+export function aiRenewalOffer(player, club, context = {}) {
   const expected = Math.max(
     Number(player?.contract?.weeklyWage ?? 0),
     estimateWeeklyWage(player, club),
