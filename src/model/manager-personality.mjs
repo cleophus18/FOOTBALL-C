@@ -23,6 +23,9 @@
  */
 
 import { clamp } from "../core/util.mjs";
+import { ageOn } from "../core/calendar.mjs";
+import { normalizePosition } from "../core/constants.mjs";
+import { calculateOverall } from "./player.mjs";
 import { CATALOGUED_NATIONS, NAME_POOLS } from "./names.mjs";
 
 /** The personality vocabulary the rest of the game already uses. */
@@ -1141,9 +1144,15 @@ export function scoreManagerFit({
   if (!player || !manager)
     return { score: 0, reasons: [], ageFit: 0.5, suitability: 0 };
   const profile = managerProfile(manager, club);
-  const overall = Number(player.overall ?? 55);
+  const overall = Number(player.overall ?? calculateOverall(player) ?? 55);
   const potential = Number(player.potential ?? overall);
-  const playerAge = Number(player.age ?? 25);
+  // `age` is the canonical field on every player record. Fall back to the birthday only
+  // when it is missing, so an imported roster without an explicit age is still judged.
+  const playerAge = Number.isFinite(Number(player.age))
+    ? Number(player.age)
+    : Number(player.dob) > 0
+      ? ageOn(Number(player.dob), Date.now())
+      : 25;
   const slot = position ?? player.position ?? "CM";
 
   // Tactical suitability: does the player's position belong to the coach's list?
@@ -1180,8 +1189,34 @@ export function scoreManagerFit({
     upside * profile.potentialWeight * 3.2 +
     (overall - expectedLevel) * 0.35;
 
-  // A coach refuses to pile up players in a position he is already well stocked in.
-  const crowding = needsPosition ? 0 : positionDemand <= 30 ? 26 : 12;
+  // Where a player would rank in the club's current pecking order for his role. A player
+  // who is clearly better than the men already there is wanted even when the squad is
+  // numerically deep at that position; a squad with enough numbers rejects only a
+  // player who is no upgrade at all.
+  const rankedAtPosition = (club?._marketSquad ?? club?.squadPlayers ?? [])
+    .filter((candidate) => candidate && candidate.clubId === club?.id)
+    .map((candidate) =>
+      normalizePosition(candidate.position) === normalizePosition(slot)
+        ? Number(candidate.overall ?? 55)
+        : null,
+    )
+    .filter((rating) => rating != null)
+    .sort((left, right) => right - left);
+  const bestAtPosition = rankedAtPosition[0] ?? null;
+  const outRanksIncumbent =
+    bestAtPosition == null ? improvement >= 0 : overall > bestAtPosition;
+
+  // A coach refuses to pile up players in a position he is already well stocked in,
+  // but a clear upgrade on the current best there is worth breaking that habit: a
+  // squad with enough numbers at a position still benefits from a better player.
+  const clearUpgrade = improvement >= 3 || outRanksIncumbent;
+  const crowding = needsPosition
+    ? 0
+    : clearUpgrade
+      ? 4
+      : positionDemand <= 30
+        ? 26
+        : 12;
   const score = Math.round(
     quality +
       positionDemand * 0.32 +
@@ -1196,6 +1231,8 @@ export function scoreManagerFit({
 
   const reasons = [];
   if (needsPosition) reasons.push(`the squad has a real need at ${slot}`);
+  else if (clearUpgrade)
+    reasons.push(`he is an upgrade on our current ${slot} options`);
   else if (crowding > 20)
     reasons.push(`we already have enough quality at ${slot}`);
   if (improvement >= 3) reasons.push("he improves the starting XI immediately");
@@ -1206,7 +1243,15 @@ export function scoreManagerFit({
     reasons.push(`he suits our ${profile.style.toLowerCase()} system`);
   else if (suit < 0.5) reasons.push("he does not fit how we play");
 
-  return { score, reasons, ageFit, suitability: suit, profile };
+  return {
+    score,
+    reasons,
+    ageFit,
+    suitability: suit,
+    profile,
+    outRanksIncumbent,
+    bestAtPosition,
+  };
 }
 
 /**
@@ -1234,6 +1279,10 @@ export function evaluateRecruitmentRequest({
   currentDay = 0,
   position = null,
   season = null,
+  // True when the club has already identified a squad player it can sell or release
+  // to free the registration space this signing needs. Without it a full squad is a
+  // hard veto; with it the signing is judged on its merits.
+  makesRoom = false,
 }) {
   const profile = managerProfile(manager, club);
   const slot = position ?? player?.position ?? "CM";
@@ -1254,7 +1303,7 @@ export function evaluateRecruitmentRequest({
     candidate: player ?? null,
   });
 
-  if (squadSize >= registrationLimit) {
+  if (squadSize >= registrationLimit && !makesRoom) {
     return deny(
       `the ${registrationLimit}-player registration limit is full and he will not release anyone this late`,
     );

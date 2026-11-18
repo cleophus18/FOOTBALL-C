@@ -195,6 +195,7 @@ export function scoreTransferSuitability({
   agentQuality = 50,
   leagueReputation = 50,
   performanceBonus = 0,
+  strengthBoost = null,
 }) {
   const overall = playerRating(player);
   const potential = Number(player.potential ?? overall);
@@ -259,6 +260,13 @@ export function scoreTransferSuitability({
       ? 100
       : clamp((wageSpace / Math.max(1, currentWage)) * 100, 0, 100);
   const reputation = Number(club.prestige ?? club.reputation ?? 50);
+  // The level of player this club actually fields, derived from its prestige and the
+  // strength of the league it plays in. A club judges a signing against this: a weaker
+  // player is a depth option, a stronger one a statement. strengthBoost is the previous
+  // name for the same number, kept for callers that already pass it.
+  const realisticTarget = Number(
+    strengthBoost ?? clamp(42 + reputation * 0.42 + (leagueReputation - 60) * 0.12, 40, 95),
+  );
   const reputationFit = clamp(
     100 - Math.abs(reputation - (overall + potentialValue * 0.2)),
     15,
@@ -300,30 +308,39 @@ export function scoreTransferSuitability({
   // Squad depth penalty - if club already has 3+ players in position
   const depthPenalty = positionalRanks.length >= 3 ? 10 : 0;
 
-  const coachScore = coachFit()?.score ?? null;
-  const score = Math.round(
+  const coach = coachFit();
+  const coachScore = coach?.score ?? null;
+  // A squad with numbers at a position is only a problem if none of them is already
+  // better than the candidate. An elite player is a proven upgrade wherever he goes.
+  const depthResult = coach != null && coach.outRanksIncumbent ? depthPenalty : -depthPenalty;
+  const rawScore =
     need.demand * 0.30 +
-      improvement * 0.20 +
-      potentialValue * 0.15 +
-      playingTime * 0.10 +
-      affordability * 0.10 +
-      wageFit * 0.08 +
-      reputationFit * 0.05 +
-      performanceScore * 0.08 +
-      formationFit * 0.05 +
-      reputationValue * 0.04 +
-      clamp(leagueReputation, 0, 100) * 0.03 +
-      clamp(agentQuality, 0, 100) * 0.02 +
-      needUrgency +
-      europeanBonus +
-      ageDevelopmentBonus +
-      eliteMatch +
-      clamp(performanceBonus, 0, 18) -
-      depthPenalty +
-      (coachScore != null ? (coachScore - 50) * 0.18 : 0) +
-      (player.injury ? -18 : 0),
+    improvement * 0.20 +
+    potentialValue * 0.15 +
+    playingTime * 0.10 +
+    affordability * 0.10 +
+    wageFit * 0.08 +
+    reputationFit * 0.05 +
+    performanceScore * 0.08 +
+    formationFit * 0.05 +
+    reputationValue * 0.04 +
+    clamp(leagueReputation, 0, 100) * 0.03 +
+    clamp(agentQuality, 0, 100) * 0.02 +
+    needUrgency +
+    europeanBonus +
+    ageDevelopmentBonus +
+    eliteMatch +
+    clamp(performanceBonus, 0, 18) -
+    depthResult +
+    (coachScore != null ? (coachScore - 50) * 0.18 : 0) +
+    (player.injury ? -18 : 0);
+  const score = Math.round(rawScore);
+  // How much better the player is than what the club normally fields. Positive means
+  // he is a genuine upgrade; deeply negative means he is far beneath the level.
+  const levelDelta = Math.round(
+    Math.max(overall, Number(player.potential ?? overall) - 4) - realisticTarget,
   );
-  
+
   return {
     score: clamp(score, 0, 100),
     demand: need.demand,
@@ -332,6 +349,9 @@ export function scoreTransferSuitability({
     transferValue,
     affordability: Math.round(affordability),
     wageFit: Math.round(wageFit),
+    // How much better the player is than what the club normally fields. Positive means
+    // he is a genuine upgrade; deeply negative means he is far beneath the level.
+    levelDelta,
     reason:
       need.demand >= 65
         ? `${need.level.toLowerCase()} at ${position}`

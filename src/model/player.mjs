@@ -999,6 +999,17 @@ export function createPlayer(spec) {
     lastMatchWeek: spec.lastMatchWeek ?? null,
     position,
     displayPosition: spec.displayPosition ?? position,
+    // The canonical age, derived from the birthday on the career's current day. Every
+    // market, coach-fit and development decision reads `player.age`; without this field
+    // on a freshly created player those decisions fell back to a 25-year-old default.
+    age: Number.isFinite(Number(spec.age))
+      ? Number(spec.age)
+      : ageOn(
+          suppliedDob ?? toDayIndex(2001, 7, 1),
+          Number.isFinite(Number(spec.currentDay))
+            ? Number(spec.currentDay)
+            : toDayIndex(2026, 7, 1),
+        ),
     shirtNumber:
       spec.shirtNumber ?? preferredShirtNumbers(position)[0],
     altPositions: hasSuppliedAltPositions

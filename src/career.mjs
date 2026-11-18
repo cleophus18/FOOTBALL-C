@@ -7092,7 +7092,8 @@ export class Career {
     }
     const isLegacy = league.fixtureStartWeek === undefined;
     const startWeek = isLegacy ? 0 : (league.fixtureStartWeek ?? 2);
-    const configuredEndWeek = league.fixtureEndWeek ?? Math.min(this.calendar.length - 2, 43);
+    const configuredEndWeek =
+      league.fixtureEndWeek ?? Math.min(this.calendar.length - 2, 43);
     const planned = planLeagueWeeks(this.calendar, {
       startWeek,
       endWeek: configuredEndWeek,
@@ -7300,7 +7301,7 @@ export class Career {
         }
       }
     }
-this.applyCoachFormations();
+    this.applyCoachFormations();
     this.calendar = seasonWeeks(this.season, this.seasonWeekCount);
     this.dayCursor = this.calendar[0]?.day - 1;
     // A genuinely new season resets the player's recruitment allowance. Doing it here —
@@ -8227,7 +8228,7 @@ this.applyCoachFormations();
     });
   }
 
-addPlayerToTransferList(playerId = this.player?.id) {
+  addPlayerToTransferList(playerId = this.player?.id) {
     if (this.isManagerCareer)
       throw new Error("Manager careers control transfers directly.");
     if (playerId !== this.player?.id)
@@ -8249,7 +8250,7 @@ addPlayerToTransferList(playerId = this.player?.id) {
         campaignId,
       });
     }
-return this.transferList.find((entry) => entry.playerId === playerId);
+    return this.transferList.find((entry) => entry.playerId === playerId);
   }
 
   removePlayerFromTransferList(playerId = this.player?.id) {
@@ -8260,9 +8261,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       (offer) => offer.playerId !== playerId,
     );
     // Clear offer history for this player when they're removed from the list
-    this.transferListOfferHistory = (this.transferListOfferHistory ?? []).filter(
-      (offer) => offer.playerId !== playerId,
-    );
+    this.transferListOfferHistory = (
+      this.transferListOfferHistory ?? []
+    ).filter((offer) => offer.playerId !== playerId);
     return true;
   }
 
@@ -8777,7 +8778,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         approved: false,
         details: { ...details },
       });
-      if (this.conversationHistory.length > 50) this.conversationHistory.shift();
+      if (this.conversationHistory.length > 50)
+        this.conversationHistory.shift();
       return blocked;
     }
     const manager = this.club.manager;
@@ -8826,11 +8828,12 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     let saleFee = 0;
     if (type === "better-teammates") {
       const finances = this.financialSummary(this.club);
-      const candidates = (requestedPlayer
-        ? [requestedPlayer]
-        : this.transferMarket({ position: wantedPosition }).map(
-            ({ player }) => player,
-          )
+      const candidates = (
+        requestedPlayer
+          ? [requestedPlayer]
+          : this.transferMarket({ position: wantedPosition }).map(
+              ({ player }) => player,
+            )
       )
         // A player who has just joined another club is in his signing-protection
         // season and is not an available signing for us.
@@ -9015,6 +9018,7 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         currentDay: this.currentDay(),
         position: wantedPosition,
         season: this.season,
+        makesRoom: Boolean(salePlayer),
       });
     }
     request.approved =
@@ -9025,7 +9029,11 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     if (managerVerdict) request.managerVerdict = managerVerdict;
     if (unavailableReason) {
       request.response = `${managerName(manager)} cannot approve this request: ${unavailableReason}`;
-    } else if (type === "better-teammates" && managerVerdict && !managerVerdict.approved) {
+    } else if (
+      type === "better-teammates" &&
+      managerVerdict &&
+      !managerVerdict.approved
+    ) {
       request.response = managerVerdict.message;
     } else if (!request.approved) {
       request.response = `${managerName(manager)} has declined for now. Build trust through performances and team commitment.`;
@@ -9192,7 +9200,12 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     if (!player || player.clubId === this.club.id || player.isLegend)
       return false;
     // Protection applies to the player's own recruitment too.
-    if (!canSignFromClub(player, { season: this.season, buyingClubId: this.club.id }))
+    if (
+      !canSignFromClub(player, {
+        season: this.season,
+        buyingClubId: this.club.id,
+      })
+    )
       return false;
     const seller = this.clubs.find((club) => club.id === player.clubId);
     if (!seller || seller.squad.length <= 20 || this.club.squad.length >= 25)
@@ -9368,7 +9381,11 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       state.history = [];
     }
     if (!Number.isFinite(Number(state.count))) state.count = 0;
-    state.count = clamp(Math.round(Number(state.count)), 0, RECRUITMENT_REQUEST_LIMIT);
+    state.count = clamp(
+      Math.round(Number(state.count)),
+      0,
+      RECRUITMENT_REQUEST_LIMIT,
+    );
     return state;
   }
 
@@ -9400,17 +9417,28 @@ return this.transferList.find((entry) => entry.playerId === playerId);
    * evaluation, so approved and rejected requests both count. `requestId` makes it
    * idempotent: the same request (double click, replayed save) can never cost twice.
    */
-  consumeRecruitmentRequest({ requestId = null, position = null, playerId = null, day = null } = {}) {
+  consumeRecruitmentRequest({
+    requestId = null,
+    position = null,
+    playerId = null,
+    day = null,
+  } = {}) {
     const state = this.recruitmentState();
     state.history ??= [];
-    if (requestId && state.history.some((entry) => entry.requestId === requestId)) {
+    if (
+      requestId &&
+      state.history.some((entry) => entry.requestId === requestId)
+    ) {
       return {
         count: state.count,
         remaining: Math.max(0, RECRUITMENT_REQUEST_LIMIT - state.count),
         duplicate: true,
       };
     }
-    state.count = Math.min(RECRUITMENT_REQUEST_LIMIT, Number(state.count ?? 0) + 1);
+    state.count = Math.min(
+      RECRUITMENT_REQUEST_LIMIT,
+      Number(state.count ?? 0) + 1,
+    );
     state.history.push({
       requestId,
       season: this.season,
@@ -9418,7 +9446,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       playerId,
       day,
     });
-    if (state.history.length > 20) state.history.splice(0, state.history.length - 20);
+    if (state.history.length > 20)
+      state.history.splice(0, state.history.length - 20);
     return {
       count: state.count,
       remaining: Math.max(0, RECRUITMENT_REQUEST_LIMIT - state.count),
@@ -9437,7 +9466,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       tacticalStyle: manager?.playstyle ?? manager?.style ?? "Balanced",
       tacticalPhilosophy: manager?.tacticalPhilosophy ?? "",
       transferPhilosophy: manager?.transferPhilosophy ?? "",
-      personality: Array.isArray(manager?.personality) ? [...manager.personality] : [],
+      personality: Array.isArray(manager?.personality)
+        ? [...manager.personality]
+        : [],
       preferredFormation:
         manager?.preferredFormation ?? this.club?.formation ?? "4-3-3",
     };
@@ -9681,7 +9712,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         club.hierarchy.manager.first = club.manager.first;
         club.hierarchy.manager.last = club.manager.last;
         club.hierarchy.manager.nationality ??= club.manager.nationality;
-        club.hierarchy.manager.style = club.hierarchy.manager.style ?? club.manager.style;
+        club.hierarchy.manager.style =
+          club.hierarchy.manager.style ?? club.manager.style;
         if (!Array.isArray(club.hierarchy.manager.personality)) {
           club.hierarchy.manager.personality = [...club.manager.personality];
         }
@@ -9714,7 +9746,10 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     const generator = this.managerNameGenerator();
     const nation = club?.nation ?? "ENG";
     const coachStyle = style ?? club?.manager?.style ?? "Balanced";
-    const name = generator.next(nation, `${club.id}|${seedKey}|${this.season}|${this.week}`);
+    const name = generator.next(
+      nation,
+      `${club.id}|${seedKey}|${this.season}|${this.week}`,
+    );
     this.managerNameRegistry = generator.toJSON();
     return {
       id: `manager-${club.id}-${this.season}-${seedKey || this.week}`,
@@ -10500,7 +10535,15 @@ return this.transferList.find((entry) => entry.playerId === playerId);
 
   evaluateTransferInterest(
     player,
-    { agent = null, excludeClubId = player.clubId, threshold = 58 } = {},
+    {
+      agent = null,
+      excludeClubId = player.clubId,
+      threshold = 58,
+      // True by default: stars only hear from big clubs and weaker players only from
+      // clubs they could realistically play for. Callers that are deliberately
+      // exploring a market (or a test widening the search) can switch it off.
+      realisticLevel = true,
+    } = {},
   ) {
     if (player?.isLegend) return [];
     // A player inside his signing-protection season cannot be courted by another club,
@@ -10564,6 +10607,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       const squad = playersByClub.get(club.id) ?? [];
       const marketClub = {
         ...club,
+        // The spread loses the prototype, so restore the squad accessors the coach-fit
+        // score reads. Without them `_marketSquad` vanished and every club looked empty
+        // at the player's position, which quietly broke destination searches.
         currentWageBill: club.wageBill(marketPlayers),
         _marketSquad: squad,
       };
@@ -10575,6 +10621,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         leagueReputation,
         performanceBonus: this.transferPerformanceBonus(player),
       });
+      if (realisticLevel && !this.realisticDestinationFor(player, club, fit)) {
+        continue;
+      }
       if (
         fit.score >= threshold &&
         fit.demand >= 40 &&
@@ -10587,6 +10636,36 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     return candidates.sort(
       (a, b) => b.fit.score - a.fit.score || a.club.id.localeCompare(b.club.id),
     );
+  }
+
+  /**
+   * Is this club a realistic destination for the player?
+   *
+   * A star is only courted by clubs whose prestige and league reach his own level — a
+   * 90-rated forward does not move to a relegation battle — while a modest player is
+   * only courted by clubs where he would not be hopelessly out of his depth. Both
+   * directions keep the offer list believable, and neither rule runs while the caller
+   * has explicitly widened the search (`realisticLevel: false`).
+   */
+  realisticDestinationFor(player, club, fit) {
+    const level = Number(player.overall ?? 55);
+    const prestige = Number(club.prestige ?? 50);
+    const levelDelta = Number(fit.levelDelta ?? 0);
+    if (level >= 86) {
+      // Elite players: only clubs that can genuinely play at that level.
+      const minimumPrestige = level >= 90 ? 74 : 66;
+      if (prestige < minimumPrestige) return false;
+      if (levelDelta < -7) return false;
+      return true;
+    }
+    if (level >= 78) {
+      if (prestige < 50) return false;
+      if (levelDelta < -9) return false;
+      return true;
+    }
+    // Ordinary players: they can step up, but not by an implausible margin.
+    if (levelDelta < -12) return false;
+    return true;
   }
 
   hireAgent(agentId) {
@@ -11126,7 +11205,13 @@ return this.transferList.find((entry) => entry.playerId === playerId);
         const player = agent_.player;
         // A free agent is not a loophole around signing protection: a player who left
         // his club in his protected season still cannot be registered elsewhere.
-        if (!canSignFromClub(player, { season: this.season, buyingClubId: club.id })) continue;
+        if (
+          !canSignFromClub(player, {
+            season: this.season,
+            buyingClubId: club.id,
+          })
+        )
+          continue;
         if (player.contract?.preContract?.status === "agreed") continue;
         // A grace period after expiry: clubs take days to scout and negotiate,
         // so a player who just became a free agent is not swooped the same week.
@@ -11142,9 +11227,8 @@ return this.transferList.find((entry) => entry.playerId === playerId);
           currentWageBill: wageBill,
           leagueReputation:
             this.clubLeagueEntry(club.id)?.league?.tier === 1 ? 80 : 55,
-          positionalNeed: priority >= 3
-            ? Math.max(positionalNeed, 70)
-            : positionalNeed,
+          positionalNeed:
+            priority >= 3 ? Math.max(positionalNeed, 70) : positionalNeed,
           squadSize: club.squad.length,
         });
         // Urgent recruitment lowers the quality bar; depth recruitment keeps it high.
@@ -11508,7 +11592,13 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       }
       if (club.squad.length >= (club.registrationLimit ?? 25)) continue;
       // Free agency is not a route around signing protection.
-      if (!canSignFromClub(this.player, { season: this.season, buyingClubId: club.id })) continue;
+      if (
+        !canSignFromClub(this.player, {
+          season: this.season,
+          buyingClubId: club.id,
+        })
+      )
+        continue;
       const needs = this.transferNeedAssessment(club, day, playersByClub);
       const finance = ensureClubFinance(club);
       const wageBill = this.getWageBill(club.id);
@@ -11570,7 +11660,10 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     if (!opportunity) throw new Error("That club is no longer interested.");
     const club = this.clubs.find((entry) => entry.id === clubId);
     if (!club) throw new Error("That club is no longer available.");
-    assertTransferAllowed(this.player, { season: this.season, buyingClubId: club.id });
+    assertTransferAllowed(this.player, {
+      season: this.season,
+      buyingClubId: club.id,
+    });
     if (club.squad.length >= (club.registrationLimit ?? 25))
       throw new Error(`${club.name} no longer has a squad place.`);
     const offer = createContractOffer({ ...opportunity.offer, ...override });
@@ -11623,10 +11716,15 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     const query = String(filters.query ?? "").toLowerCase();
     const minAge = filters.minAge != null ? Number(filters.minAge) : null;
     const maxAge = filters.maxAge != null ? Number(filters.maxAge) : null;
-    const minOverall = filters.minOverall != null ? Number(filters.minOverall) : null;
-    const minPotential = filters.minPotential != null ? Number(filters.minPotential) : null;
-    const maxExpectedWage = filters.maxExpectedWage != null ? Number(filters.maxExpectedWage) : null;
-    const position = filters.position ? normalizePosition(filters.position) : null;
+    const minOverall =
+      filters.minOverall != null ? Number(filters.minOverall) : null;
+    const minPotential =
+      filters.minPotential != null ? Number(filters.minPotential) : null;
+    const maxExpectedWage =
+      filters.maxExpectedWage != null ? Number(filters.maxExpectedWage) : null;
+    const position = filters.position
+      ? normalizePosition(filters.position)
+      : null;
     const nationality = filters.nationality ?? null;
     const currentDay = this.currentDay();
     const clubById = this._clubById;
@@ -11644,8 +11742,16 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       if (maxAge != null && ageOn(player.dob, currentDay) > maxAge) continue;
       if (minOverall != null && player.overall < minOverall) continue;
       if (minPotential != null && player.potential < minPotential) continue;
-      if (maxExpectedWage != null && freeAgentExpectedWage(player) > maxExpectedWage) continue;
-      if (query && !`${player.first} ${player.last}`.toLowerCase().includes(query)) continue;
+      if (
+        maxExpectedWage != null &&
+        freeAgentExpectedWage(player) > maxExpectedWage
+      )
+        continue;
+      if (
+        query &&
+        !`${player.first} ${player.last}`.toLowerCase().includes(query)
+      )
+        continue;
 
       const formerClubId = player.formerClubId ?? player.releasedFromClubId;
       results.push({
@@ -12513,7 +12619,10 @@ return this.transferList.find((entry) => entry.playerId === playerId);
             normalizePosition(player.position) === priority.position &&
             // One-season signing protection: a player who joined another club this
             // season is not on the market, whatever the board thinks of him.
-            canSignFromClub(player, { season: this.season, buyingClubId: buyer.id }),
+            canSignFromClub(player, {
+              season: this.season,
+              buyingClubId: buyer.id,
+            }),
         )
         .filter(
           (player) =>
@@ -12899,7 +13008,10 @@ return this.transferList.find((entry) => entry.playerId === playerId);
       this.worldCup?.nextYear - 1 === this.season &&
       !["complete", "cancelled"].includes(this.worldCup.tournament?.status);
     if (this.week + 1 >= this.calendar.length && worldCupDueThisSeason) {
-      this.seasonWeekCount = Math.max(this.seasonWeekCount + 2, this.calendar.length + 2);
+      this.seasonWeekCount = Math.max(
+        this.seasonWeekCount + 2,
+        this.calendar.length + 2,
+      );
       this.calendar = seasonWeeks(this.season, this.seasonWeekCount);
     }
     if (this.week + 1 >= this.calendar.length) {
@@ -16933,7 +17045,9 @@ return this.transferList.find((entry) => entry.playerId === playerId);
     this.transferListOffers = Array.isArray(saved.transferListOffers)
       ? saved.transferListOffers
       : [];
-    this.transferListOfferHistory = Array.isArray(saved.transferListOfferHistory)
+    this.transferListOfferHistory = Array.isArray(
+      saved.transferListOfferHistory,
+    )
       ? saved.transferListOfferHistory
       : [];
     this.transferListNextEvaluationWeek =
